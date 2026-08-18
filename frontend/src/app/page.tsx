@@ -67,8 +67,8 @@ export default function LandingPage() {
           }}>
             <ShieldAlert size={15} color="#fff" />
           </div>
-          <span style={{ color: '#fff', fontSize: 15, fontWeight: 700, letterSpacing: '-0.02em' }}>
-            ExpenseIQ
+          <span style={{ fontSize: 16, fontWeight: 750, letterSpacing: '-0.02em', color: '#fff' }}>
+            AmritaCRS
           </span>
         </div>
 
@@ -338,17 +338,14 @@ export default function LandingPage() {
         display: 'flex', alignItems: 'center', justifyContent: 'space-between'
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-          <div style={{
-            width: 24, height: 24, borderRadius: 5, background: '#1a7a4a',
-            display: 'flex', alignItems: 'center', justifyContent: 'center'
-          }}>
-            <ShieldAlert size={12} color="#fff" />
+          <div style={{ width: 32, height: 32, borderRadius: 8, background: '#1a7a4a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <ShieldAlert size={16} color="#fff" />
           </div>
-          <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13, fontWeight: 550 }}>ExpenseIQ</span>
+          <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13, fontWeight: 550 }}>AmritaCRS</span>
         </div>
-        <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.2)', margin: 0 }}>
-          © {new Date().getFullYear()} ExpenseIQ · Enterprise Finance Platform
-        </p>
+        <div style={{ textAlign: 'center', marginTop: 64, paddingTop: 32, borderTop: '1px solid rgba(255,255,255,0.05)', fontSize: 13, color: 'rgba(255,255,255,0.25)' }}>
+          © {new Date().getFullYear()} AmritaCRS · Enterprise Finance Platform
+        </div>
       </footer>
     </div>
   );

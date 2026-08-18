@@ -89,7 +89,7 @@ export default function LoginPage() {
             fontSize: 26, fontWeight: 750, color: '#fff',
             letterSpacing: '-0.03em', lineHeight: 1.15, margin: 0
           }}>
-            Sign in to<br />ExpenseIQ
+            Sign in to<br />AmritaCRS
           </h1>
           <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.35)', marginTop: 8 }}>
             Your organisation's finance platform

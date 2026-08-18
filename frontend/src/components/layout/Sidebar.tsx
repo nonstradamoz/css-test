@@ -56,22 +56,11 @@ export const Sidebar: React.FC = () => {
     <nav className="nav-rail">
       {/* Brand */}
       <div style={{ padding: '20px 14px 16px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-          <div style={{
-            width: 30, height: 30, borderRadius: 8, flexShrink: 0,
-            background: 'var(--accent)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center'
-          }}>
-            <ShieldAlert size={15} color="#fff" />
-          </div>
-          <div>
-            <div style={{ color: '#fff', fontSize: 14, fontWeight: 650, letterSpacing: '-0.02em', lineHeight: 1 }}>
-              ExpenseIQ
-            </div>
-            <div style={{ color: 'rgba(255,255,255,0.28)', fontSize: 10, marginTop: 2 }}>
-              Finance Platform
-            </div>
-          </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <ShieldAlert size={20} color="var(--accent)" />
+          <span style={{ fontSize: 16, fontWeight: 750, color: '#fff', letterSpacing: '-0.02em' }}>
+            AmritaCRS
+          </span>
         </div>
       </div>
 
