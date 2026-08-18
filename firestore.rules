@@ -14,7 +14,7 @@ service cloud.firestore {
     function isSuperAdmin() {
       return isAuthenticated() && 
         exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isSuperAdmin == true;
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('isSuperAdmin', false) == true;
     }
 
     // Check if user is a member of the organization
@@ -51,13 +51,17 @@ service cloud.firestore {
       match /members/{memberId} {
         // Members of the org can read the member roster, or Super Admins
         allow read: if isOrgMember(orgId) || isSuperAdmin();
+        
+        // Allow new signups to bootstrap themselves into the demo org
+        allow create: if orgId == 'org-acme-corp' && memberId == request.auth.uid && request.resource.data.role == 'MEMBER';
+        
         // Direct member changes must go through Cloud Functions
-        allow write: if false;
+        allow update, delete: if false;
       }
 
       // Invitations
       match /invitations/{invitationId} {
-        allow read: if isOrgMember(orgId);
+        allow read: if isOrgMember(orgId) || isSuperAdmin();
         allow write: if false;
       }
 
@@ -65,11 +69,11 @@ service cloud.firestore {
       match /expenses/{expenseId} {
         // Members can read expenses in their organization
         // Regular members can only read their own expenses unless they have higher role
-        allow read: if isOrgMember(orgId) && (
+        allow read: if isSuperAdmin() || (isOrgMember(orgId) && (
           isOrgReviewer(orgId) || 
           isOrgFinance(orgId) || 
           resource.data.submittedBy == request.auth.uid
-        );
+        ));
 
         // Direct create/update is restricted:
         // Clients can only create or edit DRAFT expenses that belong to them.
@@ -92,17 +96,17 @@ service cloud.firestore {
 
         // Receipts subcollection
         match /receipts/{receiptId} {
-          allow read: if isOrgMember(orgId);
+          allow read: if isOrgMember(orgId) || isSuperAdmin();
           allow write: if false; // Uploads/metadata registered via Cloud Functions
         }
 
         // Approvals subcollection
         match /approvals/{approvalId} {
-          allow read: if isOrgMember(orgId) && (
+          allow read: if isSuperAdmin() || (isOrgMember(orgId) && (
             isOrgReviewer(orgId) || 
             isOrgFinance(orgId) || 
             get(/databases/$(database)/documents/organisations/$(orgId)/expenses/$(expenseId)).data.submittedBy == request.auth.uid
-          );
+          ));
           allow write: if false; // Must be created only via backend transaction
         }
       }
@@ -111,10 +115,10 @@ service cloud.firestore {
       match /reimbursements/{reimbursementId} {
         // Finance and Admins can read all reimbursements.
         // Members can read reimbursement for their own expense.
-        allow read: if isOrgMember(orgId) && (
+        allow read: if isSuperAdmin() || (isOrgMember(orgId) && (
           isOrgFinance(orgId) ||
           resource.data.submittedBy == request.auth.uid
-        );
+        ));
         // Absolutely no direct client writes - must go through Cloud Functions
         allow write: if false;
       }
@@ -122,7 +126,7 @@ service cloud.firestore {
       // Audit Logs
       match /auditLogs/{auditId} {
         // Only Admins (and Finance for relevant records) can read audit logs
-        allow read: if isOrgAdmin(orgId) || isOrgFinance(orgId);
+        allow read: if isSuperAdmin() || isOrgAdmin(orgId) || isOrgFinance(orgId);
         // Strictly append-only via Cloud Functions Admin SDK. Never writable by clients.
         allow write: if false;
       }

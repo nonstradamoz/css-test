@@ -1,14 +1,16 @@
-import * as admin from 'firebase-admin';
+import { getApps, initializeApp } from 'firebase-admin/app';
+import { getFirestore, Timestamp } from 'firebase-admin/firestore';
+import { getAuth } from 'firebase-admin/auth';
 
 // Initialize Firebase Admin
-if (!admin.apps.length) {
-  admin.initializeApp({
+if (!getApps().length) {
+  initializeApp({
     projectId: 'amrita-crs'
   });
 }
 
-const db = admin.firestore();
-const auth = admin.auth();
+const db = getFirestore();
+const auth = getAuth();
 
 async function makeSuperAdmin(email: string) {
   try {
@@ -20,7 +22,7 @@ async function makeSuperAdmin(email: string) {
       {
         email: userRecord.email,
         isSuperAdmin: true,
-        updatedAt: admin.firestore.Timestamp.now()
+        updatedAt: Timestamp.now()
       },
       { merge: true }
     );

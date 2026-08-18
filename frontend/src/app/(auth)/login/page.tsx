@@ -115,6 +115,13 @@ export default function LoginPage() {
               </Button>
             </form>
 
+            <div className="pt-4 text-center text-sm text-slate-600">
+              Don't have an account?{' '}
+              <Link href="/signup" className="text-primary-600 hover:text-primary-700 font-semibold transition-colors">
+                Sign up
+              </Link>
+            </div>
+
             {/* Quick Demo Logins Section */}
             <div className="pt-4 border-t border-slate-100 space-y-2.5">
               <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 uppercase tracking-wider">

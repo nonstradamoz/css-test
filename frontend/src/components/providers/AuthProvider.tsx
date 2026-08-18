@@ -111,7 +111,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (memberSnap.exists()) {
           const memberData = memberSnap.data() as Member;
           setActiveMember(memberData);
-          setActiveRole(memberData.role);
+          setActiveRole(isGlobalAdmin ? 'ADMIN' : memberData.role);
         } else if (isGlobalAdmin) {
           // Mock Super Admin role context locally
           setActiveMember({
@@ -151,7 +151,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (memberSnap.exists()) {
       const memberData = memberSnap.data() as Member;
       setActiveMember(memberData);
-      setActiveRole(memberData.role);
+      setActiveRole(isSuperAdmin ? 'ADMIN' : memberData.role);
     } else if (isSuperAdmin) {
       setActiveMember({
         id: user.uid,
