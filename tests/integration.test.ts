@@ -149,7 +149,7 @@ describe('CRS Enterprise Integration & Security Test Suite', () => {
         organisationId: 'org-1',
         expenseId: 'exp-1',
         amount: 3000,
-        currency: 'USD',
+        currency: 'INR',
         recipientId: 'user-1',
         forcedOutcome: 'FAILURE'
       });
@@ -161,7 +161,7 @@ describe('CRS Enterprise Integration & Security Test Suite', () => {
         organisationId: 'org-1',
         expenseId: 'exp-1',
         amount: 3000,
-        currency: 'USD',
+        currency: 'INR',
         recipientId: 'user-1',
         forcedOutcome: 'SUCCESS'
       });

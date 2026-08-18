@@ -106,7 +106,7 @@ export default function SettingsPage() {
                 <Input
                   label="Base Settlement Currency"
                   disabled
-                  value={activeOrg?.currency || 'USD'}
+                  value={activeOrg?.currency || 'INR'}
                 />
               </div>
 

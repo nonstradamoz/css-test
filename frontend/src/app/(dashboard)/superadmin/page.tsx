@@ -30,7 +30,7 @@ export default function SuperAdminPage() {
   } = useForm<OrgFormValues>({
     resolver: zodResolver(orgSchema),
     defaultValues: {
-      currency: 'USD'
+      currency: 'INR'
     }
   });
 
@@ -117,7 +117,7 @@ export default function SuperAdminPage() {
                   {...register('currency')}
                   type="text"
                   maxLength={3}
-                  placeholder="USD"
+                  placeholder="INR"
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-violet-500 transition-shadow uppercase"
                 />
                 {errors.currency && (

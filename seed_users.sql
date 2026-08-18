@@ -35,7 +35,7 @@ begin
   -- 1. Create Organisations
   ---------------------------------------------------------------------------
   insert into public.organisations (id, name, currency) values 
-    (org_a_id, 'Acme Corp (Org A)', 'USD'),
+    (org_a_id, 'Acme Corp (Org A)', 'INR'),
     (org_b_id, 'Globex Inc (Org B)', 'EUR'),
     (org_c_id, 'Stark Industries (Org C)', 'GBP')
   on conflict (id) do nothing;

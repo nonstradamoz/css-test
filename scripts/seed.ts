@@ -75,7 +75,7 @@ const ORGANISATIONS = [
   {
     id: 'org-acme-corp',
     name: 'Acme Corporation',
-    currency: 'USD',
+    currency: 'INR',
     createdBy: 'user-admin-acme',
     settings: {
       duplicateWindowDays: 30,
@@ -160,7 +160,7 @@ export async function seedDatabase() {
       submitterEmail: 'member@acmecorp.com',
       submitterName: 'David Miller',
       amount: 4500, // $45.00
-      currency: 'USD',
+      currency: 'INR',
       category: 'Meals & Entertainment',
       merchant: 'Starbucks Coffee',
       expenseDate: '2026-08-16',
@@ -176,7 +176,7 @@ export async function seedDatabase() {
       submitterEmail: 'member@acmecorp.com',
       submitterName: 'David Miller',
       amount: 14200, // $142.00
-      currency: 'USD',
+      currency: 'INR',
       category: 'Travel & Lodging',
       merchant: 'Uber Technologies Inc',
       expenseDate: '2026-08-15',
@@ -206,7 +206,7 @@ export async function seedDatabase() {
       submitterEmail: 'member@acmecorp.com',
       submitterName: 'David Miller',
       amount: 89000, // $890.00
-      currency: 'USD',
+      currency: 'INR',
       category: 'Software & Subscriptions',
       merchant: 'Amazon Web Services (AWS)',
       expenseDate: '2026-08-14',
@@ -236,7 +236,7 @@ export async function seedDatabase() {
       submitterEmail: 'member@acmecorp.com',
       submitterName: 'David Miller',
       amount: 32000, // $320.00
-      currency: 'USD',
+      currency: 'INR',
       category: 'Office Supplies',
       merchant: 'Apple Store NYC',
       expenseDate: '2026-08-10',
@@ -254,7 +254,7 @@ export async function seedDatabase() {
       submitterEmail: 'member@acmecorp.com',
       submitterName: 'David Miller',
       amount: 45000, // $450.00
-      currency: 'USD',
+      currency: 'INR',
       category: 'Travel & Lodging',
       merchant: 'Hilton Hotels & Resorts',
       expenseDate: '2026-08-08',
@@ -273,7 +273,7 @@ export async function seedDatabase() {
       submitterEmail: 'member@acmecorp.com',
       submitterName: 'David Miller',
       amount: 6200, // $62.00
-      currency: 'USD',
+      currency: 'INR',
       category: 'Telecom & Internet',
       merchant: 'Verizon Wireless',
       expenseDate: '2026-08-05',
@@ -293,7 +293,7 @@ export async function seedDatabase() {
       submitterEmail: 'member@acmecorp.com',
       submitterName: 'David Miller',
       amount: 18500, // $185.00
-      currency: 'USD',
+      currency: 'INR',
       category: 'Training & Certifications',
       merchant: 'Coursera Enterprise',
       expenseDate: '2026-07-28',
@@ -313,7 +313,7 @@ export async function seedDatabase() {
       submitterEmail: 'member@acmecorp.com',
       submitterName: 'David Miller',
       amount: 27500, // $275.00
-      currency: 'USD',
+      currency: 'INR',
       category: 'Travel & Lodging',
       merchant: 'Delta Air Lines',
       expenseDate: '2026-07-20',
@@ -333,7 +333,7 @@ export async function seedDatabase() {
       submitterEmail: 'member@acmecorp.com',
       submitterName: 'David Miller',
       amount: 9800, // $98.00
-      currency: 'USD',
+      currency: 'INR',
       category: 'Other',
       merchant: 'Gadgets & Games Hub',
       expenseDate: '2026-07-15',

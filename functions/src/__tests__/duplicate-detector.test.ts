@@ -6,7 +6,7 @@ describe('DuplicateDetector', () => {
     const mockExpense = {
       id: 'exp-1',
       amount: 5000,
-      currency: 'USD',
+      currency: 'INR',
       merchant: 'Delta Airlines',
       expenseDate: '2026-08-15',
       submittedBy: 'user-1',
@@ -37,7 +37,7 @@ describe('DuplicateDetector', () => {
       organisationId: 'org-1',
       submittedBy: 'user-2',
       amount: 5000,
-      currency: 'USD',
+      currency: 'INR',
       expenseDate: '2026-08-15',
       merchant: 'Delta Airlines',
       receiptChecksum: 'abc123hash',
@@ -53,7 +53,7 @@ describe('DuplicateDetector', () => {
     const mockExpense = {
       id: 'exp-1',
       amount: 5000,
-      currency: 'USD',
+      currency: 'INR',
       merchant: 'Delta Airlines',
       expenseDate: '2026-08-15',
       submittedBy: 'user-1',
@@ -84,7 +84,7 @@ describe('DuplicateDetector', () => {
       organisationId: 'org-1',
       submittedBy: 'user-1',
       amount: 5000,
-      currency: 'USD',
+      currency: 'INR',
       expenseDate: '2026-08-15',
       merchant: 'Delta Airlines',
       currentExpenseId: 'exp-2'

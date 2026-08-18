@@ -33,7 +33,7 @@ export default function EditExpensePage() {
 
   const [merchant, setMerchant] = useState('');
   const [amount, setAmount] = useState('');
-  const [currency, setCurrency] = useState('USD');
+  const [currency, setCurrency] = useState('INR');
   const [category, setCategory] = useState(CATEGORIES[0]);
   const [expenseDate, setExpenseDate] = useState('');
   const [description, setDescription] = useState('');
@@ -53,7 +53,7 @@ export default function EditExpensePage() {
           const data = snap.data();
           setMerchant(data.merchant || '');
           setAmount(((data.amount || 0) / 100).toString());
-          setCurrency(data.currency || 'USD');
+          setCurrency(data.currency || 'INR');
           setCategory(data.category || CATEGORIES[0]);
           setExpenseDate(data.expenseDate || '');
           setDescription(data.description || '');

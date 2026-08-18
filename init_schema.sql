@@ -39,13 +39,13 @@ create trigger on_auth_user_created
 create table public.organisations (
   id text primary key,
   name text not null,
-  currency text not null default 'USD',
+  currency text not null default 'INR',
   created_at timestamptz default now()
 );
 
 -- Insert demo org
 insert into public.organisations (id, name, currency) 
-values ('org-acme-corp', 'Acme Corporation', 'USD')
+values ('org-acme-corp', 'Acme Corporation', 'INR')
 on conflict (id) do nothing;
 
 -- 3. Members Table

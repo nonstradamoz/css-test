@@ -9,12 +9,12 @@ export function cn(...inputs: ClassValue[]) {
 /**
  * Formats monetary amounts from smallest integer unit (cents/paise) to display string.
  */
-export function formatCurrency(amountInCents: number, currency: string = 'USD'): string {
+export function formatCurrency(amountInCents: number, currency: string = 'INR'): string {
   const normalized = (amountInCents || 0) / 100;
   try {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
-      currency: currency || 'USD',
+      currency: currency || 'INR',
       minimumFractionDigits: 2,
       maximumFractionDigits: 2
     }).format(normalized);

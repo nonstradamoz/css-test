@@ -30,7 +30,7 @@ export default function NewExpensePage() {
 
   const [merchant, setMerchant] = useState('');
   const [amount, setAmount] = useState('');
-  const [currency, setCurrency] = useState(activeOrg?.currency || 'USD');
+  const [currency, setCurrency] = useState(activeOrg?.currency || 'INR');
   const [category, setCategory] = useState(CATEGORIES[0]);
   const [expenseDate, setExpenseDate] = useState(new Date().toISOString().split('T')[0]);
   const [description, setDescription] = useState('');
@@ -253,7 +253,7 @@ export default function NewExpensePage() {
                     onChange={(e) => setCurrency(e.target.value)}
                     className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
                   >
-                    <option value="USD">USD ($)</option>
+                    <option value="INR">INR (₹)</option>
                     <option value="EUR">EUR (€)</option>
                     <option value="GBP">GBP (£)</option>
                     <option value="INR">INR (₹)</option>

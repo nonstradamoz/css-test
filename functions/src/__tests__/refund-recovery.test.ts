@@ -9,7 +9,7 @@ describe('MockRefundProvider & Failure Handling', () => {
       organisationId: 'org-1',
       expenseId: 'exp-1',
       amount: 4500,
-      currency: 'USD',
+      currency: 'INR',
       recipientId: 'user-1',
       forcedOutcome: 'SUCCESS'
     });
@@ -25,7 +25,7 @@ describe('MockRefundProvider & Failure Handling', () => {
       organisationId: 'org-1',
       expenseId: 'exp-2',
       amount: 12000,
-      currency: 'USD',
+      currency: 'INR',
       recipientId: 'user-2',
       forcedOutcome: 'FAILURE'
     });
@@ -42,7 +42,7 @@ describe('MockRefundProvider & Failure Handling', () => {
         organisationId: 'org-1',
         expenseId: 'exp-3',
         amount: 8000,
-        currency: 'USD',
+        currency: 'INR',
         recipientId: 'user-3',
         forcedOutcome: 'TIMEOUT'
       })

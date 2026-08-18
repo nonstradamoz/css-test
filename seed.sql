@@ -14,7 +14,7 @@ begin
 
   -- 1. Create a demo organisation (if it doesn't exist)
   insert into public.organisations (id, name, currency) 
-  values ('org-acme-corp', 'Acme Corporation', 'USD')
+  values ('org-acme-corp', 'Acme Corporation', 'INR')
   on conflict (id) do nothing;
 
   -- 2. Make the user an ADMIN of the demo organisation
@@ -25,18 +25,18 @@ begin
   -- 3. Insert sample expenses
   insert into public.expenses (id, organisation_id, submitted_by, submitter_email, submitter_name, amount, currency, category, merchant, expense_date, description, status)
   values 
-    ('exp_1001', 'org-acme-corp', first_user_id, 'demo@acme.com', 'Demo User', 15000, 'USD', 'TRAVEL', 'Delta Airlines', '2023-10-15', 'Flight to NY Conference', 'APPROVED'),
-    ('exp_1002', 'org-acme-corp', first_user_id, 'demo@acme.com', 'Demo User', 4550, 'USD', 'MEALS', 'Shake Shack', '2023-10-16', 'Team Lunch', 'REJECTED'),
-    ('exp_1003', 'org-acme-corp', first_user_id, 'demo@acme.com', 'Demo User', 120000, 'USD', 'SOFTWARE', 'GitHub', '2023-10-17', 'Annual Enterprise License', 'REIMBURSED'),
-    ('exp_1004', 'org-acme-corp', first_user_id, 'demo@acme.com', 'Demo User', 2500, 'USD', 'OFFICE', 'Staples', '2023-10-18', 'Printer Ink', 'PENDING_APPROVAL'),
-    ('exp_1005', 'org-acme-corp', first_user_id, 'demo@acme.com', 'Demo User', 8500, 'USD', 'TRAVEL', 'Uber', '2023-10-19', 'Ride to Airport', 'DRAFT')
+    ('exp_1001', 'org-acme-corp', first_user_id, 'demo@acme.com', 'Demo User', 15000, 'INR', 'TRAVEL', 'Delta Airlines', '2023-10-15', 'Flight to NY Conference', 'APPROVED'),
+    ('exp_1002', 'org-acme-corp', first_user_id, 'demo@acme.com', 'Demo User', 4550, 'INR', 'MEALS', 'Shake Shack', '2023-10-16', 'Team Lunch', 'REJECTED'),
+    ('exp_1003', 'org-acme-corp', first_user_id, 'demo@acme.com', 'Demo User', 120000, 'INR', 'SOFTWARE', 'GitHub', '2023-10-17', 'Annual Enterprise License', 'REIMBURSED'),
+    ('exp_1004', 'org-acme-corp', first_user_id, 'demo@acme.com', 'Demo User', 2500, 'INR', 'OFFICE', 'Staples', '2023-10-18', 'Printer Ink', 'PENDING_APPROVAL'),
+    ('exp_1005', 'org-acme-corp', first_user_id, 'demo@acme.com', 'Demo User', 8500, 'INR', 'TRAVEL', 'Uber', '2023-10-19', 'Ride to Airport', 'DRAFT')
   on conflict (id) do nothing;
 
   -- 4. Insert sample reimbursements for the APPROVED/REIMBURSED expenses
   insert into public.reimbursements (id, organisation_id, expense_id, submitted_by, amount, currency, status, provider, provider_reference)
   values 
-    ('reimb_2001', 'org-acme-corp', 'exp_1003', first_user_id, 120000, 'USD', 'COMPLETED', 'STRIPE', 'ch_1Mxyz123'),
-    ('reimb_2002', 'org-acme-corp', 'exp_1001', first_user_id, 15000, 'USD', 'PROCESSING', 'STRIPE', null)
+    ('reimb_2001', 'org-acme-corp', 'exp_1003', first_user_id, 120000, 'INR', 'COMPLETED', 'STRIPE', 'ch_1Mxyz123'),
+    ('reimb_2002', 'org-acme-corp', 'exp_1001', first_user_id, 15000, 'INR', 'PROCESSING', 'STRIPE', null)
   on conflict (id) do nothing;
 
 end $$;

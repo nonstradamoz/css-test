@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { name, currency = 'USD' } = await req.json();
+    const { name, currency = 'INR' } = await req.json();
 
     if (!name) {
       return NextResponse.json({ error: 'Organisation name is required' }, { status: 400 });

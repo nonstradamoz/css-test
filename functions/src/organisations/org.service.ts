@@ -29,7 +29,7 @@ export class OrganisationService {
     const orgData: Organisation = {
       id: orgId,
       name: params.name.trim(),
-      currency: params.currency || 'USD',
+      currency: params.currency || 'INR',
       createdBy: params.creatorId,
       createdAt: now,
       updatedAt: now,
