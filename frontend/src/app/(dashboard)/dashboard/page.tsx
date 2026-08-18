@@ -28,11 +28,18 @@ export default function DashboardPage() {
   const orgId = activeOrg?.id;
 
   const { data: expenses = [], isLoading: isLoadingExpenses } = useQuery({
-    queryKey: ['dashboard-expenses', orgId],
+    queryKey: ['dashboard-expenses', orgId, activeRole, user?.uid],
     queryFn: async () => {
       if (!orgId) return [];
       const expRef = collection(db, 'organisations', orgId, 'expenses');
-      const q = query(expRef, orderBy('createdAt', 'desc'), limit(50));
+      
+      let q;
+      if (activeRole === 'MEMBER') {
+        q = query(expRef, where('submittedBy', '==', user?.uid), orderBy('createdAt', 'desc'), limit(50));
+      } else {
+        q = query(expRef, orderBy('createdAt', 'desc'), limit(50));
+      }
+      
       const snap = await getDocs(q);
       return snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Expense[];
     },
