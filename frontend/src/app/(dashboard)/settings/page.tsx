@@ -232,7 +232,7 @@ export default function SettingsPage() {
                 </p>
               </div>
               <Button
-                variant="destructive"
+                variant="danger"
                 onClick={handleDeleteOrganisation}
                 isLoading={isDeleting}
                 leftIcon={<Trash2 className="w-4 h-4" />}
