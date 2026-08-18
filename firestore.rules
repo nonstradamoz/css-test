@@ -78,12 +78,12 @@ service cloud.firestore {
         // Direct create/update is restricted:
         // Clients can only create or edit DRAFT expenses that belong to them.
         // Sensitive status mutations (SUBMITTED, APPROVED, REJECTED, REFUND_PENDING, etc.) MUST go through Cloud Functions.
-        allow create: if isOrgMember(orgId) &&
+        allow create: if (isSuperAdmin() || isOrgMember(orgId)) &&
           request.resource.data.submittedBy == request.auth.uid &&
           request.resource.data.status == 'DRAFT' &&
           request.resource.data.organisationId == orgId;
 
-        allow update: if isOrgMember(orgId) &&
+        allow update: if (isSuperAdmin() || isOrgMember(orgId)) &&
           resource.data.submittedBy == request.auth.uid &&
           resource.data.status == 'DRAFT' &&
           request.resource.data.status == 'DRAFT' &&
