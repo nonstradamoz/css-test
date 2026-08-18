@@ -2,7 +2,7 @@
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-Strict%20Mode-blue.svg)](https://www.typescriptlang.org/)
 [![Next.js](https://img.shields.io/badge/Next.js-App%20Router-black.svg)](https://nextjs.org/)
-[![Firebase](https://img.shields.io/badge/Firebase-Auth%20%7C%20Firestore%20%7C%20Functions-orange.svg)](https://firebase.google.com/)
+[![Supabase](https://img.shields.io/badge/Supabase-Auth%20%7C%20Postgres-green.svg)](https://supabase.com/)
 [![Cloudinary](https://img.shields.io/badge/Storage-Cloudinary%20%2F%20S3-blueviolet.svg)](https://cloudinary.com/)
 
 A production-grade, secure, multi-tenant enterprise Expense & Refund Management System. The platform enables organizations to manage employee expense claims, structured approval workflows, pre-signed receipt storage, settlement disbursements, concurrency safety, financial idempotency, and automated failure recovery.
@@ -11,7 +11,7 @@ A production-grade, secure, multi-tenant enterprise Expense & Refund Management 
 
 ## 1. Project Overview
 
-CRS is designed around the core principle that **the client is never trusted with financial state changes**. Simple queries and reads are serviced securely via granular Firestore Security Rules, while all state transitions, approvals, rejections, change requests, reimbursement disbursements, role modifications, and audit logs are governed by **Firebase Cloud Functions** and **Firestore Transactions**.
+CRS is designed around the core principle that **the client is never trusted with financial state changes**. Simple queries and reads are serviced securely via granular **Postgres Row Level Security (RLS)**, while all state transitions, approvals, rejections, change requests, reimbursement disbursements, role modifications, and audit logs are governed by robust backend API routes and database constraints. All monetary values are strictly processed and displayed in **INR (₹)**.
 
 ---
 
@@ -22,12 +22,12 @@ CRS is designed around the core principle that **the client is never trusted wit
 - **Language**: TypeScript (Strict Mode)
 - **State & Caching**: TanStack React Query v5
 - **Form Management**: React Hook Form with Zod validation
-- **Styling & UI**: Tailwind CSS, Lucide Icons, Radix-inspired accessible modals, badges, and timeline steppers
+- **Styling & UI**: Tailwind CSS, Lucide Icons, Modern Dark/Warm Theme with premium aesthetic (Inter font, sleek layout).
 
 ### Backend & Cloud Services
-- **Authentication**: Firebase Authentication (Session handling, password resets)
-- **Database**: Cloud Firestore (Tenant-scoped collections, transactional locking, composite indexes)
-- **Serverless Compute**: Firebase Cloud Functions v2 (TypeScript domain services)
+- **Authentication**: Supabase Auth (Session handling, password resets, secure JWTs)
+- **Database**: Supabase PostgreSQL (Tenant-scoped tables, foreign key constraints, RLS policies, trigger-based updates)
+- **API**: Next.js API Routes (Server-side validation, secure service-role execution)
 - **Storage**: Cloudinary Storage / AWS S3 abstraction via pre-signed upload & download URLs
 - **Payment Abstraction**: Pluggable `RefundProvider` interface with exponential backoff & failure simulation (`SUCCESS`, `FAILURE`, `TIMEOUT`)
 
@@ -42,17 +42,17 @@ CRS is designed around the core principle that **the client is never trusted wit
                   └───────────────┬────────────────────────┘
                                   │
                    ┌──────────────┴──────────────┐
-                   │ Firebase Auth (Session JWT) │
+                   │ Supabase Auth (Session JWT) │
                    └──────────────┬──────────────┘
                                   │
           ┌───────────────────────┴───────────────────────┐
           │                                               │
-          ▼ (Direct Safe Reads via Security Rules)        ▼ (Sensitive Mutations / Financial Ops)
+          ▼ (Direct Safe Reads via RLS)                   ▼ (Sensitive Mutations / Financial Ops)
 ┌───────────────────────────────┐           ┌──────────────────────────────────────────┐
-│       Cloud Firestore         │           │         Firebase Cloud Functions         │
-│  - Multi-tenant collections   │◄──────────┤  - RBAC policy enforcement               │
+│      Supabase PostgreSQL      │           │            Next.js API Routes            │
+│  - Multi-tenant foreign keys  │◄──────────┤  - RBAC policy enforcement               │
 │  - Append-only audit logs     │           │  - State machine transition validations  │
-│  - Strict Firestore rules     │           │  - Firestore transactions                │
+│  - Strict RLS policies        │           │  - Service-role elevated privileges      │
 └───────────────────────────────┘           │  - Idempotency locks                     │
                                             └──────────────┬───────────────────────────┘
                                                            │
@@ -71,26 +71,18 @@ CRS is designed around the core principle that **the client is never trusted wit
 
 ## 4. Multi-Tenancy Architecture
 
-All operational data is strictly scoped under individual organization documents:
+All operational data is strictly scoped via `organisation_id` foreign keys in PostgreSQL:
 
-```text
-organisations/{organisationId}
-├── members/{userId}
-├── expenses/{expenseId}
-│   ├── receipts/{receiptId}
-│   └── approvals/{approvalId}
-├── reimbursements/{reimbursementId}
-├── auditLogs/{auditId}
-└── invitations/{invitationId}
-
-idempotencyKeys/{key}
-users/{userId}
-```
+- `organisations` (Tenants)
+- `members` (Join table linking users to orgs with Roles)
+- `expenses` (Claims scoped to org)
+- `reimbursements` (Payouts scoped to org)
+- `audit_logs` (Immutable logs scoped to org)
 
 Tenant isolation is enforced across three distinct layers:
-1. **Firestore Security Rules**: Checks `isOrgMember(orgId)` on all reads and writes.
-2. **Callable Auth Middleware**: Asserts token validity and verifies document existence in `organisations/{orgId}/members/{uid}`.
-3. **Transaction Repositories**: Guarantees mutations remain strictly within the caller's tenant boundary.
+1. **PostgreSQL RLS Policies**: Asserts `is_org_member(org_id)` on all reads.
+2. **API Route Middleware**: Asserts token validity and verifies database existence in `members` table before allowing mutations.
+3. **Foreign Key Constraints**: Guarantees data integrity and cascades deletions.
 
 ---
 
@@ -139,54 +131,19 @@ stateDiagram-v2
 2. **Provider Agnosticism**: Cloudinary and AWS S3 share a unified `StorageProvider` interface without altering business logic.
 3. **Private Access Control**: Download links use time-limited (15-minute) pre-signed delivery URLs generated only after verifying the user's organization membership and role permissions.
 
-### Upload Flow:
-1. Submitter selects file in frontend $\rightarrow$ browser computes SHA-256 checksum.
-2. Client calls `generateReceiptUploadUrl` $\rightarrow$ Cloud Function generates a signed upload endpoint with signature, API key, and timestamp.
-3. Signed `PUT`/`POST` URL returned $\rightarrow$ browser uploads directly to Cloudinary authenticated storage.
-4. Metadata attached to expense record via `confirmReceiptUpload`.
-
 ---
 
-## 8. Concurrency Safety & Optimistic Locking
-
-When two reviewers view the same `UNDER_REVIEW` claim simultaneously and attempt conflicting actions (e.g. Reviewer A clicks *Approve* while Reviewer B clicks *Reject*):
-1. Both operations execute inside `db.runTransaction()`.
-2. The first transaction commits and mutates status to `APPROVED`.
-3. The second transaction encounters the modified state during its initial read, detects that the state is no longer `UNDER_REVIEW`, and fails immediately with `INVALID_STATE_TRANSITION`.
-4. Conflicting double-decisions are strictly impossible.
-
----
-
-## 9. Financial Idempotency Strategy
+## 8. Financial Idempotency Strategy
 
 Duplicate network requests (or double clicks on payout buttons) could result in double payouts without idempotency.
 - All payout endpoints require a unique `idempotencyKey`.
-- Record structure in `idempotencyKeys/{key}`:
-  ```typescript
-  {
-    key: string;
-    organisationId: string;
-    userId: string;
-    operation: string;
-    requestHash: string; // SHA-256 of sorted params
-    status: 'PENDING' | 'COMPLETED' | 'FAILED';
-    result?: Record<string, unknown>;
-    expiresAt: Timestamp;
-  }
-  ```
-- If an identical key with status `COMPLETED` is presented again, the cached result is returned immediately without creating another reimbursement document or hitting the payment gateway.
+- Handled efficiently to ensure that a cached result is returned immediately without double-charging the payment gateway.
 
 ---
 
-## 10. Refund Provider Abstraction & Failure Recovery
+## 9. Refund Provider Abstraction & Failure Recovery
 
-The system decouples payout orchestration using the `RefundProvider` interface:
-```typescript
-export interface RefundProvider {
-  createRefund(request: RefundRequest): Promise<RefundResult>;
-  getRefundStatus(providerReference: string): Promise<RefundResult>;
-}
-```
+The system decouples payout orchestration using the `RefundProvider` interface.
 
 ### Mock Provider Simulation Modes:
 - `SUCCESS`: Settles immediately with reference `MOCK_TXN_...` $\rightarrow$ transitions claim to `REFUNDED`.
@@ -198,10 +155,10 @@ Finance managers can review failed refunds on `/reimbursements` and trigger manu
 
 ---
 
-## 11. Multi-Signal Duplicate Expense Detection
+## 10. Multi-Signal Duplicate Expense Detection
 
 Duplicate claims are flagged in real-time by evaluating 4 matching vectors:
-1. **Exact Amount & Currency Match**
+1. **Exact Amount & Currency Match (INR)**
 2. **Receipt SHA-256 Checksum Match** (Identical file uploaded)
 3. **Same Merchant Name**
 4. **Same Incurred Date & Submitter**
@@ -210,91 +167,63 @@ When a duplicate is suspected, the system sets `duplicateWarning: { isDuplicate:
 
 ---
 
-## 12. Immutable Audit Logging
+## 11. Immutable Audit Logging
 
-Every sensitive state transition, member change, or payout attempt appends a permanent log entry to `organisations/{orgId}/auditLogs/{auditId}`:
-```typescript
-{
-  id: string;
-  organisationId: string;
-  actorId: string;
-  actorEmail: string;
-  action: AuditAction;
-  entityType: 'EXPENSE' | 'REIMBURSEMENT' | 'MEMBER' | 'ORGANISATION';
-  entityId: string;
-  before: Record<string, unknown> | null;
-  after: Record<string, unknown> | null;
-  timestamp: Timestamp;
-  requestId: string;
-}
-```
-Client writes to `auditLogs` are blocked in `firestore.rules`. Logs can only be written by the Cloud Functions Admin SDK.
+Every sensitive state transition, member change, or payout attempt appends a permanent log entry to `audit_logs` table. Client writes are completely blocked via RLS. Logs can only be written by secure API routes using the Supabase Service Role key.
 
 ---
 
-## 13. Local Setup & Emulators
+## 12. Local Setup & Deployment
 
 ### Prerequisites
 - Node.js $\ge 18$
-- Java Runtime Environment (for Firebase Emulators)
+- A Supabase Project (for Auth and PostgreSQL)
+- Vercel (for deployment)
 
-### Installation
+### Environment Variables (`.env.local`)
+Create a `.env.local` in `frontend/` with the following variables:
+```env
+NEXT_PUBLIC_SUPABASE_URL=https://your-project-id.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+
+CLOUDINARY_CLOUD_NAME=your-cloud-name
+CLOUDINARY_API_KEY=your-api-key
+CLOUDINARY_API_SECRET=your-api-secret
+
+MOCK_REFUND_OUTCOME=SUCCESS
+```
+
+### Running Locally
 ```bash
 # 1. Clone the repository
 git clone <repo-url>
-cd amrita_task
+cd amrita_task/frontend
 
-# 2. Install dependencies for functions and frontend
-npm run dev:functions &
-cd frontend && npm install
-```
+# 2. Install dependencies
+npm install
 
-### Running with Firebase Emulators
-```bash
-# Start Firebase Auth, Firestore, and Functions emulators
-npm run dev:emulators
-
-# In another terminal, run the database seed
-npm run seed
-
-# Start Next.js development server
-npm run dev:frontend
+# 3. Start Next.js development server
+npm run dev
 ```
 Open [http://localhost:3000](http://localhost:3000) to view the application.
 
 ---
 
-## 14. Demo Accounts & 1-Click Credentials
+## 13. Demo Accounts
 
 | Organization | Role | Email | Password |
 | :--- | :--- | :--- | :--- |
-| **Acme Corp (Org A)** | ADMIN | `admin@acmecorp.com` | `password123` |
-| **Acme Corp (Org A)** | FINANCE | `finance@acmecorp.com` | `password123` |
-| **Acme Corp (Org A)** | REVIEWER | `reviewer@acmecorp.com` | `password123` |
-| **Acme Corp (Org A)** | MEMBER | `member@acmecorp.com` | `password123` |
-| **Globex Inc (Org B)** | ADMIN | `admin@globex.com` | `password123` |
-| **Globex Inc (Org B)** | MEMBER | `member@globex.com` | `password123` |
-
-*The login page includes 1-click shortcut buttons for instant authentication into any of these personas.*
+| **Acme Corp (Org A)** | ADMIN | `admin@orga.com` | `password123` |
+| **Acme Corp (Org A)** | FINANCE | `finance@orga.com` | `password123` |
+| **Acme Corp (Org A)** | REVIEWER | `reviewer@orga.com` | `password123` |
+| **Acme Corp (Org A)** | MEMBER | `member@orga.com` | `password123` |
 
 ---
 
-## 15. Automated Test Suite
+## 14. Important Engineering Decisions
 
-Run unit and integration test suites:
-```bash
-# Run backend functions unit tests
-npm run test:unit
-
-# Run full integration and security tests
-npm run test:integration
-```
-
----
-
-## 16. Important Engineering Decisions
-
-1. **Integer Smallest Monetary Units**: All monetary values are represented as integer cents/paise (e.g. `$45.50` stored as `4550`) to eliminate floating-point arithmetic errors.
-2. **Transaction Boundaries**: State transitions, approval document creation, and audit logging happen within single atomic transactions.
-3. **Pre-signed Upload / Download Model**: Eliminates server bottleneck for receipt binaries while preserving zero-trust authorization.
-4. **Idempotency Locking**: Protects financial endpoints from double-charging and race conditions.
+1. **Integer Smallest Monetary Units**: All monetary values are represented as integer paise (e.g. `₹45.50` stored as `4550`) to eliminate floating-point arithmetic errors.
+2. **Global INR Currency Enforcement**: The system strictly operates exclusively in Indian Rupees (INR) across the database layer, API validations, and frontend presentations.
+3. **Database Integrity Over App Logic**: Supabase PostgreSQL is heavily utilized with strict Row Level Security (RLS) policies, allowing frontend apps to safely query database directly without middleman endpoints while protecting sensitive cross-tenant data leaks.
+4. **Pre-signed Upload / Download Model**: Eliminates server bottleneck for receipt binaries while preserving zero-trust authorization.
