@@ -65,6 +65,14 @@ export class ReimbursementService {
 
     // Transaction Step 1: Idempotency lock + Expense status validation + Reimbursement document creation
     await db.runTransaction(async (tx) => {
+      // ALL READS MUST HAPPEN BEFORE WRITES
+      const expenseDoc = await tx.get(expenseRef);
+      if (!expenseDoc.exists) {
+        throw new AppError('NOT_FOUND', 'Expense not found.');
+      }
+
+      expenseData = expenseDoc.data() as Expense;
+
       const lockCheck = await IdempotencyService.checkAndLock(db, tx, {
         key: params.idempotencyKey,
         organisationId: params.organisationId,
@@ -76,13 +84,6 @@ export class ReimbursementService {
       if (lockCheck.alreadyCompleted && lockCheck.cachedResult) {
         return; // Handled after transaction
       }
-
-      const expenseDoc = await tx.get(expenseRef);
-      if (!expenseDoc.exists) {
-        throw new AppError('NOT_FOUND', 'Expense not found.');
-      }
-
-      expenseData = expenseDoc.data() as Expense;
 
       if (expenseData.status !== 'APPROVED' && expenseData.status !== 'REFUND_PENDING') {
         throw new AppError(
@@ -205,6 +206,15 @@ export class ReimbursementService {
     let expenseId = '';
 
     await db.runTransaction(async (tx) => {
+      // ALL READS MUST HAPPEN BEFORE WRITES
+      const reimbDoc = await tx.get(reimbursementRef);
+      if (!reimbDoc.exists) {
+        throw new AppError('NOT_FOUND', 'Reimbursement not found.');
+      }
+
+      const reimbData = reimbDoc.data() as Reimbursement;
+      expenseId = reimbData.expenseId;
+
       const lockCheck = await IdempotencyService.checkAndLock(db, tx, {
         key: params.idempotencyKey,
         organisationId: params.organisationId,
@@ -216,14 +226,6 @@ export class ReimbursementService {
       if (lockCheck.alreadyCompleted && lockCheck.cachedResult) {
         return;
       }
-
-      const reimbDoc = await tx.get(reimbursementRef);
-      if (!reimbDoc.exists) {
-        throw new AppError('NOT_FOUND', 'Reimbursement not found.');
-      }
-
-      const reimbData = reimbDoc.data() as Reimbursement;
-      expenseId = reimbData.expenseId;
 
       if (reimbData.status !== 'FAILED') {
         throw new AppError(
