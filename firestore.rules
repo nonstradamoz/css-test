@@ -1,0 +1,142 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isUser(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isSuperAdmin() {
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isSuperAdmin == true;
+    }
+
+    // Check if user is a member of the organization
+    function isOrgMember(orgId) {
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/organisations/$(orgId)/members/$(request.auth.uid));
+    }
+
+    // Get the user's role in the organization
+    function getMemberRole(orgId) {
+      return get(/databases/$(database)/documents/organisations/$(orgId)/members/$(request.auth.uid)).data.role;
+    }
+
+    function isOrgAdmin(orgId) {
+      return isOrgMember(orgId) && getMemberRole(orgId) == 'ADMIN';
+    }
+
+    function isOrgFinance(orgId) {
+      return isOrgMember(orgId) && (getMemberRole(orgId) == 'FINANCE' || getMemberRole(orgId) == 'ADMIN');
+    }
+
+    function isOrgReviewer(orgId) {
+      return isOrgMember(orgId) && (getMemberRole(orgId) == 'REVIEWER' || getMemberRole(orgId) == 'ADMIN');
+    }
+
+    // Organisation documents
+    match /organisations/{orgId} {
+      // Any authenticated member can read their organization's metadata, or Super Admins
+      allow read: if isOrgMember(orgId) || isSuperAdmin();
+      // Only Admin functions / system can write organization documents directly
+      allow write: if false;
+
+      // Organisation Members
+      match /members/{memberId} {
+        // Members of the org can read the member roster, or Super Admins
+        allow read: if isOrgMember(orgId) || isSuperAdmin();
+        // Direct member changes must go through Cloud Functions
+        allow write: if false;
+      }
+
+      // Invitations
+      match /invitations/{invitationId} {
+        allow read: if isOrgMember(orgId);
+        allow write: if false;
+      }
+
+      // Expenses
+      match /expenses/{expenseId} {
+        // Members can read expenses in their organization
+        // Regular members can only read their own expenses unless they have higher role
+        allow read: if isOrgMember(orgId) && (
+          isOrgReviewer(orgId) || 
+          isOrgFinance(orgId) || 
+          resource.data.submittedBy == request.auth.uid
+        );
+
+        // Direct create/update is restricted:
+        // Clients can only create or edit DRAFT expenses that belong to them.
+        // Sensitive status mutations (SUBMITTED, APPROVED, REJECTED, REFUND_PENDING, etc.) MUST go through Cloud Functions.
+        allow create: if isOrgMember(orgId) &&
+          request.resource.data.submittedBy == request.auth.uid &&
+          request.resource.data.status == 'DRAFT' &&
+          request.resource.data.organisationId == orgId;
+
+        allow update: if isOrgMember(orgId) &&
+          resource.data.submittedBy == request.auth.uid &&
+          resource.data.status == 'DRAFT' &&
+          request.resource.data.status == 'DRAFT' &&
+          request.resource.data.submittedBy == request.auth.uid &&
+          request.resource.data.organisationId == orgId;
+
+        allow delete: if isOrgMember(orgId) &&
+          resource.data.submittedBy == request.auth.uid &&
+          resource.data.status == 'DRAFT';
+
+        // Receipts subcollection
+        match /receipts/{receiptId} {
+          allow read: if isOrgMember(orgId);
+          allow write: if false; // Uploads/metadata registered via Cloud Functions
+        }
+
+        // Approvals subcollection
+        match /approvals/{approvalId} {
+          allow read: if isOrgMember(orgId) && (
+            isOrgReviewer(orgId) || 
+            isOrgFinance(orgId) || 
+            get(/databases/$(database)/documents/organisations/$(orgId)/expenses/$(expenseId)).data.submittedBy == request.auth.uid
+          );
+          allow write: if false; // Must be created only via backend transaction
+        }
+      }
+
+      // Reimbursements
+      match /reimbursements/{reimbursementId} {
+        // Finance and Admins can read all reimbursements.
+        // Members can read reimbursement for their own expense.
+        allow read: if isOrgMember(orgId) && (
+          isOrgFinance(orgId) ||
+          resource.data.submittedBy == request.auth.uid
+        );
+        // Absolutely no direct client writes - must go through Cloud Functions
+        allow write: if false;
+      }
+
+      // Audit Logs
+      match /auditLogs/{auditId} {
+        // Only Admins (and Finance for relevant records) can read audit logs
+        allow read: if isOrgAdmin(orgId) || isOrgFinance(orgId);
+        // Strictly append-only via Cloud Functions Admin SDK. Never writable by clients.
+        allow write: if false;
+      }
+    }
+
+    // Idempotency Keys - Backend only
+    match /idempotencyKeys/{key} {
+      allow read, write: if false;
+    }
+
+    // Users collection for profile & org memberships
+    match /users/{userId} {
+      allow read: if isUser(userId) || isSuperAdmin();
+      allow write: if isUser(userId) || isSuperAdmin();
+    }
+  }
+}
