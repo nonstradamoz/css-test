@@ -160,8 +160,16 @@ returns boolean as $$
 $$ language sql security definer;
 
 -- Users RLS
-create policy "Users can read their own data or superadmin" on public.users
-  for select using (auth.uid() = id or public.is_super_admin());
+create policy "Users can read their own data or superadmin or org members" on public.users
+  for select using (
+    auth.uid() = id 
+    or public.is_super_admin()
+    or exists (
+      select 1 from public.members m1 
+      join public.members m2 on m1.organisation_id = m2.organisation_id 
+      where m1.user_id = auth.uid() and m2.user_id = public.users.id
+    )
+  );
 
 -- Organisations RLS
 create policy "Anyone can read orgs if they are a member or superadmin" on public.organisations
