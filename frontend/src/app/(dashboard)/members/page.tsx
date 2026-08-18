@@ -185,7 +185,7 @@ export default function MembersPage() {
                       <td className="px-6 py-4 text-slate-400">{formatDate(m.joinedAt)}</td>
                       {isAdmin && (
                         <td className="px-6 py-4 text-right">
-                          {m.id !== user?.uid && (
+                          {m.id !== user?.id && (
                             <Button
                               size="sm"
                               variant="ghost"

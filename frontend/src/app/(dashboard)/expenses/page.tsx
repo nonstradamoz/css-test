@@ -35,7 +35,7 @@ export default function ExpensesPage() {
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
 
   const { data: expenses = [], isLoading, refetch } = useQuery({
-    queryKey: ['expenses-list', orgId, activeRole, user?.uid],
+    queryKey: ['expenses-list', orgId, activeRole, user?.id],
     queryFn: async () => {
       if (!orgId || !user) return [];
       const supabase = createClient();

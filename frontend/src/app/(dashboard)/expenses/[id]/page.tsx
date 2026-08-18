@@ -158,7 +158,7 @@ export default function ExpenseDetailPage() {
     );
   }
 
-  const isOwner = user?.uid === expense.submittedBy;
+  const isOwner = user?.id === expense.submittedBy;
   const isReviewerOrAdmin = activeRole === 'REVIEWER' || activeRole === 'ADMIN';
   const isFinanceOrAdmin = activeRole === 'FINANCE' || activeRole === 'ADMIN';
 
