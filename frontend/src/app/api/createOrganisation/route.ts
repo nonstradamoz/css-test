@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-// We use the service role key to bypass RLS for administrative actions like creating orgs and assigning initial admin roles.
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY! // Note: We need this env var
-);
+
 
 export async function POST(req: NextRequest) {
   const supabase = createClient(
