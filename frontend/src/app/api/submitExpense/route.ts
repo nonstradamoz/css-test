@@ -2,12 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { DuplicateDetector } from '@/lib/duplicate-detector';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+
 
 export async function POST(req: NextRequest) {
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
   try {
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
@@ -40,7 +41,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Only the submitter can submit their own expense (or super admin)
-    const isSuper = await isSuperAdmin(user.id);
+    const isSuper = await isSuperAdmin(supabase, user.id);
     if (expense.submitted_by !== user.id && !isSuper) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
@@ -86,7 +87,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-async function isSuperAdmin(userId: string) {
+async function isSuperAdmin(supabase: any, userId: string) {
   const { data } = await supabase.from('users').select('is_super_admin').eq('id', userId).single();
   return data?.is_super_admin;
 }
