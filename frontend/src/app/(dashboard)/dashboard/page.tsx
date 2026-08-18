@@ -99,6 +99,7 @@ export default function DashboardPage() {
     .filter(e => ['REIMBURSED', 'APPROVED', 'REFUND_PENDING'].includes(e.status))
     .reduce((s, e) => s + (e.amount || 0), 0);
   const pending = expenses.filter(e => ['SUBMITTED', 'UNDER_REVIEW', 'RESUBMITTED'].includes(e.status));
+  const pendingAmt = pending.reduce((s, e) => s + (e.amount || 0), 0);
   const approved = expenses.filter(e => e.status === 'APPROVED');
   const approvedAmt = approved.reduce((s, e) => s + (e.amount || 0), 0);
   const failedRefunds = reimbursements.filter(r => r.status === 'FAILED');
@@ -174,14 +175,22 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* ── Stats grid — all 6 in one row ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 12, marginBottom: 24 }}>
+      {/* ── Stats grid ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, marginBottom: 24 }}>
         <Stat label="Total Spend" value={formatCurrency(totalSpend, activeOrg?.currency)}
           note="settled & approved" icon={DollarSign} iconColor="var(--accent)" accentBar="var(--accent)" />
         <Stat label="Awaiting Review" value={pending.length}
           note={pending.length > 0 ? 'needs attention' : 'all clear'}
           noteColor={pending.length > 0 ? 'var(--amber)' : 'var(--accent)'}
           icon={Clock} iconColor="var(--amber)" accentBar="var(--amber)" />
+        
+        {/* New Admin-only Pending Amount Stat */}
+        {['ADMIN', 'SUPERADMIN'].includes(activeRole || '') && (
+          <Stat label="Pending Amount" value={formatCurrency(pendingAmt, activeOrg?.currency)}
+            note="amount to approve" noteColor="var(--amber)"
+            icon={DollarSign} iconColor="var(--amber)" accentBar="var(--amber)" />
+        )}
+
         <Stat label="Ready to Pay" value={formatCurrency(approvedAmt, activeOrg?.currency)}
           note={`${approved.length} claim${approved.length !== 1 ? 's' : ''} approved`}
           noteColor="var(--sky)" icon={CreditCard} iconColor="var(--sky)" accentBar="var(--sky)" />
