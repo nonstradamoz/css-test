@@ -3,8 +3,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useQuery } from '@tanstack/react-query';
-import { collection, getDocs, query, orderBy } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { createClient } from '@/lib/supabase';
 import { api } from '@/lib/api';
 import { Member, Role } from '@/types';
 import { formatDate } from '@/lib/utils';
@@ -31,9 +30,33 @@ export default function MembersPage() {
     queryKey: ['members-list', orgId],
     queryFn: async () => {
       if (!orgId) return [];
-      const mRef = collection(db, 'organisations', orgId, 'members');
-      const snap = await getDocs(query(mRef, orderBy('joinedAt', 'desc')));
-      return snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Member[];
+      const supabase = createClient();
+      
+      const { data, error } = await supabase
+        .from('members')
+        .select(`
+          user_id,
+          role,
+          created_at,
+          users (
+            id,
+            email,
+            display_name
+          )
+        `)
+        .eq('organisation_id', orgId)
+        .order('created_at', { ascending: false });
+        
+      if (error || !data) return [];
+      
+      return data.map((d: any) => ({
+        id: d.user_id,
+        organisationId: orgId,
+        role: d.role,
+        email: d.users?.email || '',
+        displayName: d.users?.display_name || '',
+        joinedAt: d.created_at
+      })) as Member[];
     },
     enabled: !!orgId
   });
@@ -137,13 +160,13 @@ export default function MembersPage() {
                           {m.displayName ? m.displayName.substring(0, 2).toUpperCase() : 'U'}
                         </div>
                         <span>{m.displayName || m.email.split('@')[0]}</span>
-                        {m.id === user?.uid && (
+                        {m.id === user?.id && (
                           <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">You</span>
                         )}
                       </td>
                       <td className="px-6 py-4 text-slate-500">{m.email}</td>
                       <td className="px-6 py-4">
-                        {isAdmin && m.id !== user?.uid ? (
+                        {isAdmin && m.id !== user?.id ? (
                           <select
                             value={m.role}
                             onChange={(e) => handleChangeRole(m.id, e.target.value as Role)}

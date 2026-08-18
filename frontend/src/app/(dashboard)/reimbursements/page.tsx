@@ -3,8 +3,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useQuery } from '@tanstack/react-query';
-import { collection, query, getDocs, orderBy } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { createClient } from '@/lib/supabase';
 import { api } from '@/lib/api';
 import { Reimbursement } from '@/types';
 import { formatCurrency, formatDateTime } from '@/lib/utils';
@@ -27,10 +26,42 @@ export default function ReimbursementsPage() {
   const { data: reimbursements = [], isLoading, refetch } = useQuery({
     queryKey: ['reimbursements-list', orgId],
     queryFn: async () => {
-      if (!orgId) return [];
-      const rRef = collection(db, 'organisations', orgId, 'reimbursements');
-      const snap = await getDocs(query(rRef, orderBy('createdAt', 'desc')));
-      return snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Reimbursement[];
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from('reimbursements')
+        .select(`
+          *,
+          expenses (
+            submitter_name,
+            submitter_email
+          )
+        `)
+        .eq('organisation_id', orgId)
+        .order('created_at', { ascending: false });
+        
+      if (error || !data) return [];
+      
+      return data.map((d: any) => ({
+        id: d.id,
+        organisationId: d.organisation_id,
+        expenseId: d.expense_id,
+        submittedBy: d.submitted_by,
+        submitterName: d.expenses?.submitter_name,
+        submitterEmail: d.expenses?.submitter_email,
+        amount: d.amount,
+        currency: d.currency,
+        status: d.status,
+        provider: d.provider,
+        providerReference: d.provider_reference,
+        attemptCount: d.attempt_count,
+        maxAttempts: d.max_attempts,
+        lastAttemptAt: d.last_attempt_at,
+        failureReason: d.failure_reason,
+        createdAt: d.created_at,
+        updatedAt: d.updated_at,
+        completedAt: d.completed_at,
+        failedAt: d.failed_at
+      })) as Reimbursement[];
     },
     enabled: !!orgId
   });

@@ -3,8 +3,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useQuery } from '@tanstack/react-query';
-import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { createClient } from '@/lib/supabase';
 import { api } from '@/lib/api';
 import { Expense } from '@/types';
 import { formatCurrency, formatDate } from '@/lib/utils';
@@ -29,12 +28,42 @@ export default function ApprovalsQueuePage() {
     queryKey: ['approvals-queue', orgId],
     queryFn: async () => {
       if (!orgId) return [];
-      const expRef = collection(db, 'organisations', orgId, 'expenses');
-      const snap = await getDocs(expRef);
-      const all = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Expense[];
-      return all.filter(
-        (e) => e.status === 'SUBMITTED' || e.status === 'UNDER_REVIEW' || e.status === 'RESUBMITTED'
-      );
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from('expenses')
+        .select('*')
+        .eq('organisation_id', orgId)
+        .in('status', ['SUBMITTED', 'UNDER_REVIEW', 'RESUBMITTED'])
+        .order('created_at', { ascending: false });
+        
+      if (error || !data) return [];
+      
+      return data.map((d: any) => ({
+        id: d.id,
+        organisationId: d.organisation_id,
+        submittedBy: d.submitted_by,
+        submitterEmail: d.submitter_email,
+        submitterName: d.submitter_name,
+        amount: d.amount,
+        currency: d.currency,
+        category: d.category,
+        merchant: d.merchant,
+        expenseDate: d.expense_date,
+        description: d.description,
+        status: d.status,
+        receipt: d.receipt,
+        duplicateWarning: d.duplicate_warning,
+        changeRequestReason: d.change_request_reason,
+        rejectionReason: d.rejection_reason,
+        approvedBy: d.approved_by,
+        approvedAt: d.approved_at,
+        rejectedBy: d.rejected_by,
+        rejectedAt: d.rejected_at,
+        reimbursementId: d.reimbursement_id,
+        createdAt: d.created_at,
+        updatedAt: d.updated_at,
+        submittedAt: d.submitted_at
+      })) as Expense[];
     },
     enabled: !!orgId
   });

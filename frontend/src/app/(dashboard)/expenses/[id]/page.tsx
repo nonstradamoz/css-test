@@ -4,8 +4,7 @@ import React, { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useQuery } from '@tanstack/react-query';
-import { doc, getDoc, collection, query, orderBy, getDocs } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { createClient } from '@/lib/supabase';
 import { api } from '@/lib/api';
 import { formatCurrency, formatDate, formatDateTime } from '@/lib/utils';
 import { Expense, AuditLog, ApprovalRecord } from '@/types';
@@ -57,10 +56,42 @@ export default function ExpenseDetailPage() {
     queryKey: ['expense-detail', orgId, expenseId],
     queryFn: async () => {
       if (!orgId || !expenseId) return null;
-      const docRef = doc(db, 'organisations', orgId, 'expenses', expenseId);
-      const snap = await getDoc(docRef);
-      if (!snap.exists()) return null;
-      return { id: snap.id, ...(snap.data() as any) } as Expense;
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from('expenses')
+        .select('*')
+        .eq('organisation_id', orgId)
+        .eq('id', expenseId)
+        .single();
+        
+      if (error || !data) return null;
+      
+      return {
+        id: data.id,
+        organisationId: data.organisation_id,
+        submittedBy: data.submitted_by,
+        submitterEmail: data.submitter_email,
+        submitterName: data.submitter_name,
+        amount: data.amount,
+        currency: data.currency,
+        category: data.category,
+        merchant: data.merchant,
+        expenseDate: data.expense_date,
+        description: data.description,
+        status: data.status,
+        receipt: data.receipt,
+        duplicateWarning: data.duplicate_warning,
+        changeRequestReason: data.change_request_reason,
+        rejectionReason: data.rejection_reason,
+        approvedBy: data.approved_by,
+        approvedAt: data.approved_at,
+        rejectedBy: data.rejected_by,
+        rejectedAt: data.rejected_at,
+        reimbursementId: data.reimbursement_id,
+        createdAt: data.created_at,
+        updatedAt: data.updated_at,
+        submittedAt: data.submitted_at
+      } as Expense;
     },
     enabled: !!orgId && !!expenseId
   });
@@ -70,10 +101,28 @@ export default function ExpenseDetailPage() {
     queryKey: ['expense-audit-logs', orgId, expenseId],
     queryFn: async () => {
       if (!orgId || !expenseId) return [];
-      const auditRef = collection(db, 'organisations', orgId, 'auditLogs');
-      const q = query(auditRef, orderBy('timestamp', 'desc'));
-      const snap = await getDocs(q);
-      const allLogs = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as AuditLog[];
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from('audit_logs')
+        .select('*')
+        .eq('organisation_id', orgId)
+        .order('created_at', { ascending: false });
+        
+      if (error || !data) return [];
+      
+      const allLogs = data.map((d: any) => ({
+        id: d.id,
+        organisationId: d.organisation_id,
+        actorId: d.actor_id,
+        actorEmail: d.actor_email,
+        action: d.action,
+        entityType: d.entity_type,
+        entityId: d.entity_id,
+        before: d.before_data,
+        after: d.after_data,
+        timestamp: d.created_at
+      })) as AuditLog[];
+      
       return allLogs.filter((log) => log.entityId === expenseId || log.metadata?.expenseId === expenseId);
     },
     enabled: !!orgId && !!expenseId
@@ -83,10 +132,8 @@ export default function ExpenseDetailPage() {
   const { data: approvals = [] } = useQuery({
     queryKey: ['expense-approvals', orgId, expenseId],
     queryFn: async () => {
-      if (!orgId || !expenseId) return [];
-      const appRef = collection(db, 'organisations', orgId, 'expenses', expenseId, 'approvals');
-      const snap = await getDocs(appRef);
-      return snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as ApprovalRecord[];
+      // Approval records might not be a separate table yet, keeping empty array for now
+      return [] as ApprovalRecord[];
     },
     enabled: !!orgId && !!expenseId
   });

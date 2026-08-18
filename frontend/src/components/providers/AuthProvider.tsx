@@ -1,9 +1,8 @@
 'use client';
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { User, onAuthStateChanged, signOut as fbSignOut } from 'firebase/auth';
-import { doc, getDoc, collection, getDocs } from 'firebase/firestore';
-import { auth, db } from '@/lib/firebase';
+import { User } from '@supabase/supabase-js';
+import { createClient } from '@/lib/supabase';
 import { Member, Organisation, Role } from '@/types';
 
 interface AuthContextType {
@@ -41,56 +40,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [userOrgs, setUserOrgs] = useState<Organisation[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const supabase = createClient();
+
   const fetchUserData = async (currentUser: User) => {
     try {
       // 1. Fetch user doc
-      const userRef = doc(db, 'users', currentUser.uid);
-      const userSnap = await getDoc(userRef);
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', currentUser.id)
+        .maybeSingle();
 
-      let orgIds: string[] = [];
-      let isGlobalAdmin = false;
-
-      if (userSnap.exists()) {
-        const data = userSnap.data();
-        if (data?.organisations) {
-          orgIds = data.organisations;
-        }
-        if (data?.isSuperAdmin) {
-          isGlobalAdmin = true;
-          setIsSuperAdmin(true);
-        } else {
-          setIsSuperAdmin(false);
-        }
-      } else {
-        setIsSuperAdmin(false);
+      if (userError) {
+        console.error('Error fetching user:', userError);
       }
 
-      // If no orgs in user profile, query all orgs where user is in members collection
-      if (!isGlobalAdmin && orgIds.length === 0) {
-        // Fallback query demo orgs or direct memberships
-        const demoOrgs = ['org-acme-corp', 'org-globex-inc'];
-        for (const demoOrgId of demoOrgs) {
-          const mSnap = await getDoc(doc(db, 'organisations', demoOrgId, 'members', currentUser.uid));
-          if (mSnap.exists()) {
-            orgIds.push(demoOrgId);
-          }
-        }
-      }
+      const isGlobalAdmin = userData?.is_super_admin || false;
+      setIsSuperAdmin(isGlobalAdmin);
 
-      const fetchedOrgs: Organisation[] = [];
+      // 2. Fetch organisations
+      let fetchedOrgs: Organisation[] = [];
       
       if (isGlobalAdmin) {
-        // Super admin fetches ALL organisations
-        const allOrgsSnap = await getDocs(collection(db, 'organisations'));
-        allOrgsSnap.forEach(docSnap => {
-          fetchedOrgs.push({ id: docSnap.id, ...(docSnap.data() as any) });
-        });
+        const { data: allOrgs } = await supabase.from('organisations').select('*');
+        if (allOrgs) {
+          fetchedOrgs = allOrgs as Organisation[];
+        }
       } else {
-        for (const orgId of orgIds) {
-          const orgSnap = await getDoc(doc(db, 'organisations', orgId));
-          if (orgSnap.exists()) {
-            fetchedOrgs.push({ id: orgSnap.id, ...(orgSnap.data() as any) });
-          }
+        const { data: memberOrgs } = await supabase
+          .from('members')
+          .select('organisations(*)')
+          .eq('user_id', currentUser.id);
+          
+        if (memberOrgs) {
+          fetchedOrgs = memberOrgs.map(m => m.organisations).filter(Boolean) as any as Organisation[];
         }
       }
 
@@ -105,20 +88,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setActiveOrg(selectedOrg);
         localStorage.setItem('activeOrgId', selectedOrg.id);
 
-        const memberSnap = await getDoc(
-          doc(db, 'organisations', selectedOrg.id, 'members', currentUser.uid)
-        );
-        if (memberSnap.exists()) {
-          const memberData = memberSnap.data() as Member;
-          setActiveMember(memberData);
+        const { data: memberData } = await supabase
+          .from('members')
+          .select('*')
+          .eq('user_id', currentUser.id)
+          .eq('organisation_id', selectedOrg.id)
+          .maybeSingle();
+
+        if (memberData) {
+          const mappedMember: Member = {
+            id: memberData.user_id,
+            organisationId: memberData.organisation_id,
+            role: memberData.role,
+            email: currentUser.email || '',
+            displayName: userData?.display_name || '',
+            joinedAt: new Date(memberData.created_at) as any
+          };
+          setActiveMember(mappedMember);
           setActiveRole(isGlobalAdmin ? 'ADMIN' : memberData.role);
         } else if (isGlobalAdmin) {
-          // Mock Super Admin role context locally
           setActiveMember({
-            id: currentUser.uid,
+            id: currentUser.id,
             organisationId: selectedOrg.id,
             email: currentUser.email || '',
-            displayName: currentUser.displayName || 'Super Admin',
+            displayName: userData?.display_name || 'Super Admin',
             role: 'ADMIN',
             joinedAt: new Date() as any
           });
@@ -147,17 +140,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setActiveOrg(org);
     localStorage.setItem('activeOrgId', org.id);
 
-    const memberSnap = await getDoc(doc(db, 'organisations', org.id, 'members', user.uid));
-    if (memberSnap.exists()) {
-      const memberData = memberSnap.data() as Member;
-      setActiveMember(memberData);
+    const { data: memberData } = await supabase
+      .from('members')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('organisation_id', org.id)
+      .maybeSingle();
+
+    if (memberData) {
+      const mappedMember: Member = {
+        id: memberData.user_id,
+        organisationId: memberData.organisation_id,
+        role: memberData.role,
+        email: user.email || '',
+        displayName: user.user_metadata?.full_name || '',
+        joinedAt: new Date(memberData.created_at) as any
+      };
+      setActiveMember(mappedMember);
       setActiveRole(isSuperAdmin ? 'ADMIN' : memberData.role);
     } else if (isSuperAdmin) {
       setActiveMember({
-        id: user.uid,
+        id: user.id,
         organisationId: org.id,
         email: user.email || '',
-        displayName: user.displayName || 'Super Admin',
+        displayName: user.user_metadata?.full_name || 'Super Admin',
         role: 'ADMIN',
         joinedAt: new Date() as any
       });
@@ -175,7 +181,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const signOut = async () => {
-    await fbSignOut(auth);
+    await supabase.auth.signOut();
     setUser(null);
     setActiveOrg(null);
     setActiveRole(null);
@@ -186,22 +192,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+    // Initial fetch
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      const currentUser = session?.user || null;
       setUser(currentUser);
       if (currentUser) {
-        await fetchUserData(currentUser);
+        fetchUserData(currentUser);
       } else {
-        setUser(null);
-        setActiveOrg(null);
-        setActiveRole(null);
-        setActiveMember(null);
-        setIsSuperAdmin(false);
-        setUserOrgs([]);
         setLoading(false);
       }
     });
 
-    return () => unsubscribe();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        const currentUser = session?.user || null;
+        setUser(currentUser);
+        if (currentUser) {
+          await fetchUserData(currentUser);
+        } else {
+          setUser(null);
+          setActiveOrg(null);
+          setActiveRole(null);
+          setActiveMember(null);
+          setIsSuperAdmin(false);
+          setUserOrgs([]);
+          setLoading(false);
+        }
+      }
+    );
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   return (

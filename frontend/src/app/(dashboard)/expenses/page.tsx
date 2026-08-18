@@ -3,8 +3,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useQuery } from '@tanstack/react-query';
-import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { createClient } from '@/lib/supabase';
 import { Expense, ExpenseStatus } from '@/types';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { Badge } from '@/components/ui/Badge';
@@ -39,18 +38,47 @@ export default function ExpensesPage() {
     queryKey: ['expenses-list', orgId, activeRole, user?.uid],
     queryFn: async () => {
       if (!orgId || !user) return [];
-      const expRef = collection(db, 'organisations', orgId, 'expenses');
+      const supabase = createClient();
+      let query = supabase
+        .from('expenses')
+        .select('*')
+        .eq('organisation_id', orgId)
+        .order('created_at', { ascending: false });
       
-      let q;
       // Member can only see their own expenses unless higher role
       if (activeRole === 'MEMBER') {
-        q = query(expRef, where('submittedBy', '==', user.uid), orderBy('createdAt', 'desc'));
-      } else {
-        q = query(expRef, orderBy('createdAt', 'desc'));
+        query = query.eq('submitted_by', user.id);
       }
 
-      const snap = await getDocs(q);
-      return snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Expense[];
+      const { data, error } = await query;
+      if (error) throw error;
+      
+      return data.map((d: any) => ({
+        id: d.id,
+        organisationId: d.organisation_id,
+        submittedBy: d.submitted_by,
+        submitterEmail: d.submitter_email,
+        submitterName: d.submitter_name,
+        amount: d.amount,
+        currency: d.currency,
+        category: d.category,
+        merchant: d.merchant,
+        expenseDate: d.expense_date,
+        description: d.description,
+        status: d.status,
+        receipt: d.receipt,
+        duplicateWarning: d.duplicate_warning,
+        changeRequestReason: d.change_request_reason,
+        rejectionReason: d.rejection_reason,
+        approvedBy: d.approved_by,
+        approvedAt: d.approved_at,
+        rejectedBy: d.rejected_by,
+        rejectedAt: d.rejected_at,
+        reimbursementId: d.reimbursement_id,
+        createdAt: d.created_at,
+        updatedAt: d.updated_at,
+        submittedAt: d.submitted_at
+      })) as Expense[];
     },
     enabled: !!orgId && !!user
   });

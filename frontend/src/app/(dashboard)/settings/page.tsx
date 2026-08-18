@@ -6,10 +6,12 @@ import { api } from '@/lib/api';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { Settings, Save, CheckCircle2, ShieldCheck, Cpu, DollarSign } from 'lucide-react';
+import { Settings, Save, CheckCircle2, ShieldCheck, Cpu, DollarSign, Trash2, AlertTriangle } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 
 export default function SettingsPage() {
-  const { activeOrg, activeRole, refreshProfile } = useAuth();
+  const router = useRouter();
+  const { activeOrg, isSuperAdmin, refreshProfile } = useAuth();
   const orgId = activeOrg?.id;
 
   const [mockOutcome, setMockOutcome] = useState<'SUCCESS' | 'FAILURE' | 'TIMEOUT'>(
@@ -19,6 +21,7 @@ export default function SettingsPage() {
     (activeOrg?.settings?.duplicateWindowDays || 30).toString()
   );
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -43,6 +46,26 @@ export default function SettingsPage() {
       setError(err.message || 'Failed to update settings.');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleDeleteOrganisation = async () => {
+    if (!orgId) return;
+    
+    if (!confirm('Are you absolutely sure you want to delete this organisation? This action cannot be undone and will delete all members, expenses, and reimbursements associated with it.')) {
+      return;
+    }
+
+    setIsDeleting(true);
+    setError(null);
+
+    try {
+      await api.deleteOrganisation({ organisationId: orgId });
+      await refreshProfile();
+      router.push('/dashboard');
+    } catch (err: any) {
+      setError(err.message || 'Failed to delete organisation.');
+      setIsDeleting(false);
     }
   };
 
@@ -188,6 +211,38 @@ export default function SettingsPage() {
           </CardFooter>
         </Card>
       </form>
+
+      {isSuperAdmin && (
+        <Card className="border-red-200 bg-red-50/30">
+          <CardHeader>
+            <CardTitle className="text-red-700 flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5" />
+              Danger Zone
+            </CardTitle>
+            <CardDescription className="text-red-600/80">
+              Destructive actions that cannot be undone. Only visible to Super Admins.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between p-4 bg-white border border-red-100 rounded-xl">
+              <div>
+                <h4 className="font-semibold text-slate-900 text-sm">Delete Organisation</h4>
+                <p className="text-xs text-slate-500 mt-0.5 max-w-md">
+                  Permanently remove this organisation and all of its associated data, members, and financial records.
+                </p>
+              </div>
+              <Button
+                variant="destructive"
+                onClick={handleDeleteOrganisation}
+                isLoading={isDeleting}
+                leftIcon={<Trash2 className="w-4 h-4" />}
+              >
+                Delete Organisation
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

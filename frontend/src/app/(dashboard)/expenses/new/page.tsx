@@ -3,8 +3,7 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { createClient } from '@/lib/supabase';
 import { api } from '@/lib/api';
 import { calculateFileChecksum, toCents } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
@@ -77,30 +76,34 @@ export default function NewExpensePage() {
     setError(null);
 
     try {
+      const supabase = createClient();
       const expenseId = `exp_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
       const amountInCents = toCents(numAmount);
 
-      // 1. Create the DRAFT document in Firestore without receipt metadata first
-      const expenseDocRef = doc(db, 'organisations', orgId, 'expenses', expenseId);
+      // 1. Create the DRAFT document in Supabase
       const newExpenseData = {
         id: expenseId,
-        organisationId: orgId,
-        submittedBy: user.uid,
-        submitterEmail: user.email || '',
-        submitterName: user.displayName || user.email?.split('@')[0] || 'User',
+        organisation_id: orgId,
+        submitted_by: user.id,
+        submitter_email: user.email || '',
+        submitter_name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'User',
         amount: amountInCents,
         currency: currency.toUpperCase(),
         category,
         merchant: merchant.trim(),
-        expenseDate,
+        expense_date: expenseDate,
         description: description.trim(),
         status: 'DRAFT',
-        receipt: null,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
+        receipt: null
       };
 
-      await setDoc(expenseDocRef, newExpenseData);
+      const { error: insertError } = await supabase
+        .from('expenses')
+        .insert(newExpenseData);
+
+      if (insertError) {
+        throw insertError;
+      }
 
       // 2. If a receipt file is attached, request pre-signed upload URL from Cloud Functions
       if (file && fileChecksum) {

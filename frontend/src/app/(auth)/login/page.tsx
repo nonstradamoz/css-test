@@ -2,194 +2,220 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
-import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/Card';
-import { ShieldCheck, ArrowRight, UserCheck, AlertCircle } from 'lucide-react';
+import { createClient } from '@/lib/supabase';
+import { AlertCircle, Eye, EyeOff, ShieldAlert, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [showPwd, setShowPwd] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
+    setLoading(true);
     setError(null);
-
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      const sb = createClient();
+      const { error: err } = await sb.auth.signInWithPassword({ email, password });
+      if (err) throw err;
       router.push('/dashboard');
     } catch (err: any) {
-      console.error(err);
-      if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
-        setError('Invalid email or password.');
-      } else {
-        setError(err.message || 'Failed to sign in. Ensure emulators are running.');
-      }
+      setError(err.message?.includes('Invalid login') ? 'Wrong email or password.' : err.message || 'Could not sign in.');
     } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleQuickLogin = async (demoEmail: string) => {
-    setEmail(demoEmail);
-    setPassword('password123');
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      await signInWithEmailAndPassword(auth, demoEmail, 'password123');
-      router.push('/dashboard');
-    } catch (err: any) {
-      console.error(err);
-      setError(err.message || 'Quick login failed. Ensure seed data has been loaded.');
-    } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-950 flex flex-col justify-center items-center p-4">
-      <div className="w-full max-w-md space-y-6">
-        {/* Brand */}
-        <div className="text-center space-y-2">
-          <div className="inline-flex w-12 h-12 rounded-2xl bg-primary-600 items-center justify-center text-white shadow-elevated">
-            <ShieldCheck className="w-7 h-7" />
+    <div style={{
+      minHeight: '100vh',
+      background: '#131210',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 24,
+      position: 'relative',
+      overflow: 'hidden'
+    }}>
+
+      {/* Background texture dots */}
+      <div style={{
+        position: 'absolute', inset: 0, opacity: 0.3,
+        backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.08) 1px, transparent 1px)',
+        backgroundSize: '32px 32px',
+        pointerEvents: 'none'
+      }} />
+
+      {/* Glow — one only, bottom-left */}
+      <div style={{
+        position: 'absolute', bottom: -80, left: -80,
+        width: 400, height: 400, borderRadius: 999,
+        background: 'radial-gradient(circle, rgba(26,122,74,0.18) 0%, transparent 70%)',
+        pointerEvents: 'none'
+      }} />
+
+      {/* Card */}
+      <div style={{
+        width: '100%', maxWidth: 400, position: 'relative', zIndex: 1
+      }}>
+
+        {/* Back button */}
+        <Link href="/" style={{
+          display: 'inline-flex', alignItems: 'center', gap: 5, marginBottom: 32,
+          fontSize: 13, color: 'rgba(255,255,255,0.35)', textDecoration: 'none',
+          transition: 'color 0.15s'
+        }}
+        onMouseEnter={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.7)')}
+        onMouseLeave={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.35)')}
+        >
+          <ArrowLeft size={14} /> Back to home
+        </Link>
+
+        {/* Logo mark */}
+        <div style={{ marginBottom: 32 }}>
+          <div style={{
+            width: 40, height: 40, borderRadius: 10,
+            background: 'var(--accent)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            marginBottom: 20
+          }}>
+            <ShieldAlert size={20} color="#fff" />
           </div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">Centralised Expense & Refund</h1>
-          <p className="text-xs text-slate-400">Enterprise Financial Operations Platform</p>
+          <h1 style={{
+            fontSize: 26, fontWeight: 750, color: '#fff',
+            letterSpacing: '-0.03em', lineHeight: 1.15, margin: 0
+          }}>
+            Sign in to<br />ExpenseIQ
+          </h1>
+          <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.35)', marginTop: 8 }}>
+            Your organisation's finance platform
+          </p>
         </div>
 
-        {/* Login Card */}
-        <Card className="border-slate-700/60 bg-white/95 backdrop-blur-xl shadow-elevated">
-          <CardHeader className="pb-3 border-none">
-            <CardTitle className="text-lg">Sign In</CardTitle>
-            <CardDescription>Enter your corporate credentials to continue</CardDescription>
-          </CardHeader>
+        {/* Error */}
+        {error && (
+          <div style={{
+            display: 'flex', alignItems: 'flex-start', gap: 8,
+            padding: '11px 14px', borderRadius: 8, marginBottom: 16,
+            background: 'rgba(185,64,64,0.12)', border: '1px solid rgba(185,64,64,0.25)',
+            color: '#fca5a5', fontSize: 13
+          }}>
+            <AlertCircle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+            {error}
+          </div>
+        )}
 
-          <CardContent className="space-y-4">
-            {error && (
-              <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                <span>{error}</span>
-              </div>
-            )}
+        <form onSubmit={handleLogin}>
+          {/* Email */}
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.45)', marginBottom: 6 }}>
+              Email
+            </label>
+            <input
+              type="email" required
+              placeholder="you@company.com"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              style={{
+                width: '100%', padding: '11px 14px', borderRadius: 8,
+                background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
+                color: '#fff', fontSize: 14, fontFamily: 'Inter, sans-serif', outline: 'none',
+                transition: 'border-color 0.15s, box-shadow 0.15s'
+              }}
+              onFocus={e => {
+                e.target.style.borderColor = 'rgba(26,122,74,0.7)';
+                e.target.style.boxShadow = '0 0 0 3px rgba(26,122,74,0.15)';
+              }}
+              onBlur={e => {
+                e.target.style.borderColor = 'rgba(255,255,255,0.1)';
+                e.target.style.boxShadow = 'none';
+              }}
+            />
+          </div>
 
-            <form onSubmit={handleLogin} className="space-y-4">
-              <Input
-                label="Email Address"
-                type="email"
-                required
-                placeholder="name@company.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-
-              <Input
-                label="Password"
-                type="password"
-                required
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-
-              <div className="flex items-center justify-between text-xs">
-                <label className="flex items-center gap-2 text-slate-600 cursor-pointer">
-                  <input type="checkbox" className="rounded border-slate-300 text-primary-600 focus:ring-primary-500" />
-                  Remember me
-                </label>
-                <Link href="/forgot-password" className="text-primary-600 hover:text-primary-700 font-medium">
-                  Forgot password?
-                </Link>
-              </div>
-
-              <Button type="submit" className="w-full" isLoading={isLoading} rightIcon={<ArrowRight className="w-4 h-4" />}>
-                Sign In
-              </Button>
-            </form>
-
-            <div className="pt-4 text-center text-sm text-slate-600">
-              Don't have an account?{' '}
-              <Link href="/signup" className="text-primary-600 hover:text-primary-700 font-semibold transition-colors">
-                Sign up
+          {/* Password */}
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+              <label style={{ fontSize: 12, fontWeight: 600, color: 'rgba(255,255,255,0.45)' }}>Password</label>
+              <Link href="/forgot-password" style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', textDecoration: 'none' }}>
+                Forgot?
               </Link>
             </div>
-
-            {/* Quick Demo Logins Section */}
-            <div className="pt-4 border-t border-slate-100 space-y-2.5">
-              <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                <UserCheck className="w-3.5 h-3.5" />
-                <span>1-Click Demo Accounts</span>
-              </div>
-
-              <div className="space-y-2">
-                <div className="text-[11px] font-semibold text-slate-400">Organisation A (Acme Corp)</div>
-                <div className="grid grid-cols-2 gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => handleQuickLogin('admin@acmecorp.com')}
-                    className="text-left px-2.5 py-1.5 rounded-lg border border-purple-200 bg-purple-50/60 hover:bg-purple-100 text-purple-900 text-xs font-medium transition-colors"
-                  >
-                    <div className="font-bold">Admin</div>
-                    <div className="text-[10px] text-purple-600 truncate">admin@acmecorp.com</div>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleQuickLogin('finance@acmecorp.com')}
-                    className="text-left px-2.5 py-1.5 rounded-lg border border-emerald-200 bg-emerald-50/60 hover:bg-emerald-100 text-emerald-900 text-xs font-medium transition-colors"
-                  >
-                    <div className="font-bold">Finance</div>
-                    <div className="text-[10px] text-emerald-600 truncate">finance@acmecorp.com</div>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleQuickLogin('reviewer@acmecorp.com')}
-                    className="text-left px-2.5 py-1.5 rounded-lg border border-blue-200 bg-blue-50/60 hover:bg-blue-100 text-blue-900 text-xs font-medium transition-colors"
-                  >
-                    <div className="font-bold">Reviewer</div>
-                    <div className="text-[10px] text-blue-600 truncate">reviewer@acmecorp.com</div>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleQuickLogin('member@acmecorp.com')}
-                    className="text-left px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-800 text-xs font-medium transition-colors"
-                  >
-                    <div className="font-bold">Member</div>
-                    <div className="text-[10px] text-slate-500 truncate">member@acmecorp.com</div>
-                  </button>
-                </div>
-
-                <div className="text-[11px] font-semibold text-slate-400 pt-1">Organisation B (Globex Inc)</div>
-                <div className="grid grid-cols-2 gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => handleQuickLogin('admin@globex.com')}
-                    className="text-left px-2.5 py-1.5 rounded-lg border border-purple-200 bg-purple-50/60 hover:bg-purple-100 text-purple-900 text-xs font-medium transition-colors"
-                  >
-                    <div className="font-bold">Admin (Org B)</div>
-                    <div className="text-[10px] text-purple-600 truncate">admin@globex.com</div>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleQuickLogin('member@globex.com')}
-                    className="text-left px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-800 text-xs font-medium transition-colors"
-                  >
-                    <div className="font-bold">Member (Org B)</div>
-                    <div className="text-[10px] text-slate-500 truncate">member@globex.com</div>
-                  </button>
-                </div>
-              </div>
+            <div style={{ position: 'relative' }}>
+              <input
+                type={showPwd ? 'text' : 'password'} required
+                placeholder="••••••••"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                style={{
+                  width: '100%', padding: '11px 42px 11px 14px', borderRadius: 8,
+                  background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
+                  color: '#fff', fontSize: 14, fontFamily: 'Inter, sans-serif', outline: 'none',
+                  transition: 'border-color 0.15s, box-shadow 0.15s'
+                }}
+                onFocus={e => {
+                  e.target.style.borderColor = 'rgba(26,122,74,0.7)';
+                  e.target.style.boxShadow = '0 0 0 3px rgba(26,122,74,0.15)';
+                }}
+                onBlur={e => {
+                  e.target.style.borderColor = 'rgba(255,255,255,0.1)';
+                  e.target.style.boxShadow = 'none';
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPwd(!showPwd)}
+                style={{
+                  position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  color: 'rgba(255,255,255,0.3)', padding: 2
+                }}
+              >
+                {showPwd ? <EyeOff size={15} /> : <Eye size={15} />}
+              </button>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+
+          {/* Submit */}
+          <button
+            type="submit"
+            disabled={loading}
+            style={{
+              width: '100%', padding: '12px', borderRadius: 8,
+              background: loading ? 'rgba(26,122,74,0.6)' : 'var(--accent)',
+              color: '#fff', fontSize: 14, fontWeight: 650,
+              border: 'none', cursor: loading ? 'not-allowed' : 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+              boxShadow: loading ? 'none' : '0 2px 12px rgba(26,122,74,0.35)',
+              transition: 'background 0.15s, box-shadow 0.15s'
+            }}
+          >
+            {loading ? (
+              <>
+                <div style={{
+                  width: 15, height: 15, borderRadius: 99,
+                  border: '2px solid rgba(255,255,255,0.3)', borderTopColor: '#fff',
+                  animation: 'spin 0.7s linear infinite'
+                }} />
+                Signing in…
+              </>
+            ) : 'Continue'}
+          </button>
+        </form>
+
+        <p style={{ textAlign: 'center', fontSize: 13, color: 'rgba(255,255,255,0.25)', marginTop: 24 }}>
+          No account?{' '}
+          <Link href="/signup" style={{ color: 'rgba(255,255,255,0.6)', fontWeight: 600, textDecoration: 'none' }}>
+            Sign up
+          </Link>
+        </p>
       </div>
+
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }

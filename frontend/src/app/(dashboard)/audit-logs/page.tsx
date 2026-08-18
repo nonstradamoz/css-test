@@ -3,8 +3,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useQuery } from '@tanstack/react-query';
-import { collection, getDocs, query, orderBy } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { createClient } from '@/lib/supabase';
 import { AuditLog, AuditAction } from '@/types';
 import { formatDateTime } from '@/lib/utils';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
@@ -22,10 +21,27 @@ export default function AuditLogsPage() {
   const { data: logs = [], isLoading, refetch } = useQuery({
     queryKey: ['audit-logs-list', orgId],
     queryFn: async () => {
-      if (!orgId) return [];
-      const aRef = collection(db, 'organisations', orgId, 'auditLogs');
-      const snap = await getDocs(query(aRef, orderBy('timestamp', 'desc')));
-      return snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as AuditLog[];
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from('audit_logs')
+        .select('*')
+        .eq('organisation_id', orgId)
+        .order('created_at', { ascending: false });
+        
+      if (error || !data) return [];
+      
+      return data.map((d: any) => ({
+        id: d.id,
+        organisationId: d.organisation_id,
+        actorId: d.actor_id,
+        actorEmail: d.actor_email,
+        action: d.action,
+        entityType: d.entity_type,
+        entityId: d.entity_id,
+        before: d.before_data,
+        after: d.after_data,
+        timestamp: d.created_at
+      })) as AuditLog[];
     },
     enabled: !!orgId && (activeRole === 'ADMIN' || activeRole === 'FINANCE')
   });
