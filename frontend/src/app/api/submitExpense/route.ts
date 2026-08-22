@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { DuplicateDetector } from '@/lib/duplicate-detector';
+import { rateLimit, getClientIp } from '@/lib/rate-limit';
 
 
 
@@ -10,6 +11,19 @@ export async function POST(req: NextRequest) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
   try {
+    const ip = getClientIp(req);
+    const rateLimitResult = rateLimit(`submit_${ip}`, 10, 60 * 1000); // 10 per minute
+    if (!rateLimitResult.success) {
+      return NextResponse.json({ error: 'Too Many Requests' }, { 
+        status: 429,
+        headers: {
+          'X-RateLimit-Limit': rateLimitResult.limit.toString(),
+          'X-RateLimit-Remaining': rateLimitResult.remaining.toString(),
+          'X-RateLimit-Reset': rateLimitResult.reset.toString()
+        }
+      });
+    }
+
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
       return NextResponse.json({ error: 'Missing Authorization header' }, { status: 401 });
@@ -20,6 +34,19 @@ export async function POST(req: NextRequest) {
     
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Database Quota: max 50 submissions per day per user
+    const startOfDay = new Date();
+    startOfDay.setHours(0,0,0,0);
+    const { count, error: countError } = await supabase
+      .from('expenses')
+      .select('id', { count: 'exact', head: true })
+      .eq('submitted_by', user.id)
+      .gte('created_at', startOfDay.toISOString());
+      
+    if (!countError && count !== null && count >= 50) {
+      return NextResponse.json({ error: 'Daily submission limit exceeded (50/day)' }, { status: 429 });
     }
 
     const { organisationId, expenseId } = await req.json();

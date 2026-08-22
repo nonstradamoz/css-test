@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { rateLimit, getClientIp } from '@/lib/rate-limit';
 
 
 
@@ -9,6 +10,19 @@ export async function POST(req: NextRequest) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
   try {
+    const ip = getClientIp(req);
+    const rateLimitResult = rateLimit(`reject_${ip}`, 20, 60 * 1000); // 20 per minute
+    if (!rateLimitResult.success) {
+      return NextResponse.json({ error: 'Too Many Requests' }, { 
+        status: 429,
+        headers: {
+          'X-RateLimit-Limit': rateLimitResult.limit.toString(),
+          'X-RateLimit-Remaining': rateLimitResult.remaining.toString(),
+          'X-RateLimit-Reset': rateLimitResult.reset.toString()
+        }
+      });
+    }
+
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
       return NextResponse.json({ error: 'Missing Authorization header' }, { status: 401 });
