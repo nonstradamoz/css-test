@@ -131,9 +131,9 @@ class FinancialParser:
         # 5. Merchant Name & Title (Category-aware, ignores generic headings and contact lines)
         merchant_name = cls._extract_merchant(lines, category)
 
-        # 6. Tax & GSTIN
+        # 6. Tax, GSTIN, and Accounting Identifiers (Receipt #, Bill #, Transaction ID / UPI / UTR)
         tax_amount = cls._extract_tax(lines, amount)
-        invoice_number, gstin = cls._extract_invoice_and_gstin(text)
+        identifiers = cls._extract_identifiers(text)
 
         # 7. Line Items (Strictly filtered from contact lines, phone numbers, and pincodes)
         line_items = cls._extract_line_items(lines, amount)
@@ -163,7 +163,12 @@ class FinancialParser:
             "confidence_score": confidence,
             "is_handwritten": "handwritten" in filename.lower() or "slip" in filename.lower(),
             "handwritten_notes": f"Verified via Custom Extractor Engine ({method})" if method != "FALLBACK" else None,
-            "invoice_number": invoice_number
+            "invoice_number": identifiers["invoice_number"],
+            "receipt_number": identifiers["receipt_number"],
+            "bill_number": identifiers["bill_number"],
+            "transaction_id": identifiers["transaction_id"],
+            "gstin": identifiers["gstin"],
+            "is_synthetic_invoice": identifiers["is_synthetic_invoice"]
         }
 
     @classmethod
@@ -322,15 +327,116 @@ class FinancialParser:
         return category_defaults.get(category, "Corporate Business Merchant")
 
     @classmethod
-    def _extract_invoice_and_gstin(cls, text: str) -> Tuple[str, Optional[str]]:
-        """Extract invoice reference number and Indian GSTIN if present"""
+    def _extract_identifiers(cls, text: str) -> Dict[str, Any]:
+        """
+        Extract key accounting and transaction identifiers:
+        - Transaction ID (UPI Ref, Bank UTR, RRN, Payment Gateway Ref)
+        - Receipt Number
+        - Bill Number
+        - Invoice Number
+        - GSTIN
+        - Flag indicating whether invoice_number is a synthetic fallback
+        """
         gstin_match = re.search(r"\b\d{2}[A-Z]{5}\d{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}\b", text)
         gstin = gstin_match.group(0) if gstin_match else None
 
-        inv_match = re.search(r"(?:invoice|inv|bill|receipt|ref|order)\s*(?:no|num|#|id)?[:.\s-]*([A-Za-z0-9\-_/]{4,20})", text, re.IGNORECASE)
-        inv_num = inv_match.group(1) if inv_match else f"INV-{abs(hash(text[:100])) % 1000000:06d}"
+        # 1. Transaction ID / UPI Ref / UTR / RRN
+        transaction_id = None
+        # Pattern A: UPI Ref / UTR / Bank RRN (commonly 10-22 numeric digits or alphanumeric)
+        upi_utr_m = re.search(
+            r"(?:upi\s*(?:ref(?:erence)?\s*(?:no|id|num)?|txn\s*(?:id|no)?)?|utr(?:\s*(?:no|id|num))?|rrn(?:\s*(?:no|id))?)\s*[:.\s-]*([A-Za-z0-9]{8,24})",
+            text,
+            re.IGNORECASE
+        )
+        if upi_utr_m:
+            candidate = upi_utr_m.group(1).strip()
+            if not candidate.lower().startswith(("date", "total", "amount", "tax", "gstin")):
+                transaction_id = candidate
 
-        return inv_num, gstin
+        if not transaction_id:
+            # Pattern B: Explicit Txn ID / Transaction ID
+            txn_m = re.search(
+                r"(?:txn|trans(?:action)?)\s*(?:id|no|num|#|ref)?[:.\s-]*([A-Za-z0-9\-_]{6,35})",
+                text,
+                re.IGNORECASE
+            )
+            if txn_m:
+                candidate = txn_m.group(1).strip()
+                if not candidate.lower().startswith(("date", "total", "amount", "tax")):
+                    transaction_id = candidate
+
+        if not transaction_id:
+            # Pattern C: Payment Gateway ID / Order ID
+            pay_m = re.search(
+                r"(?:payment\s*id|order\s*(?:id|no))[:.\s-]*([A-Za-z0-9\-_]{6,35})",
+                text,
+                re.IGNORECASE
+            )
+            if pay_m:
+                candidate = pay_m.group(1).strip()
+                if not candidate.lower().startswith(("date", "total", "amount")):
+                    transaction_id = candidate
+
+        # 2. Receipt Number
+        rcpt_m = re.search(
+            r"\b(?:receipt|rcpt)\s*(?:no|num|number|#|id|code)?\s*[:.\-#]+\s*([A-Za-z0-9\-_/]{3,30})|\b(?:receipt|rcpt)\s+(?:no|num|number|id|code)\s+([A-Za-z0-9\-_/]{3,30})",
+            text,
+            re.IGNORECASE
+        )
+        receipt_number = None
+        if rcpt_m:
+            cand = (rcpt_m.group(1) or rcpt_m.group(2)).strip()
+            if cand.lower() not in ("date", "total", "amount", "cash", "card", "tax", "gst") and len(cand) >= 2:
+                receipt_number = cand
+
+        # 3. Bill Number
+        bill_m = re.search(
+            r"\b(?:bill)\s*(?:no|num|number|#|id|code)?\s*[:.\-#]+\s*([A-Za-z0-9\-_/]{3,30})|\b(?:bill)\s+(?:no|num|number|id|code)\s+([A-Za-z0-9\-_/]{3,30})",
+            text,
+            re.IGNORECASE
+        )
+        bill_number = None
+        if bill_m:
+            cand = (bill_m.group(1) or bill_m.group(2)).strip()
+            if cand.lower() not in ("date", "total", "amount", "cash", "card", "tax", "gst", "supply") and len(cand) >= 2:
+                bill_number = cand
+
+        # 4. Invoice Number
+        inv_m = re.search(
+            r"\b(?:invoice|inv)\s*(?:no|num|number|#|id|code)?\s*[:.\-#]+\s*([A-Za-z0-9\-_/]{3,30})|\b(?:invoice|inv)\s+(?:no|num|number|id|code)\s+([A-Za-z0-9\-_/]{3,30})",
+            text,
+            re.IGNORECASE
+        )
+        is_synthetic = False
+        invoice_number = None
+        if inv_m:
+            cand = (inv_m.group(1) or inv_m.group(2)).strip()
+            if cand.lower() not in ("date", "total", "amount", "tax", "gst") and len(cand) >= 2:
+                invoice_number = cand
+
+        if not invoice_number:
+            if bill_number:
+                invoice_number = bill_number
+            elif receipt_number:
+                invoice_number = receipt_number
+            else:
+                invoice_number = f"INV-{abs(hash(text[:100])) % 1000000:06d}"
+                is_synthetic = True
+
+        return {
+            "invoice_number": invoice_number,
+            "receipt_number": receipt_number,
+            "bill_number": bill_number,
+            "transaction_id": transaction_id,
+            "gstin": gstin,
+            "is_synthetic_invoice": is_synthetic
+        }
+
+    @classmethod
+    def _extract_invoice_and_gstin(cls, text: str) -> Tuple[str, Optional[str]]:
+        """Legacy helper for backward compatibility"""
+        res = cls._extract_identifiers(text)
+        return res["invoice_number"], res["gstin"]
 
     @classmethod
     def _extract_tax(cls, lines: List[str], total_amount: float) -> Optional[float]:
@@ -484,6 +590,7 @@ class FinancialParser:
                 {"description": "Office Stationery & Printing", "amount": 1850.00, "flagged": False, "reason": None}
             ]
 
+        file_hash = abs(hash(filename))
         return {
             "merchant_name": merchant,
             "amount": amount,
@@ -495,5 +602,10 @@ class FinancialParser:
             "confidence_score": 0.85,
             "is_handwritten": is_handwritten,
             "handwritten_notes": "Extracted via In-House Financial Engine (Local Fallback)" if is_handwritten else None,
-            "invoice_number": f"INV-{abs(hash(filename)) % 1000000:06d}"
+            "invoice_number": f"INV-{file_hash % 1000000:06d}",
+            "receipt_number": f"RCPT-{file_hash % 100000:05d}",
+            "bill_number": f"BILL-{file_hash % 100000:05d}",
+            "transaction_id": f"UPI-{file_hash % 10000000000:010d}",
+            "gstin": "29AABCU9603R1Z2",
+            "is_synthetic_invoice": True
         }

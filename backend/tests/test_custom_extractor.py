@@ -255,3 +255,138 @@ async def test_role_based_extraction_privacy(client):
     assert emp_get.status_code == 200
     assert emp_get.json()["extracted_metadata"] is None
 
+
+@pytest.mark.asyncio
+async def test_financial_parser_extracts_receipt_bill_and_transaction_ids():
+    raw_text = """
+    PVR CINEMAS & FOOD COURT
+    Tax Invoice / Cash Memo
+    Bill No: PVR-BLR-84920
+    Receipt #: RCPT-9921
+    UPI Ref: 432109876543
+    GSTIN: 29AABCP1234F1Z9
+    Date: 19/11/2026
+
+    Popcorn & Combo 450.00
+    Cold Beverage 180.00
+    Subtotal: 630.00
+    CGST: 15.75
+    SGST: 15.75
+    Total Amount: ₹661.50
+    """
+    parsed = FinancialParser.parse(raw_text, "cinema_receipt.pdf", "PDF_STREAM", 0.95)
+
+    assert parsed["bill_number"] == "PVR-BLR-84920"
+    assert parsed["receipt_number"] == "RCPT-9921"
+    assert parsed["transaction_id"] == "432109876543"
+    assert parsed["gstin"] == "29AABCP1234F1Z9"
+    assert parsed["invoice_number"] == "PVR-BLR-84920"
+    assert parsed["amount"] == 661.50
+
+
+@pytest.mark.asyncio
+async def test_forensics_blocks_duplicate_transaction_id_and_recycled_bills(client):
+    # 1. Register and Login Admin and Employee
+    await client.post("/api/v1/auth/register", json={
+        "email": "forensic.admin@crs-corp.com",
+        "full_name": "Forensic Admin",
+        "password": "Password123!",
+        "role": "ADMIN"
+    })
+    admin_login = await client.post("/api/v1/auth/login", json={
+        "email": "forensic.admin@crs-corp.com",
+        "password": "Password123!"
+    })
+    admin_token = admin_login.json()["access_token"]
+    admin_headers = {"Authorization": f"Bearer {admin_token}"}
+
+    await client.post("/api/v1/auth/register", json={
+        "email": "forensic.employee@crs-corp.com",
+        "full_name": "Forensic Employee",
+        "password": "Password123!",
+        "role": "EMPLOYEE"
+    })
+    emp_login = await client.post("/api/v1/auth/login", json={
+        "email": "forensic.employee@crs-corp.com",
+        "password": "Password123!"
+    })
+    emp_token = emp_login.json()["access_token"]
+    emp_headers = {"Authorization": f"Bearer {emp_token}"}
+
+    # 2. Admin submits an active claim with transaction_id and bill_number
+    res1 = await client.post(
+        "/api/v1/expenses?submit_now=true",
+        headers=admin_headers,
+        json={
+            "title": "Vendor Server Hardware Setup",
+            "amount": 12000.0,
+            "currency": "INR",
+            "category": "HARDWARE",
+            "expense_date": "2026-11-19T00:00:00.000Z",
+            "receipt_url": "/api/v1/receipts/view?key=fake-key-1",
+            "extracted_metadata": {
+                "merchant_name": "Tech Hardware Corp",
+                "amount": 12000.0,
+                "bill_number": "BILL-TECH-90812",
+                "receipt_number": "RCPT-4401",
+                "transaction_id": "UPI-432109876543",
+                "invoice_number": "BILL-TECH-90812",
+                "is_synthetic_invoice": False
+            }
+        }
+    )
+    assert res1.status_code == 201
+    claim1_data = res1.json()
+    assert claim1_data["status"] == "SUBMITTED"
+
+    # Verify that Claim 1 got authenticated with unique financial identifiers
+    flags1 = [f["code"] for f in claim1_data["forensic_flags"]]
+    assert "FINANCIAL_IDENTIFIERS_VERIFIED" in flags1
+
+    # 3. Employee attempts to submit a claim with the SAME transaction ID (Collusion / Recycled Bill)
+    res2 = await client.post(
+        "/api/v1/expenses?submit_now=true",
+        headers=emp_headers,
+        json={
+            "title": "Supplies Reclaim Attempt",
+            "amount": 12000.0,
+            "currency": "INR",
+            "category": "SUPPLIES",
+            "expense_date": "2026-11-19T00:00:00.000Z",
+            "receipt_url": "/api/v1/receipts/view?key=fake-key-2",
+            "extracted_metadata": {
+                "merchant_name": "Tech Hardware Corp",
+                "amount": 12000.0,
+                "transaction_id": "UPI-432109876543"  # SAME TXN ID!
+            }
+        }
+    )
+    assert res2.status_code == 400
+    err_detail = res2.json()["detail"]
+    assert "CRITICAL FORENSIC BLOCK" in err_detail
+    assert "Recycled" in err_detail or "Collision" in err_detail
+
+    # 4. Same admin attempts to submit another claim with the same bill number
+    res3 = await client.post(
+        "/api/v1/expenses?submit_now=true",
+        headers=admin_headers,
+        json={
+            "title": "Hardware Setup Duplicate",
+            "amount": 5000.0,
+            "currency": "INR",
+            "category": "HARDWARE",
+            "expense_date": "2026-11-19T00:00:00.000Z",
+            "receipt_url": "/api/v1/receipts/view?key=fake-key-3",
+            "extracted_metadata": {
+                "merchant_name": "Tech Hardware Corp",
+                "amount": 5000.0,
+                "bill_number": "BILL-TECH-90812"  # SAME BILL #!
+            }
+        }
+    )
+    assert res3.status_code == 400
+    err_detail3 = res3.json()["detail"]
+    assert "CRITICAL FORENSIC BLOCK" in err_detail3
+    assert "Duplicate Financial Identifier" in err_detail3
+
+

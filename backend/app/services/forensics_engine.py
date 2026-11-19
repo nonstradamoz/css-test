@@ -1,3 +1,4 @@
+import re
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Dict, Any, List, Optional, Tuple
@@ -32,12 +33,16 @@ class ForensicsEngine:
         category: str,
         receipt_hash: Optional[str] = None,
         line_items: Optional[List[Dict[str, Any]]] = None,
+        extracted_metadata: Optional[Dict[str, Any]] = None,
         exclude_expense_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Evaluate an expense claim against forensic compliance vectors.
         Returns risk_score (0-100), risk_level, flags list, will_escalate_tier2, and is_blocked.
         """
+        if not line_items and extracted_metadata and isinstance(extracted_metadata, dict):
+            line_items = extracted_metadata.get("line_items")
+
         # Fetch system settings for thresholds
         settings_res = await db.execute(select(SystemSettings).where(SystemSettings.id == 1))
         settings_obj = settings_res.scalars().first()
@@ -176,6 +181,126 @@ class ForensicsEngine:
                 "severity": "MEDIUM",
                 "description": f"Claim amount (₹{amount:,.2f}) is more than 2x the standard Tier-2 threshold."
             })
+
+        # -------------------------------------------------------------
+        # Vector 6: Financial Identifier & Recycled Bill Collision Check
+        # (Receipt Number, Bill Number, Transaction ID, UPI Ref, UTR)
+        # -------------------------------------------------------------
+        if extracted_metadata and isinstance(extracted_metadata, dict):
+            identifiers_to_check: List[Tuple[str, str, str]] = []
+
+            # 1. Transaction ID (UPI Ref, UTR, Bank RRN, Txn Ref)
+            txn_id = extracted_metadata.get("transaction_id")
+            if txn_id and isinstance(txn_id, str):
+                clean_txn = txn_id.strip()
+                if len(clean_txn) >= 4 and not clean_txn.upper().startswith("FALLBACK") and clean_txn.upper() not in ("UNKNOWN", "N/A", "NONE"):
+                    identifiers_to_check.append(("Transaction ID / UPI Ref", "transaction_id", clean_txn))
+
+            # 2. Bill Number
+            bill_num = extracted_metadata.get("bill_number")
+            if bill_num and isinstance(bill_num, str):
+                clean_bill = bill_num.strip()
+                if len(clean_bill) >= 3 and not clean_bill.upper().startswith("FALLBACK") and clean_bill.upper() not in ("UNKNOWN", "N/A", "NONE"):
+                    identifiers_to_check.append(("Bill Number", "bill_number", clean_bill))
+
+            # 3. Receipt Number
+            rcpt_num = extracted_metadata.get("receipt_number")
+            if rcpt_num and isinstance(rcpt_num, str):
+                clean_rcpt = rcpt_num.strip()
+                if len(clean_rcpt) >= 3 and not clean_rcpt.upper().startswith("FALLBACK") and clean_rcpt.upper() not in ("UNKNOWN", "N/A", "NONE"):
+                    identifiers_to_check.append(("Receipt Number", "receipt_number", clean_rcpt))
+
+            # 4. Invoice Number (only if not a synthetic fallback)
+            is_synthetic_inv = extracted_metadata.get("is_synthetic_invoice", False)
+            inv_num = extracted_metadata.get("invoice_number")
+            if inv_num and isinstance(inv_num, str) and not is_synthetic_inv:
+                clean_inv = inv_num.strip()
+                if len(clean_inv) >= 4 and not clean_inv.upper().startswith("INV-") and clean_inv.upper() not in ("UNKNOWN", "N/A", "NONE"):
+                    identifiers_to_check.append(("Invoice Number", "invoice_number", clean_inv))
+
+            if identifiers_to_check:
+                id_query = select(Expense).where(
+                    and_(
+                        Expense.status.in_(active_statuses),
+                        Expense.extracted_metadata.is_not(None)
+                    )
+                )
+                if exclude_expense_id:
+                    id_query = id_query.where(Expense.id != exclude_expense_id)
+
+                id_res = await db.execute(id_query)
+                active_expenses = id_res.scalars().all()
+
+                for existing in active_expenses:
+                    ex_meta = existing.extracted_metadata or {}
+                    if not isinstance(ex_meta, dict):
+                        continue
+
+                    for label, key_name, target_val in identifiers_to_check:
+                        norm_target = re.sub(r"[\s\-_:/#]+", "", target_val).upper()
+
+                        vals_to_test = []
+                        if key_name == "transaction_id":
+                            if ex_meta.get("transaction_id"):
+                                vals_to_test.append(("Transaction ID", str(ex_meta.get("transaction_id"))))
+                        else:
+                            for test_k in ("receipt_number", "bill_number", "invoice_number"):
+                                if ex_meta.get(test_k) and not (test_k == "invoice_number" and ex_meta.get("is_synthetic_invoice")):
+                                    vals_to_test.append((label, str(ex_meta.get(test_k))))
+
+                        for test_label, cand_val in vals_to_test:
+                            clean_cand = re.sub(r"[\s\-_:/#]+", "", cand_val).upper()
+                            if len(clean_cand) >= 3 and clean_cand == norm_target:
+                                if existing.submitted_by != submitter_id:
+                                    is_blocked = True
+                                    block_reason = (
+                                        f"CRITICAL FORENSIC BLOCK: Recycled Bill/Transaction Collision! Extracted {label} '{target_val}' "
+                                        f"matches existing claim (Claim #{existing.id[:8]} - '{existing.title}') submitted by another employee. "
+                                        f"Cross-employee bill recycling is strictly prohibited."
+                                    )
+                                    flags.append({
+                                        "code": "RECYCLED_BILL_COLLUSION",
+                                        "label": "Recycled Financial Identifier Collusion",
+                                        "severity": "CRITICAL",
+                                        "description": block_reason
+                                    })
+                                    return {
+                                        "risk_score": 100,
+                                        "risk_level": "HIGH",
+                                        "flags": flags,
+                                        "will_escalate_tier2": True,
+                                        "is_blocked": True,
+                                        "block_reason": block_reason
+                                    }
+                                else:
+                                    is_blocked = True
+                                    block_reason = (
+                                        f"CRITICAL FORENSIC BLOCK: Duplicate Financial Identifier! Extracted {label} '{target_val}' "
+                                        f"was already claimed by you in Claim #{existing.id[:8]} ('{existing.title}')."
+                                    )
+                                    flags.append({
+                                        "code": "DUPLICATE_FINANCIAL_IDENTIFIER",
+                                        "label": "Duplicate Bill / Transaction Submission",
+                                        "severity": "CRITICAL",
+                                        "description": block_reason
+                                    })
+                                    return {
+                                        "risk_score": 100,
+                                        "risk_level": "HIGH",
+                                        "flags": flags,
+                                        "will_escalate_tier2": True,
+                                        "is_blocked": True,
+                                        "block_reason": block_reason
+                                    }
+
+                # All identifiers verified unique across active records
+                verified_summary = ", ".join([f"{lbl}: {val}" for lbl, _, val in identifiers_to_check])
+                flags.append({
+                    "code": "FINANCIAL_IDENTIFIERS_VERIFIED",
+                    "label": "Financial Identifiers Authenticated",
+                    "severity": "LOW",
+                    "description": f"Verified unique across organization records ({verified_summary}). No duplicate receipt or recycled transaction collisions detected."
+                })
 
         # Final Score Normalization
         final_risk_score = min(100, risk_score)

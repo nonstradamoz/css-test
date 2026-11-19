@@ -392,15 +392,46 @@ export default function ExpenseDetailPage() {
                   </td>
                 </tr>
 
-                {/* 5. Tax & GST / Invoice # */}
+                {/* 5. Document & Bill Identifiers */}
                 <tr>
-                  <td className="py-3 px-3 font-semibold text-neutral-900">Tax & Invoice Identifiers</td>
+                  <td className="py-3 px-3 font-semibold text-neutral-900">Document & Bill Identifiers</td>
                   <td className="py-3 px-3 text-neutral-500 italic">Self-declared in total</td>
                   <td className="py-3 px-3 text-neutral-800" colSpan={2}>
-                    <div className="flex flex-wrap items-center gap-3">
-                      <span><strong>Tax / GST:</strong> ₹{extracted.tax_amount || '0.00'}</span>
-                      <span><strong>Invoice / Receipt #:</strong> {extracted.invoice_number || 'N/A'}</span>
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+                      {extracted.bill_number && (
+                        <span><strong className="text-neutral-900">Bill #:</strong> {extracted.bill_number}</span>
+                      )}
+                      {extracted.receipt_number && (
+                        <span><strong className="text-neutral-900">Receipt #:</strong> {extracted.receipt_number}</span>
+                      )}
+                      <span><strong className="text-neutral-900">Invoice #:</strong> {extracted.invoice_number || 'N/A'}</span>
+                      {extracted.gstin && (
+                        <span><strong className="text-neutral-900">GSTIN:</strong> {extracted.gstin}</span>
+                      )}
+                      {extracted.tax_amount ? (
+                        <span><strong className="text-neutral-900">Tax/GST:</strong> ₹{extracted.tax_amount}</span>
+                      ) : null}
                     </div>
+                  </td>
+                </tr>
+
+                {/* 6. Transaction ID / Payment Reference */}
+                <tr>
+                  <td className="py-3 px-3 font-semibold text-neutral-900">Transaction ID (UPI/UTR/Ref)</td>
+                  <td className="py-3 px-3 text-neutral-500 italic">Self-declared claim</td>
+                  <td className="py-3 px-3 text-neutral-900 font-mono font-medium">
+                    {extracted.transaction_id || 'Cash / Counter Payment'}
+                  </td>
+                  <td className="py-3 px-3">
+                    {extracted.transaction_id ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded font-semibold text-[11px]">
+                        <ShieldCheck size={12} /> Forensically Verified
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-neutral-100 text-neutral-600 rounded font-medium text-[11px]">
+                        Counter Bill / Physical Cash
+                      </span>
+                    )}
                   </td>
                 </tr>
               </tbody>
@@ -513,7 +544,9 @@ export default function ExpenseDetailPage() {
                 <div className="flex items-center gap-2">
                   <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
                     flag.severity === 'CRITICAL' ? 'bg-red-600 text-white' :
-                    flag.severity === 'HIGH' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
+                    flag.severity === 'HIGH' ? 'bg-red-100 text-red-700' :
+                    flag.severity === 'MEDIUM' ? 'bg-amber-100 text-amber-800' :
+                    'bg-emerald-100 text-emerald-800'
                   }`}>
                     {flag.severity}
                   </span>

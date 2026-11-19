@@ -212,6 +212,11 @@ class ReceiptAnalysisResponse(BaseModel):
     is_handwritten: bool = False
     handwritten_notes: Optional[str] = None
     invoice_number: Optional[str] = None
+    receipt_number: Optional[str] = None
+    bill_number: Optional[str] = None
+    transaction_id: Optional[str] = None
+    gstin: Optional[str] = None
+    is_synthetic_invoice: Optional[bool] = False
 
 
 class ForensicsPreviewRequest(BaseModel):
@@ -220,6 +225,7 @@ class ForensicsPreviewRequest(BaseModel):
     category: str
     receipt_hash: Optional[str] = None
     line_items: Optional[List[Dict[str, Any]]] = None
+    extracted_metadata: Optional[Dict[str, Any]] = None
 
 
 class ForensicFlagItem(BaseModel):

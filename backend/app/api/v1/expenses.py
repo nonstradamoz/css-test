@@ -37,7 +37,8 @@ async def preview_forensics(
         expense_date=data.expense_date,
         category=data.category,
         receipt_hash=data.receipt_hash,
-        line_items=data.line_items
+        line_items=data.line_items,
+        extracted_metadata=data.extracted_metadata
     )
     return ForensicsPreviewResponse(**eval_res)
 
@@ -146,8 +147,23 @@ async def create_expense(
             detail="Receipt upload is mandatory to submit an expense claim."
         )
 
-    # Forensics compliance evaluation
-    line_items = data.extracted_metadata.get("line_items") if data.extracted_metadata else None
+    # Auto-extract from receipt if not provided
+    extracted_meta = data.extracted_metadata or {}
+    if not extracted_meta and data.receipt_url and "key=" in data.receipt_url:
+        try:
+            key = data.receipt_url.split("key=")[-1]
+            from app.services.storage import storage_service
+            local_path = storage_service.get_local_file_path(key)
+            if os.path.exists(local_path):
+                with open(local_path, "rb") as f:
+                    content = f.read()
+                from app.services.extractor import CustomReceiptExtractor
+                extracted_meta = CustomReceiptExtractor.extract(content, os.path.basename(local_path))
+        except Exception as e:
+            print(f"[WARN] Automatic backend receipt extraction: {e}")
+
+    # Forensics compliance evaluation (inspecting extracted line items & financial identifiers)
+    line_items = extracted_meta.get("line_items") if extracted_meta else None
     forensic_eval = await ForensicsEngine.evaluate_expense(
         db=db,
         submitter_id=current_user.id,
@@ -155,7 +171,8 @@ async def create_expense(
         expense_date=data.expense_date,
         category=data.category,
         receipt_hash=data.receipt_hash,
-        line_items=line_items
+        line_items=line_items,
+        extracted_metadata=extracted_meta
     )
     if forensic_eval["is_blocked"]:
         raise HTTPException(status_code=400, detail=forensic_eval["block_reason"])
@@ -172,21 +189,6 @@ async def create_expense(
         raise HTTPException(status_code=400, detail=f"Cannot submit: {dup_msg}")
 
     settings_obj = await get_or_create_system_settings(db)
-
-    # Auto-extract from receipt if not provided
-    extracted_meta = data.extracted_metadata or {}
-    if not extracted_meta and data.receipt_url and "key=" in data.receipt_url:
-        try:
-            key = data.receipt_url.split("key=")[-1]
-            from app.services.storage import storage_service
-            local_path = storage_service.get_local_file_path(key)
-            if os.path.exists(local_path):
-                with open(local_path, "rb") as f:
-                    content = f.read()
-                from app.services.extractor import CustomReceiptExtractor
-                extracted_meta = CustomReceiptExtractor.extract(content, os.path.basename(local_path))
-        except Exception as e:
-            print(f"[WARN] Automatic backend receipt extraction: {e}")
 
     new_expense = Expense(
         submitted_by=current_user.id,
@@ -372,6 +374,7 @@ async def submit_expense(
         category=expense.category,
         receipt_hash=expense.receipt_hash,
         line_items=line_items,
+        extracted_metadata=expense.extracted_metadata,
         exclude_expense_id=expense.id
     )
     if forensic_eval["is_blocked"]:
