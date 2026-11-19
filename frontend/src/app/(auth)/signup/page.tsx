@@ -54,9 +54,9 @@ export default function SignupPage() {
 
       {/* Main Registration Card */}
       <main className="flex-1 flex items-center justify-center py-6">
-        <div className="w-full max-w-md bg-neutral-900/90 backdrop-blur-xl border border-neutral-800/80 rounded-2xl p-7 sm:p-8 shadow-2xl ring-1 ring-white/5 space-y-6">
-          <div className="text-center sm:text-left">
-            <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">Create your account</h1>
+        <div className="w-full max-w-md bg-neutral-900/90 backdrop-blur-xl border border-neutral-800/80 rounded-2xl p-7 sm:p-8 shadow-2xl space-y-5">
+          <div>
+            <h1 className="text-2xl font-bold text-white tracking-tight">Create your account</h1>
             <p className="text-xs text-neutral-400 mt-1">Get started with your company expense and claim portal.</p>
           </div>
 
@@ -68,12 +68,10 @@ export default function SignupPage() {
           )}
 
           {/* 1. Primary Action: Sign up with Google */}
-          <div className="space-y-1">
-            <GoogleSignInButton mode="signup" onError={setError} />
-          </div>
+          <GoogleSignInButton mode="signup" onError={setError} />
 
           {/* Divider */}
-          <div className="relative my-4">
+          <div className="relative">
             <div className="absolute inset-0 flex items-center">
               <div className="w-full border-t border-neutral-800" />
             </div>

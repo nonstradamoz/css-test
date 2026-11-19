@@ -256,7 +256,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen = false, onCloseMob
       </nav>
 
       {/* 4. Mobile Bottom Sticky Navigation Bar */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-neutral-900/95 backdrop-blur-md border-t border-neutral-200 dark:border-neutral-800 px-3 py-1.5 flex justify-around items-center shadow-lg">
+      <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-neutral-900/95 backdrop-blur-md border-t border-neutral-200 dark:border-neutral-800 px-3 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] flex justify-around items-center shadow-lg">
         {bottomItems.map((item) => {
           const Icon = item.icon;
           const active = isActive(item.href);

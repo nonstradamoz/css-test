@@ -324,16 +324,16 @@ export default function NewExpensePage() {
   };
 
   return (
-    <div className="p-8 max-w-4xl mx-auto space-y-6">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-4xl mx-auto space-y-6">
       <div className="flex items-center gap-3">
         <Link
           href="/expenses"
-          className="p-2 text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100 rounded-lg transition-colors"
+          className="p-2 text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100 rounded-lg transition-colors shrink-0"
         >
           <ArrowLeft size={18} />
         </Link>
         <div>
-          <h1 className="text-2xl font-bold text-neutral-900 tracking-tight">New Expense Claim</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-neutral-900 tracking-tight">New Expense Claim</h1>
           <p className="text-sm text-neutral-500 mt-0.5">
             Submit a claim.
           </p>

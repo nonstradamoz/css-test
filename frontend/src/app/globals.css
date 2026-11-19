@@ -100,7 +100,7 @@ body {
 }
 
 /* ─── Page animation ─────────────────────────────────────── */
-.page-wrap { animation: rise 0.2s ease; }
+.page-wrap { animation: rise 0.2s ease; padding-bottom: env(safe-area-inset-bottom, 0); }
 
 @keyframes rise {
   from { opacity: 0; transform: translateY(5px); }

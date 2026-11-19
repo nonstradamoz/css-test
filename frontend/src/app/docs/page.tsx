@@ -61,32 +61,34 @@ export default function DocsPage() {
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 font-sans selection:bg-emerald-500 selection:text-white">
       {/* Header Bar */}
-      <header className="sticky top-0 z-50 bg-neutral-900/80 backdrop-blur-md border-b border-neutral-800 px-6 py-4 flex items-center justify-between max-w-7xl mx-auto">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-emerald-500/10 text-emerald-400 rounded-lg">
-            <ShieldCheck size={22} />
+      <header className="sticky top-0 z-50 bg-neutral-900/80 backdrop-blur-md border-b border-neutral-800">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-emerald-500/10 text-emerald-400 rounded-lg">
+              <ShieldCheck size={22} />
+            </div>
+            <div>
+              <span className="font-bold text-white text-base tracking-tight">ClearSpend</span>
+              <span className="text-xs text-neutral-400 ml-2 border-l border-neutral-700 pl-2 hidden sm:inline">System Documentation & Features</span>
+            </div>
           </div>
-          <div>
-            <span className="font-bold text-white text-base tracking-tight">ClearSpend</span>
-            <span className="text-xs text-neutral-400 ml-2 border-l border-neutral-700 pl-2">System Documentation & Features</span>
-          </div>
-        </div>
 
-        <div className="flex items-center gap-3">
-          <a
-            href="http://localhost:8000/docs"
-            target="_blank"
-            rel="noreferrer"
-            className="text-xs font-semibold text-neutral-400 hover:text-white transition-colors"
-          >
-            Swagger API Docs ↗
-          </a>
-          <Link
-            href="/"
-            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs rounded-lg transition-colors shadow-sm inline-flex items-center gap-1.5"
-          >
-            Open Portal <ArrowRight size={14} />
-          </Link>
+          <div className="flex items-center gap-3">
+            <a
+              href="http://localhost:8000/docs"
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs font-semibold text-neutral-400 hover:text-white transition-colors hidden sm:inline-block"
+            >
+              Swagger API Docs ↗
+            </a>
+            <Link
+              href="/"
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs rounded-lg transition-colors shadow-sm inline-flex items-center gap-1.5"
+            >
+              Open Portal <ArrowRight size={14} />
+            </Link>
+          </div>
         </div>
       </header>
 
