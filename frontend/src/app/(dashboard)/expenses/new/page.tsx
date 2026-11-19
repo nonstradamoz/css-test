@@ -15,7 +15,7 @@ import Link from 'next/link';
 
 export default function NewExpensePage() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, role } = useAuth();
 
   // Form Fields
   const [title, setTitle] = useState('');
@@ -55,9 +55,14 @@ export default function NewExpensePage() {
 
     setFile(selectedFile);
     setError(null);
-    setIsScanning(true);
     setScanResult(null);
 
+    // If employee: do NOT scan or expose extracted receipt data to client
+    if (role === 'EMPLOYEE') {
+      return;
+    }
+
+    setIsScanning(true);
     try {
       const result = await api.receipts.analyze(selectedFile);
       setScanResult(result);
@@ -353,8 +358,18 @@ export default function NewExpensePage() {
             </p>
           )}
 
-          {/* AI Extracted Result Banner */}
-          {scanResult && (
+          {file && (
+            <div className="p-3 bg-neutral-50 border border-neutral-200 rounded-xl flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2 text-neutral-800 font-medium">
+                <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+                <span>Receipt document attached: <strong>{file.name}</strong></span>
+              </div>
+              <span className="text-neutral-500 font-mono">{(file.size / 1024).toFixed(0)} KB</span>
+            </div>
+          )}
+
+          {/* Extracted Result Banner (Reviewers & Admins Only, confidential from Employees) */}
+          {role !== 'EMPLOYEE' && scanResult && (
             <div className="p-4 bg-emerald-50/50 border border-emerald-200/80 rounded-xl space-y-3">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div className="flex items-center gap-2">

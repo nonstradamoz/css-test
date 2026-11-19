@@ -11,7 +11,8 @@ import { Badge } from '@/components/ui/Badge';
 import {
   ArrowLeft, FileText, CheckCircle2, XCircle,
   AlertTriangle, Send, CreditCard, ExternalLink,
-  Clock, ShieldCheck, ShieldAlert, PenTool, Sparkles, Tag, User, Calendar
+  Clock, ShieldCheck, ShieldAlert, PenTool, Sparkles, Tag, User, Calendar,
+  FileSearch, Copy
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -115,6 +116,25 @@ export default function ExpenseDetailPage() {
   const canReviewTier1 = ['ADMIN', 'REVIEWER'].includes(role || '') && expense.status === 'SUBMITTED';
   const canReviewTier2 = ['ADMIN', 'FINANCE'].includes(role || '') && expense.status === 'UNDER_REVIEW';
   const canDisburse = ['ADMIN', 'FINANCE'].includes(role || '') && expense.status === 'APPROVED';
+
+  // Cross-verification & audit metrics for reviewing personnel
+  const isAuditor = ['ADMIN', 'REVIEWER', 'FINANCE'].includes(role || '');
+  const extracted = (expense.extracted_metadata || {}) as any;
+  const hasExtraction = Boolean(extracted && (extracted.amount || extracted.merchant_name || (extracted.line_items && extracted.line_items.length > 0)));
+
+  const claimedAmount = Number(expense.amount);
+  const extractedAmount = extracted?.amount ? Number(extracted.amount) : null;
+  const amountDiff = extractedAmount !== null ? claimedAmount - extractedAmount : 0;
+  const isAmountMatch = extractedAmount !== null && Math.abs(amountDiff) < 1.0;
+  const isOverclaimed = extractedAmount !== null && amountDiff > 1.0;
+  const isUnderclaimed = extractedAmount !== null && amountDiff < -1.0;
+  const variancePct = extractedAmount ? ((amountDiff / extractedAmount) * 100).toFixed(1) : '0';
+
+  const claimedDateStr = expense.expense_date ? expense.expense_date.split('T')[0] : '';
+  const extractedDateStr = extracted?.expense_date || '';
+  const isDateMatch = !extractedDateStr || claimedDateStr === extractedDateStr;
+  const isCategoryMatch = !extracted?.suggested_category || expense.category.toUpperCase() === extracted.suggested_category.toUpperCase();
+  const flaggedItems = extracted?.line_items?.filter((item: any) => item.flagged) || [];
 
   return (
     <div className="p-8 max-w-4xl mx-auto space-y-6">
@@ -235,6 +255,218 @@ export default function ExpenseDetailPage() {
           </div>
         )}
       </div>
+
+      {/* Forensic Cross-Verification & Extraction Reconciliation (Admin / Reviewer / Finance Only) */}
+      {isAuditor && hasExtraction && (
+        <div className="bg-white border-2 border-indigo-100 rounded-2xl p-6 shadow-sm space-y-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-neutral-100">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
+                <FileSearch size={22} />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-base font-bold text-neutral-900">Receipt Forensic Cross-Verification</h2>
+                  <span className="text-[11px] font-semibold px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-full">
+                    Auditor View
+                  </span>
+                </div>
+                <p className="text-xs text-neutral-500 mt-0.5">
+                  Cross-verify employee claimed details against in-house OCR extracted receipt facts.
+                </p>
+              </div>
+            </div>
+
+            {/* Reconciliation Status Badge */}
+            <div className="self-start sm:self-auto">
+              {isOverclaimed ? (
+                <div className="px-3 py-1.5 bg-red-50 border border-red-200 rounded-xl text-xs font-bold text-red-700 flex items-center gap-1.5">
+                  <AlertTriangle size={15} />
+                  <span>Discrepancy: Overclaimed by +{formatCurrency(amountDiff, expense.currency)} (+{variancePct}%)</span>
+                </div>
+              ) : isUnderclaimed ? (
+                <div className="px-3 py-1.5 bg-amber-50 border border-amber-200 rounded-xl text-xs font-bold text-amber-800 flex items-center gap-1.5">
+                  <AlertTriangle size={15} />
+                  <span>Amount Underclaimed (-{formatCurrency(Math.abs(amountDiff), expense.currency)})</span>
+                </div>
+              ) : isAmountMatch ? (
+                <div className="px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-bold text-emerald-700 flex items-center gap-1.5">
+                  <CheckCircle2 size={15} />
+                  <span>Exact Reconciled Match (₹0.00 Variance)</span>
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          {/* Comparison Matrix Table */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-left">
+              <thead>
+                <tr className="border-b border-neutral-200 text-neutral-400 font-bold uppercase tracking-wider">
+                  <th className="py-2.5 px-3">Reconciliation Metric</th>
+                  <th className="py-2.5 px-3">Employee Claimed</th>
+                  <th className="py-2.5 px-3">Receipt Extracted</th>
+                  <th className="py-2.5 px-3">Reconciliation Result</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-neutral-100">
+                {/* 1. Establishment / Merchant */}
+                <tr>
+                  <td className="py-3 px-3 font-semibold text-neutral-900">Merchant / Establishment</td>
+                  <td className="py-3 px-3 text-neutral-700 font-medium">{expense.title}</td>
+                  <td className="py-3 px-3 text-neutral-900 font-bold">
+                    {extracted.merchant_name || 'Not detected'}
+                  </td>
+                  <td className="py-3 px-3">
+                    <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-neutral-100 text-neutral-700">
+                      Receipt Origin
+                    </span>
+                  </td>
+                </tr>
+
+                {/* 2. Total Amount */}
+                <tr className={isOverclaimed ? 'bg-red-50/50' : ''}>
+                  <td className="py-3 px-3 font-semibold text-neutral-900">Total Claim Amount</td>
+                  <td className="py-3 px-3 font-bold text-neutral-900">
+                    {formatCurrency(claimedAmount, expense.currency)}
+                  </td>
+                  <td className="py-3 px-3 font-bold text-indigo-950">
+                    {extractedAmount !== null
+                      ? formatCurrency(extractedAmount, extracted.currency || expense.currency)
+                      : 'Not detected'}
+                  </td>
+                  <td className="py-3 px-3">
+                    {isAmountMatch ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded font-semibold text-[11px]">
+                        <CheckCircle2 size={12} /> Exact Match
+                      </span>
+                    ) : isOverclaimed ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-red-100 text-red-800 rounded font-semibold text-[11px]">
+                        <AlertTriangle size={12} /> Overclaimed +{formatCurrency(amountDiff, expense.currency)}
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-100 text-amber-800 rounded font-semibold text-[11px]">
+                        <AlertTriangle size={12} /> Underclaimed -{formatCurrency(Math.abs(amountDiff), expense.currency)}
+                      </span>
+                    )}
+                  </td>
+                </tr>
+
+                {/* 3. Date */}
+                <tr>
+                  <td className="py-3 px-3 font-semibold text-neutral-900">Expense Date</td>
+                  <td className="py-3 px-3 text-neutral-700">{formatDate(expense.expense_date)}</td>
+                  <td className="py-3 px-3 text-neutral-900 font-medium">
+                    {extractedDateStr ? formatDate(extractedDateStr) : 'Not detected'}
+                  </td>
+                  <td className="py-3 px-3">
+                    {isDateMatch ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded font-semibold text-[11px]">
+                        <CheckCircle2 size={12} /> Date Aligned
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-100 text-amber-800 rounded font-semibold text-[11px]">
+                        <AlertTriangle size={12} /> Date Mismatch ({extractedDateStr})
+                      </span>
+                    )}
+                  </td>
+                </tr>
+
+                {/* 4. Category */}
+                <tr>
+                  <td className="py-3 px-3 font-semibold text-neutral-900">Category</td>
+                  <td className="py-3 px-3 text-neutral-700 font-semibold">{expense.category}</td>
+                  <td className="py-3 px-3 text-neutral-900 font-medium">
+                    {extracted.suggested_category || 'N/A'}
+                  </td>
+                  <td className="py-3 px-3">
+                    {isCategoryMatch ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded font-semibold text-[11px]">
+                        <CheckCircle2 size={12} /> Category Aligned
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-100 text-amber-800 rounded font-semibold text-[11px]">
+                        <AlertTriangle size={12} /> Differs from receipt
+                      </span>
+                    )}
+                  </td>
+                </tr>
+
+                {/* 5. Tax & GST / Invoice # */}
+                <tr>
+                  <td className="py-3 px-3 font-semibold text-neutral-900">Tax & Invoice Identifiers</td>
+                  <td className="py-3 px-3 text-neutral-500 italic">Self-declared in total</td>
+                  <td className="py-3 px-3 text-neutral-800" colSpan={2}>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <span><strong>Tax / GST:</strong> ₹{extracted.tax_amount || '0.00'}</span>
+                      <span><strong>Invoice / Receipt #:</strong> {extracted.invoice_number || 'N/A'}</span>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          {/* Extracted Line Items List */}
+          {Array.isArray(extracted.line_items) && extracted.line_items.length > 0 && (
+            <div className="pt-2 border-t border-neutral-100 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-neutral-800 uppercase tracking-wider">
+                  Extracted Receipt Line Items ({extracted.line_items.length})
+                </span>
+                {flaggedItems.length > 0 && (
+                  <span className="text-xs font-bold text-red-600 flex items-center gap-1">
+                    <AlertTriangle size={14} /> {flaggedItems.length} Policy Flag(s) Detected
+                  </span>
+                )}
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                {extracted.line_items.map((item: any, idx: number) => (
+                  <div
+                    key={idx}
+                    className={`p-2.5 rounded-xl border flex flex-col justify-between ${
+                      item.flagged
+                        ? 'bg-red-50/90 border-red-200 text-red-950'
+                        : 'bg-neutral-50/70 border-neutral-200 text-neutral-800'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium truncate">{item.description}</span>
+                      <span className="font-bold shrink-0">{formatCurrency(item.amount, expense.currency)}</span>
+                    </div>
+                    {item.flagged && (
+                      <span className="text-[10px] font-bold text-red-700 mt-1 flex items-center gap-1">
+                        <AlertTriangle size={12} className="shrink-0" />
+                        {item.reason || 'Restricted item violation'}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Quick-Action: Copy Discrepancy Note into Reviewer Comments */}
+          {(canReviewTier1 || canReviewTier2) && (isOverclaimed || !isDateMatch || flaggedItems.length > 0) && (
+            <div className="p-3 bg-indigo-50/60 border border-indigo-200/80 rounded-xl flex items-center justify-between text-xs">
+              <span className="text-indigo-950 font-medium">
+                Auditor discrepancy detected. You can insert this variance into your review decision notes with one click.
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  const discrepancyNote = `Forensic Reconciliation Note: Claimed ${formatCurrency(claimedAmount, expense.currency)} vs Receipt Extracted ${extractedAmount !== null ? formatCurrency(extractedAmount, expense.currency) : 'N/A'}${isOverclaimed ? ` (Overclaimed by +${formatCurrency(amountDiff, expense.currency)} / +${variancePct}%)` : ''}${!isDateMatch ? ` | Date Mismatch (Claimed: ${claimedDateStr}, Receipt: ${extractedDateStr})` : ''}${flaggedItems.length > 0 ? ` | Restricted items detected on receipt: ${flaggedItems.map((i: any) => i.description).join(', ')}` : ''}.`;
+                  setComments(prev => prev ? `${prev}\n${discrepancyNote}` : discrepancyNote);
+                }}
+                className="inline-flex items-center gap-1 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg shadow-sm transition-colors shrink-0 ml-3"
+              >
+                <Copy size={13} />
+                Insert in Review Notes
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* AI Forensic Inspector Card */}
       <div className={`border rounded-2xl p-6 shadow-sm space-y-4 ${

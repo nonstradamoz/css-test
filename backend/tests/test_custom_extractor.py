@@ -125,3 +125,89 @@ async def test_ai_receipt_scanner_routes_to_custom_extractor():
     assert res["amount"] > 0
     assert res["suggested_category"] in ("SOFTWARE", "SUPPLIES")
     assert isinstance(res["line_items"], list)
+
+
+@pytest.mark.asyncio
+async def test_role_based_extraction_privacy(client):
+    # 1. Register and login admin
+    admin_reg = await client.post("/api/v1/auth/register", json={
+        "email": "audit.superadmin@crs-corp.com",
+        "full_name": "Audit Admin",
+        "password": "Password123!",
+        "role": "ADMIN"
+    })
+    admin_login = await client.post("/api/v1/auth/login", json={
+        "email": "audit.superadmin@crs-corp.com",
+        "password": "Password123!"
+    })
+    admin_token = admin_login.json()["access_token"]
+    admin_headers = {"Authorization": f"Bearer {admin_token}"}
+
+    # 2. Register and login employee
+    emp_reg = await client.post("/api/v1/auth/register", json={
+        "email": "audit.staff@crs-corp.com",
+        "full_name": "Audit Staff",
+        "password": "Password123!",
+        "role": "EMPLOYEE"
+    })
+    emp_login = await client.post("/api/v1/auth/login", json={
+        "email": "audit.staff@crs-corp.com",
+        "password": "Password123!"
+    })
+    emp_token = emp_login.json()["access_token"]
+    emp_headers = {"Authorization": f"Bearer {emp_token}"}
+
+    # 3. Employee cannot call analyze endpoint directly (403 Forbidden)
+    emp_analyze = await client.post(
+        "/api/v1/receipts/analyze",
+        headers=emp_headers,
+        files={"file": ("bill.jpg", b"fake content", "image/jpeg")}
+    )
+    assert emp_analyze.status_code == 403
+
+    # 4. Admin creates expense with extracted metadata
+    expense_res = await client.post(
+        "/api/v1/expenses",
+        headers=admin_headers,
+        json={
+            "title": "Business Dinner with Client",
+            "amount": 2500.0,
+            "currency": "INR",
+            "category": "MEALS",
+            "expense_date": "2026-11-19T00:00:00.000Z",
+            "extracted_metadata": {
+                "merchant_name": "Client Bistro",
+                "amount": 2100.0,
+                "expense_date": "2026-11-19",
+                "line_items": [{"description": "Dinner", "amount": 2100.0, "flagged": False}]
+            }
+        }
+    )
+    assert expense_res.status_code == 201
+    exp_id = expense_res.json()["id"]
+
+    # 5. Admin retrieves expense -> extracted_metadata IS populated for cross-verification
+    admin_get = await client.get(f"/api/v1/expenses/{exp_id}", headers=admin_headers)
+    assert admin_get.status_code == 200
+    assert admin_get.json()["extracted_metadata"] is not None
+    assert admin_get.json()["extracted_metadata"]["merchant_name"] == "Client Bistro"
+
+    # 6. Employee creates an expense
+    emp_exp_res = await client.post(
+        "/api/v1/expenses",
+        headers=emp_headers,
+        json={
+            "title": "Staff Taxi Trip",
+            "amount": 450.0,
+            "currency": "INR",
+            "category": "TRAVEL",
+            "expense_date": "2026-11-19T00:00:00.000Z"
+        }
+    )
+    emp_exp_id = emp_exp_res.json()["id"]
+
+    # 7. Employee retrieves their own expense -> extracted_metadata is None (confidential)
+    emp_get = await client.get(f"/api/v1/expenses/{emp_exp_id}", headers=emp_headers)
+    assert emp_get.status_code == 200
+    assert emp_get.json()["extracted_metadata"] is None
+

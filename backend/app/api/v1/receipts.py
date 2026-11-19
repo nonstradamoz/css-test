@@ -17,10 +17,16 @@ async def analyze_receipt(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Multimodal AI Receipt Scanner.
-    Inspects uploaded receipt image or PDF, recognizes printed and handwritten text,
-    and returns extracted financial details, line items, and compliance warnings.
+    Receipt extraction inspector.
+    Restricted to auditing personnel (Admin, Reviewer, Finance).
+    Employees cannot view receipt extraction data.
     """
+    from app.models import UserRole
+    if current_user.role == UserRole.EMPLOYEE:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Receipt extraction details are confidential to auditing and review personnel."
+        )
     content = await file.read()
     res = await AIReceiptScanner.analyze_receipt(
         file_bytes=content,

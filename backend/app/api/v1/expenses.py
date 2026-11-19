@@ -116,11 +116,13 @@ async def list_expenses(
     result = await db.execute(query)
     expenses = result.scalars().all()
 
-    # Populate submitter metadata
+    # Populate submitter metadata and enforce extraction privacy for employees
     for exp in expenses:
         if exp.submitter:
             exp.submitter_name = exp.submitter.full_name
             exp.submitter_email = exp.submitter.email
+        if current_user.role == UserRole.EMPLOYEE:
+            exp.extracted_metadata = None
 
     return expenses
 
@@ -171,6 +173,21 @@ async def create_expense(
 
     settings_obj = await get_or_create_system_settings(db)
 
+    # Auto-extract from receipt if not provided
+    extracted_meta = data.extracted_metadata or {}
+    if not extracted_meta and data.receipt_url and "key=" in data.receipt_url:
+        try:
+            key = data.receipt_url.split("key=")[-1]
+            from app.services.storage import storage_service
+            local_path = storage_service.get_local_file_path(key)
+            if os.path.exists(local_path):
+                with open(local_path, "rb") as f:
+                    content = f.read()
+                from app.services.extractor import CustomReceiptExtractor
+                extracted_meta = CustomReceiptExtractor.extract(content, os.path.basename(local_path))
+        except Exception as e:
+            print(f"[WARN] Automatic backend receipt extraction: {e}")
+
     new_expense = Expense(
         submitted_by=current_user.id,
         title=data.title,
@@ -184,7 +201,7 @@ async def create_expense(
         risk_score=forensic_eval["risk_score"],
         risk_level=forensic_eval["risk_level"],
         forensic_flags=forensic_eval["flags"],
-        extracted_metadata=data.extracted_metadata or {},
+        extracted_metadata=extracted_meta,
         status=ExpenseStatus.DRAFT
     )
 
@@ -221,6 +238,9 @@ async def create_expense(
         ip_address=request.client.host if request.client else None
     )
 
+    if current_user.role == UserRole.EMPLOYEE and created:
+        created.extracted_metadata = None
+
     return created
 
 
@@ -252,6 +272,9 @@ async def get_expense(
     if expense.submitter:
         expense.submitter_name = expense.submitter.full_name
         expense.submitter_email = expense.submitter.email
+
+    if current_user.role == UserRole.EMPLOYEE:
+        expense.extracted_metadata = None
 
     return expense
 
