@@ -74,26 +74,11 @@ export default function LoginPage() {
             </div>
           )}
 
-          {/* 1. Primary Authentication: Real Google Account Sign-In */}
-          <GoogleSignInButton mode="signin" onError={setError} />
-
-          {/* Elegant Divider */}
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-neutral-800" />
-            </div>
-            <div className="relative flex justify-center text-[11px] uppercase">
-              <span className="bg-neutral-900 px-3 text-neutral-400 font-semibold tracking-wider">
-                or sign in with email
-              </span>
-            </div>
-          </div>
-
-          {/* 2. Secondary Option: Email & Password */}
+          {/* 1. Primary Option: Email & Password */}
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-400 mb-1.5">
-                Work Email
+                E-mail
               </label>
               <div className="relative">
                 <input
@@ -148,6 +133,21 @@ export default function LoginPage() {
               )}
             </button>
           </form>
+
+          {/* Elegant Divider */}
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-neutral-800" />
+            </div>
+            <div className="relative flex justify-center text-[11px] uppercase">
+              <span className="bg-neutral-900 px-3 text-neutral-400 font-semibold tracking-wider">
+                or continue with
+              </span>
+            </div>
+          </div>
+
+          {/* 2. Google Account Sign-In (Moved to bottom) */}
+          <GoogleSignInButton mode="signin" onError={setError} />
 
           {/* Footer Navigation */}
           <div className="pt-4 border-t border-neutral-800 text-center text-xs text-neutral-400">
