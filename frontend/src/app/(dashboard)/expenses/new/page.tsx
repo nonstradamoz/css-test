@@ -158,7 +158,7 @@ export default function NewExpensePage() {
 
     const hasBankDetails =
       Boolean((user?.bank_details?.account_number && user.bank_details.account_number.trim().length > 0) ||
-      (user?.bank_details?.upi_id && user.bank_details.upi_id.trim().length > 0));
+        (user?.bank_details?.upi_id && user.bank_details.upi_id.trim().length > 0));
 
     const willSaveAsDraftDueToMissingBank = submitNow && user?.role === 'EMPLOYEE' && !hasBankDetails;
     const effectiveSubmitNow = submitNow && !willSaveAsDraftDueToMissingBank;
@@ -222,7 +222,7 @@ export default function NewExpensePage() {
         <div>
           <h1 className="text-2xl font-bold text-neutral-900 tracking-tight">New Expense Claim</h1>
           <p className="text-sm text-neutral-500 mt-0.5">
-            Submit an enterprise claim with AI receipt vision and automated policy forensics.
+            Submit a claim.
           </p>
         </div>
       </div>

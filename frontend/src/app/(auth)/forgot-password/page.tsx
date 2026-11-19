@@ -22,7 +22,7 @@ export default function ForgotPasswordPage() {
           </div>
           <div>
             <h1 className="text-xl font-bold text-white tracking-tight">Reset Password</h1>
-            <p className="text-xs text-neutral-400">Enterprise Account Recovery</p>
+            <p className="text-xs text-neutral-400">Account Recovery</p>
           </div>
         </div>
 

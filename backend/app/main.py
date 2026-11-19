@@ -20,80 +20,133 @@ from app.api.v1.receipts import router as receipts_router
 from app.api.v1.categories import router as categories_router
 
 
+def auto_migrate_schema(sync_conn):
+    """
+    Lightweight, dialect-agnostic schema migration.
+    Automatically alters existing PostgreSQL / SQLite tables to add columns
+    introduced in newer versions when Base.metadata.create_all does not alter existing tables.
+    """
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(sync_conn)
+    tables = inspector.get_table_names()
+
+    migrations = {
+        "system_settings": [
+            ("expense_submissions_enabled", "BOOLEAN DEFAULT TRUE"),
+            ("multi_tier_approval_enabled", "BOOLEAN DEFAULT TRUE"),
+            ("enforce_date_window", "BOOLEAN DEFAULT FALSE"),
+            ("policy_allowed_start_date", "TIMESTAMP WITH TIME ZONE"),
+            ("policy_allowed_end_date", "TIMESTAMP WITH TIME ZONE"),
+        ],
+        "reimbursements": [
+            ("transaction_id", "VARCHAR(128)"),
+        ],
+        "users": [
+            ("bank_details", "JSON"),
+        ],
+        "expenses": [
+            ("extracted_metadata", "JSON"),
+            ("risk_score", "INTEGER DEFAULT 0"),
+            ("risk_level", "VARCHAR(20) DEFAULT 'LOW'"),
+            ("forensic_flags", "JSON"),
+            ("audit_exemption_reason", "TEXT"),
+            ("receipt_hash", "VARCHAR(64)"),
+        ],
+    }
+
+    for table_name, columns in migrations.items():
+        if table_name in tables:
+            existing_cols = {c["name"] for c in inspector.get_columns(table_name)}
+            for col_name, col_def in columns:
+                if col_name not in existing_cols:
+                    try:
+                        sync_conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_def}"))
+                        print(f"[MIGRATION] Added column {table_name}.{col_name}")
+                    except Exception as err:
+                        print(f"[MIGRATION WARN] Failed to add {table_name}.{col_name}: {err}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     import app.core.database as db_module
 
-    # Startup: Ensure database tables are created (with graceful SQLite fallback if Postgres is down)
+    # Startup: Ensure database tables are created & updated (with graceful SQLite fallback if Postgres is down)
     try:
         async with db_module.engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
-    except Exception:
+            await conn.run_sync(auto_migrate_schema)
+    except Exception as exc:
+        print(f"[STARTUP WARN] Primary DB connection/migration failed: {exc}. Switching to SQLite fallback...")
         db_module.switch_to_sqlite_fallback()
         async with db_module.engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+            await conn.run_sync(auto_migrate_schema)
 
     # Ensure SystemSettings and Initial Admin exist
-    async with db_module.AsyncSessionLocal() as session:
-        # 1. SystemSettings
-        result = await session.execute(select(SystemSettings).where(SystemSettings.id == 1))
-        if not result.scalars().first():
-            default_settings = SystemSettings(
-                id=1,
-                company_name="Centralised Expense System",
-                default_currency="INR",
-                tier2_approval_threshold=25000.00,
-                allow_self_approval=False
-            )
-            session.add(default_settings)
-
-        # 2. Seed initial admin & employee if they don't exist
-        admin_res = await session.execute(select(User).where(User.email == settings.FIRST_SUPERADMIN_EMAIL.lower()))
-        if not admin_res.scalars().first():
-            admin_user = User(
-                email=settings.FIRST_SUPERADMIN_EMAIL.lower(),
-                hashed_password=get_password_hash(settings.FIRST_SUPERADMIN_PASSWORD),
-                full_name="Enterprise Administrator",
-                role=UserRole.ADMIN,
-                is_active=True
-            )
-            session.add(admin_user)
-
-        emp_res = await session.execute(select(User).where(User.email == "employee.john@crs-corp.com"))
-        if not emp_res.scalars().first():
-            emp_user = User(
-                email="employee.john@crs-corp.com",
-                hashed_password=get_password_hash("Password123!"),
-                full_name="Johnathan Doe",
-                role=UserRole.EMPLOYEE,
-                is_active=True
-            )
-            session.add(emp_user)
-
-        # 3. Seed default expense categories if none exist
-        cat_count = await session.scalar(select(func.count(ExpenseCategoryModel.id)))
-        if cat_count == 0:
-            default_categories = [
-                ("TRAVEL", "Travel & Commute", "Flights, trains, taxis, mileage, toll & parking"),
-                ("MEALS", "Meals & Entertainment", "Business meals, team lunch & client entertainment"),
-                ("SUPPLIES", "Office Supplies & Equipment", "Stationery, office furniture, hardware peripherals"),
-                ("SOFTWARE", "Software & Cloud Services", "SaaS subscriptions, dev tools, cloud hosting"),
-                ("TRAINING", "Training & Certifications", "Professional courses, exam vouchers, books"),
-                ("ACCOMMODATION", "Hotel & Lodging", "Hotel stays, short-term accommodation for business trips"),
-                ("OTHER", "Miscellaneous & Other", "General expenses not covered by other categories"),
-            ]
-            for code, name, desc_text in default_categories:
-                session.add(
-                    ExpenseCategoryModel(
-                        code=code,
-                        name=name,
-                        description=desc_text,
-                        is_active=True,
-                        is_system=True
-                    )
+    try:
+        async with db_module.AsyncSessionLocal() as session:
+            # 1. SystemSettings
+            result = await session.execute(select(SystemSettings).where(SystemSettings.id == 1))
+            if not result.scalars().first():
+                default_settings = SystemSettings(
+                    id=1,
+                    company_name="Centralised Expense System",
+                    default_currency="INR",
+                    tier2_approval_threshold=25000.00,
+                    allow_self_approval=False
                 )
+                session.add(default_settings)
 
-        await session.commit()
+            # 2. Seed initial admin & employee if they don't exist
+            admin_res = await session.execute(select(User).where(User.email == settings.FIRST_SUPERADMIN_EMAIL.lower()))
+            if not admin_res.scalars().first():
+                admin_user = User(
+                    email=settings.FIRST_SUPERADMIN_EMAIL.lower(),
+                    hashed_password=get_password_hash(settings.FIRST_SUPERADMIN_PASSWORD),
+                    full_name="Enterprise Administrator",
+                    role=UserRole.ADMIN,
+                    is_active=True
+                )
+                session.add(admin_user)
+
+            emp_res = await session.execute(select(User).where(User.email == "employee.john@crs-corp.com"))
+            if not emp_res.scalars().first():
+                emp_user = User(
+                    email="employee.john@crs-corp.com",
+                    hashed_password=get_password_hash("Password123!"),
+                    full_name="Johnathan Doe",
+                    role=UserRole.EMPLOYEE,
+                    is_active=True
+                )
+                session.add(emp_user)
+
+            # 3. Seed default expense categories if none exist
+            cat_count = await session.scalar(select(func.count(ExpenseCategoryModel.id)))
+            if cat_count == 0:
+                default_categories = [
+                    ("TRAVEL", "Travel & Commute", "Flights, trains, taxis, mileage, toll & parking"),
+                    ("MEALS", "Meals & Entertainment", "Business meals, team lunch & client entertainment"),
+                    ("SUPPLIES", "Office Supplies & Equipment", "Stationery, office furniture, hardware peripherals"),
+                    ("SOFTWARE", "Software & Cloud Services", "SaaS subscriptions, dev tools, cloud hosting"),
+                    ("TRAINING", "Training & Certifications", "Professional courses, exam vouchers, books"),
+                    ("ACCOMMODATION", "Hotel & Lodging", "Hotel stays, short-term accommodation for business trips"),
+                    ("OTHER", "Miscellaneous & Other", "General expenses not covered by other categories"),
+                ]
+                for code, name, desc_text in default_categories:
+                    session.add(
+                        ExpenseCategoryModel(
+                            code=code,
+                            name=name,
+                            description=desc_text,
+                            is_active=True,
+                            is_system=True
+                        )
+                    )
+
+            await session.commit()
+    except Exception as seed_err:
+        print(f"[STARTUP WARN] Seeding initial data error: {seed_err}")
 
     yield
 
