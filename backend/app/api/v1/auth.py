@@ -228,11 +228,11 @@ async def google_oauth_callback(
                 await db.flush()
 
             access_token = create_access_token(subject=user.id, role=user.role.value)
-            raw_refresh_token, hashed_token = create_refresh_token()
+            raw_refresh_token, hashed_token, expires_at = create_refresh_token()
             db.add(RefreshToken(
                 user_id=user.id,
                 token_hash=hashed_token,
-                expires_at=datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+                expires_at=expires_at
             ))
             await db.commit()
 
