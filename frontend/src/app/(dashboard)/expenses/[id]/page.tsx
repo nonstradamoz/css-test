@@ -12,7 +12,7 @@ import {
   ArrowLeft, FileText, CheckCircle2, XCircle,
   AlertTriangle, Send, CreditCard, ExternalLink,
   Clock, ShieldCheck, ShieldAlert, PenTool, Sparkles, Tag, User, Calendar,
-  FileSearch, Copy
+  FileSearch, Copy, Trash2
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -27,6 +27,8 @@ export default function ExpenseDetailPage() {
   const [auditExemption, setAuditExemption] = useState('');
   const [showPayoutModal, setShowPayoutModal] = useState(false);
   const [transferTxnId, setTransferTxnId] = useState('');
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -35,6 +37,24 @@ export default function ExpenseDetailPage() {
     queryFn: () => api.expenses.get(expenseId),
     enabled: !!expenseId
   });
+
+  const handleDeleteExpense = async () => {
+    setIsDeleting(true);
+    setErrorMsg(null);
+    try {
+      await api.expenses.delete(expenseId);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['expenses-list'] }),
+        queryClient.invalidateQueries({ queryKey: ['approvals-list'] }),
+        queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] })
+      ]);
+      router.push('/expenses');
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Failed to delete expense claim');
+      setIsDeleting(false);
+      setShowDeleteModal(false);
+    }
+  };
 
   const handleApprovalAction = async (decision: ApprovalDecision) => {
     if (decision === 'APPROVED' && expense?.risk_level === 'HIGH' && !auditExemption.trim()) {
@@ -125,6 +145,8 @@ export default function ExpenseDetailPage() {
   }
 
   const isOwner = user?.id === expense.submitted_by;
+  const isAccepted = ['APPROVED', 'REIMBURSED'].includes(expense.status);
+  const canDelete = role === 'ADMIN' || (isOwner && !isAccepted);
   const canReviewTier1 = ['ADMIN', 'REVIEWER'].includes(role || '') && expense.status === 'SUBMITTED';
   const canReviewTier2 = ['ADMIN', 'REVIEWER', 'FINANCE'].includes(role || '') && expense.status === 'UNDER_REVIEW';
   const canDisburse = ['ADMIN', 'REVIEWER', 'FINANCE'].includes(role || '') && expense.status === 'APPROVED';
@@ -168,6 +190,16 @@ export default function ExpenseDetailPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {canDelete && (
+            <button
+              onClick={() => setShowDeleteModal(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-lg text-xs font-semibold transition-colors shadow-sm"
+              title={role === 'ADMIN' ? 'Delete this claim (Admin privilege)' : 'Delete your unapproved claim'}
+            >
+              <Trash2 size={14} />
+              <span className="hidden sm:inline">Delete Claim</span>
+            </button>
+          )}
           <Badge status={expense.status} />
           {expense.approval_tier_required === 2 && (
             <span className="text-xs font-semibold px-2 py-1 rounded bg-amber-50 text-amber-700 border border-amber-200">
@@ -838,6 +870,52 @@ export default function ExpenseDetailPage() {
             <Send size={16} />
             {isProcessing ? 'Submitting...' : 'Submit Claim'}
           </button>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl text-neutral-900 space-y-4">
+            <div className="flex items-center gap-3 text-red-600">
+              <div className="p-3 bg-red-100 rounded-xl">
+                <Trash2 size={24} />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-neutral-900">Delete Expense Claim?</h3>
+                <p className="text-xs text-neutral-500 truncate max-w-xs">{expense.title}</p>
+              </div>
+            </div>
+
+            <p className="text-sm text-neutral-600 leading-relaxed">
+              Are you sure you want to permanently delete this expense claim?
+              {role === 'ADMIN' && !isOwner && (
+                <span className="block mt-2 font-semibold text-amber-700 bg-amber-50 p-2.5 rounded-xl border border-amber-200 text-xs">
+                  Administrative Override: You are removing this claim permanently across the enterprise.
+                </span>
+              )}
+            </p>
+
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-neutral-100">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => setShowDeleteModal(false)}
+                className="px-4 py-2 text-xs font-semibold text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 rounded-xl transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={handleDeleteExpense}
+                className="inline-flex items-center gap-2 px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl transition-colors shadow-sm disabled:opacity-50"
+              >
+                <Trash2 size={14} />
+                {isDeleting ? 'Deleting...' : 'Confirm Delete'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

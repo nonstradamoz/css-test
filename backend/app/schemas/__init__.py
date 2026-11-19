@@ -168,6 +168,7 @@ class ExpenseCreate(BaseModel):
     receipt_hash: Optional[str] = None
     extracted_metadata: Optional[Dict[str, Any]] = None
     category_details: Optional[Dict[str, Any]] = None
+    on_behalf_of_user_id: Optional[str] = Field(None, description="Admin/Reviewer can submit on behalf of an employee")
 
 
 class ExpenseUpdate(BaseModel):

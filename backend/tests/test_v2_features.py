@@ -402,3 +402,79 @@ async def test_category_mandatory_details_filling(client):
     })
     assert res_travel_ok.status_code == 201
     assert res_travel_ok.json()["category_details"]["boarding_point"] == "DEL"
+
+
+@pytest.mark.asyncio
+async def test_behalf_of_submission_and_flexible_deletion(client):
+    """
+    1. Admin / Reviewer can submit on behalf of an employee.
+    2. Non-admins cannot submit on behalf of others.
+    3. Employees can delete their own unaccepted claims.
+    4. Employees CANNOT delete accepted / approved claims.
+    5. Admin CAN delete other users' claims, even if approved.
+    """
+    admin_headers = await ensure_admin(client)
+
+    # 1. Register employee
+    await client.post("/api/v1/auth/register", json={
+        "email": "target.emp@crs-corp.com",
+        "full_name": "Target Employee",
+        "password": "Password123!",
+        "role": "EMPLOYEE"
+    })
+    emp_login = await client.post("/api/v1/auth/login", json={
+        "email": "target.emp@crs-corp.com",
+        "password": "Password123!"
+    })
+    emp_token = emp_login.json()["access_token"]
+    emp_headers = {"Authorization": f"Bearer {emp_token}"}
+    target_emp_id = emp_login.json()["user"]["id"]
+
+    await client.patch("/api/v1/users/me", headers=emp_headers, json={
+        "bank_details": {"account_number": "998877665544", "ifsc_code": "HDFC0009988"}
+    })
+
+    # 2. Admin submits claim on behalf of employee
+    proxy_res = await client.post("/api/v1/expenses?submit_now=false", headers=admin_headers, json={
+        "title": "On-Behalf Software Tool",
+        "amount": 2500.0,
+        "category": "SOFTWARE",
+        "expense_date": datetime.now(timezone.utc).isoformat(),
+        "receipt_url": "https://storage.crs-corp.com/receipts/tool.png",
+        "on_behalf_of_user_id": target_emp_id
+    })
+    assert proxy_res.status_code == 201
+    claim_id = proxy_res.json()["id"]
+    assert proxy_res.json()["submitted_by"] == target_emp_id
+
+    # 3. Employee sees the claim in their list and can delete it while it's DRAFT
+    emp_del_res = await client.delete(f"/api/v1/expenses/{claim_id}", headers=emp_headers)
+    assert emp_del_res.status_code == 204
+
+    # 4. Another claim submitted and approved
+    c2_res = await client.post("/api/v1/expenses?submit_now=true", headers=admin_headers, json={
+        "title": "On-Behalf Approved Commute",
+        "amount": 1800.0,
+        "category": "MEALS",
+        "expense_date": datetime.now(timezone.utc).isoformat(),
+        "receipt_url": "https://storage.crs-corp.com/receipts/meal.png",
+        "on_behalf_of_user_id": target_emp_id
+    })
+    assert c2_res.status_code == 201
+    c2_id = c2_res.json()["id"]
+
+    # Approve the claim
+    appr_res = await client.post(f"/api/v1/approvals/{c2_id}/review", headers=admin_headers, json={
+        "decision": "APPROVED",
+        "comments": "Approved on behalf"
+    })
+    assert appr_res.status_code == 200
+
+    # 5. Employee attempts to delete accepted claim -> MUST BE REJECTED (400)
+    del_blocked = await client.delete(f"/api/v1/expenses/{c2_id}", headers=emp_headers)
+    assert del_blocked.status_code == 400
+    assert "cannot be deleted" in del_blocked.json()["detail"].lower()
+
+    # 6. Admin can delete the accepted claim -> SUCCEEDS (204)
+    admin_del = await client.delete(f"/api/v1/expenses/{c2_id}", headers=admin_headers)
+    assert admin_del.status_code == 204

@@ -43,6 +43,7 @@ export type PresignedUploadResponse = components["schemas"]["PresignedUploadResp
 
 export type ExpenseCreate = components["schemas"]["ExpenseCreate"] & {
   category_details?: Record<string, any> | null;
+  on_behalf_of_user_id?: string | null;
 };
 export type ExpenseUpdate = components["schemas"]["ExpenseUpdate"] & {
   category_details?: Record<string, any> | null;

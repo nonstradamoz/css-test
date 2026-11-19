@@ -17,6 +17,9 @@ export default function NewExpensePage() {
   const router = useRouter();
   const { user, role } = useAuth();
 
+  const canSubmitOnBehalf = role === 'ADMIN' || role === 'REVIEWER';
+  const [onBehalfOfUserId, setOnBehalfOfUserId] = useState<string>('');
+
   // Form Fields
   const [title, setTitle] = useState('');
   const [amount, setAmount] = useState('');
@@ -68,6 +71,23 @@ export default function NewExpensePage() {
     queryKey: ['categories-active'],
     queryFn: () => api.categories.list()
   });
+
+  // Load corporate user list for Admin / Reviewer proxy submission
+  const { data: userList = [] } = useQuery({
+    queryKey: ['users-list-proxy'],
+    queryFn: () => api.users.list(),
+    enabled: canSubmitOnBehalf
+  });
+
+  const proxyEmployees = userList.filter(u => u.is_active !== false);
+  const effectiveTargetUser = onBehalfOfUserId
+    ? userList.find(u => u.id === onBehalfOfUserId)
+    : user;
+
+  const targetHasBankDetails = Boolean(
+    (effectiveTargetUser?.bank_details?.account_number && effectiveTargetUser.bank_details.account_number.trim().length > 0) ||
+    (effectiveTargetUser?.bank_details?.upi_id && effectiveTargetUser.bank_details.upi_id.trim().length > 0)
+  );
 
   useEffect(() => {
     if (categories.length > 0 && !categories.some(c => c.code === category)) {
@@ -216,11 +236,14 @@ export default function NewExpensePage() {
       return;
     }
 
-    const hasBankDetails =
-      Boolean((user?.bank_details?.account_number && user.bank_details.account_number.trim().length > 0) ||
-        (user?.bank_details?.upi_id && user.bank_details.upi_id.trim().length > 0));
+    const isProxyFiling = canSubmitOnBehalf && !!onBehalfOfUserId;
 
-    const willSaveAsDraftDueToMissingBank = submitNow && user?.role === 'EMPLOYEE' && !hasBankDetails;
+    if (submitNow && isProxyFiling && !targetHasBankDetails) {
+      setError(`Cannot submit immediately: Employee "${effectiveTargetUser?.full_name || 'selected'}" does not have bank details entered in their profile. You may save this claim as a DRAFT for now.`);
+      return;
+    }
+
+    const willSaveAsDraftDueToMissingBank = submitNow && !isProxyFiling && user?.role === 'EMPLOYEE' && !targetHasBankDetails;
     const effectiveSubmitNow = submitNow && !willSaveAsDraftDueToMissingBank;
 
     setIsSubmitting(true);
@@ -245,6 +268,7 @@ export default function NewExpensePage() {
         expense_date: new Date(expenseDate).toISOString() as any,
         receipt_url: receiptUrl,
         category_details: Object.keys(categoryDetails).length > 0 ? categoryDetails : undefined,
+        on_behalf_of_user_id: isProxyFiling ? onBehalfOfUserId : undefined,
         extracted_metadata: scanResult ? {
           merchant_name: scanResult.merchant_name,
           confidence_score: scanResult.confidence_score,
@@ -310,6 +334,42 @@ export default function NewExpensePage() {
 
       {/* 2. Main Claim Submission Form */}
       <div className="bg-white border border-neutral-200/80 rounded-2xl p-6 shadow-sm space-y-5">
+        {/* Admin / Reviewer Proxy Submission Option */}
+        {canSubmitOnBehalf && (
+          <div className="p-4 bg-emerald-50/70 border border-emerald-200/80 rounded-xl space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="block text-xs font-bold uppercase tracking-wider text-emerald-900">
+                Submit on Behalf of Employee (Proxy Filing)
+              </label>
+              <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">
+                Admin / Reviewer Privileged
+              </span>
+            </div>
+            <select
+              value={onBehalfOfUserId}
+              onChange={(e) => setOnBehalfOfUserId(e.target.value)}
+              className="w-full px-3.5 py-2.5 bg-white border border-emerald-300 rounded-lg text-sm text-neutral-800 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+            >
+              <option value="">Myself ({user?.full_name || user?.email} - Current User)</option>
+              {proxyEmployees.map((emp) => (
+                <option key={emp.id} value={emp.id}>
+                  {emp.full_name} ({emp.email}) — {emp.role}
+                </option>
+              ))}
+            </select>
+            {onBehalfOfUserId && (
+              <p className="text-xs text-emerald-800">
+                This claim will be attributed to <strong>{effectiveTargetUser?.full_name || effectiveTargetUser?.email}</strong>.
+                {targetHasBankDetails ? (
+                  <span className="text-emerald-700 font-semibold ml-1.5">✓ Bank details verified for disbursement.</span>
+                ) : (
+                  <span className="text-amber-800 font-semibold ml-1.5">⚠️ No bank details registered. Can only be saved as DRAFT until bank details are added.</span>
+                )}
+              </p>
+            )}
+          </div>
+        )}
+
         <div>
           <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-500 mb-1.5">
             Claim Title *

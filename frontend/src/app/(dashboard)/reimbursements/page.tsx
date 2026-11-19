@@ -201,97 +201,164 @@ export default function ReimbursementsPage() {
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-neutral-50/75 border-b border-neutral-200 text-xs text-neutral-500 uppercase tracking-wider">
-                <tr>
-                  <th className="px-6 py-3.5">Expense Claim</th>
-                  <th className="px-6 py-3.5">Amount</th>
-                  <th className="px-6 py-3.5">Disbursed Date</th>
-                  <th className="px-6 py-3.5">Status</th>
-                  {!isEmployee && <th className="px-6 py-3.5">Retries</th>}
-                  <th className="px-6 py-3.5 text-right">Reference / Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-neutral-200">
-                {reimbursements.map((r) => (
-                  <tr key={r.id} className="hover:bg-neutral-50/60 transition-colors">
-                    <td className="px-6 py-4">
+          <>
+            {/* 1. Desktop Table */}
+            <div
+              role="region"
+              aria-label="Reimbursement disbursements table"
+              tabIndex={0}
+              className="hidden md:block overflow-x-auto w-full focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            >
+              <table className="w-full text-left text-sm">
+                <thead className="bg-neutral-50/75 border-b border-neutral-200 text-xs text-neutral-500 uppercase tracking-wider">
+                  <tr>
+                    <th className="px-6 py-3.5">Expense Claim</th>
+                    <th className="px-6 py-3.5">Amount</th>
+                    <th className="px-6 py-3.5">Disbursed Date</th>
+                    <th className="px-6 py-3.5">Status</th>
+                    {!isEmployee && <th className="px-6 py-3.5">Retries</th>}
+                    <th className="px-6 py-3.5 text-right">Reference / Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-neutral-200">
+                  {reimbursements.map((r) => (
+                    <tr key={r.id} className="hover:bg-neutral-50/60 transition-colors">
+                      <td className="px-6 py-4">
+                        <Link
+                          href={`/expenses/${r.expense_id}`}
+                          className="font-bold text-neutral-900 hover:text-emerald-600 transition-colors inline-flex items-center gap-1.5"
+                        >
+                          <span>{r.expense_title || `Claim #${r.expense_id.substring(0, 8)}`}</span>
+                          <ExternalLink size={12} className="text-neutral-400" />
+                        </Link>
+                        <p className="text-xs text-neutral-400 font-mono mt-0.5">
+                          ID: {r.id.substring(0, 8)}... · Key: {r.idempotency_key.substring(0, 16)}...
+                        </p>
+                        {r.transaction_id && (
+                          <p className="text-[11px] text-emerald-700 font-mono mt-0.5 font-semibold">
+                            Txn / UTR: {r.transaction_id}
+                          </p>
+                        )}
+                        {!isEmployee && r.submitter_name && (
+                          <p className="text-xs text-neutral-500 mt-0.5">Submitter: {r.submitter_name}</p>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 font-bold text-neutral-900">
+                        {formatCurrency(r.amount, r.currency)}
+                      </td>
+                      <td className="px-6 py-4 text-xs text-neutral-500">
+                        {r.disbursed_at ? formatDate(r.disbursed_at) : (
+                          <span className="text-amber-600 font-medium">In Progress</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
+                          r.status === 'COMPLETED'
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                            : r.status === 'FAILED'
+                            ? 'bg-red-50 text-red-700 border border-red-200'
+                            : 'bg-amber-50 text-amber-700 border border-amber-200 animate-pulse'
+                        }`}>
+                          {r.status}
+                        </span>
+                      </td>
+                      {!isEmployee && (
+                        <td className="px-6 py-4 text-xs font-medium text-neutral-600">
+                          {r.retry_count}
+                        </td>
+                      )}
+                      <td className="px-6 py-4 text-right">
+                        {r.status === 'FAILED' && isFinanceOrAdmin && (
+                          <button
+                            disabled={retryingId === r.id}
+                            onClick={() => handleRetry(r.id)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-neutral-900 hover:bg-neutral-800 text-white font-medium rounded-lg text-xs transition-colors shadow-sm"
+                          >
+                            <RefreshCw size={13} className={retryingId === r.id ? 'animate-spin' : ''} />
+                            Retry Payout
+                          </button>
+                        )}
+                        {r.status === 'COMPLETED' && (
+                          <span className="text-xs text-emerald-600 font-semibold inline-flex items-center gap-1">
+                            <CheckCircle2 size={14} /> Settled
+                          </span>
+                        )}
+                        {(r.status === 'PROCESSING' || r.status === 'INITIATED') && (
+                          <span className="text-xs text-amber-600 font-semibold inline-flex items-center gap-1">
+                            <Clock size={14} /> Processing
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* 2. Mobile Responsive Card List */}
+            <div className="block md:hidden divide-y divide-neutral-200">
+              {reimbursements.map((r) => (
+                <div key={r.id} className="p-4 space-y-3 hover:bg-neutral-50/60 transition-colors">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
                       <Link
                         href={`/expenses/${r.expense_id}`}
-                        className="font-bold text-neutral-900 hover:text-emerald-600 transition-colors inline-flex items-center gap-1.5"
+                        className="font-bold text-neutral-900 text-sm hover:text-emerald-600 transition-colors inline-flex items-center gap-1"
                       >
                         <span>{r.expense_title || `Claim #${r.expense_id.substring(0, 8)}`}</span>
                         <ExternalLink size={12} className="text-neutral-400" />
                       </Link>
-                      <p className="text-xs text-neutral-400 font-mono mt-0.5">
-                        ID: {r.id.substring(0, 8)}... · Key: {r.idempotency_key.substring(0, 16)}...
-                      </p>
-                      {r.transaction_id && (
-                        <p className="text-[11px] text-emerald-700 font-mono mt-0.5 font-semibold">
-                          Txn / UTR: {r.transaction_id}
-                        </p>
-                      )}
                       {!isEmployee && r.submitter_name && (
                         <p className="text-xs text-neutral-500 mt-0.5">Submitter: {r.submitter_name}</p>
                       )}
-                    </td>
-                    <td className="px-6 py-4 font-bold text-neutral-900">
-                      {formatCurrency(r.amount, r.currency)}
-                    </td>
-                    <td className="px-6 py-4 text-xs text-neutral-500">
-                      {r.disbursed_at ? formatDate(r.disbursed_at) : (
-                        <span className="text-amber-600 font-medium">In Progress</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
-                        r.status === 'COMPLETED'
-                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                          : r.status === 'FAILED'
-                          ? 'bg-red-50 text-red-700 border border-red-200'
-                          : 'bg-amber-50 text-amber-700 border border-amber-200 animate-pulse'
-                      }`}>
-                        {r.status}
+                    </div>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold shrink-0 ${
+                      r.status === 'COMPLETED'
+                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                        : r.status === 'FAILED'
+                        ? 'bg-red-50 text-red-700 border border-red-200'
+                        : 'bg-amber-50 text-amber-700 border border-amber-200'
+                    }`}>
+                      {r.status}
+                    </span>
+                  </div>
+
+                  {r.transaction_id && (
+                    <div className="text-[11px] font-mono text-emerald-700 bg-emerald-50 px-2 py-1 rounded">
+                      Txn Ref: {r.transaction_id}
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between text-xs pt-1 border-t border-neutral-100">
+                    <div>
+                      <span className="text-[10px] text-neutral-400 uppercase font-semibold block">Payout Amount</span>
+                      <span className="text-base font-bold text-neutral-900">
+                        {formatCurrency(r.amount, r.currency)}
                       </span>
-                    </td>
-                    {!isEmployee && (
-                      <td className="px-6 py-4 text-xs font-medium text-neutral-600">
-                        {r.retry_count}
-                      </td>
-                    )}
-                    <td className="px-6 py-4 text-right">
-                      {r.status === 'FAILED' && isFinanceOrAdmin && (
-                        <button
-                          disabled={retryingId === r.id}
-                          onClick={() => handleRetry(r.id)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-neutral-900 hover:bg-neutral-800 text-white font-medium rounded-lg text-xs transition-colors shadow-sm"
-                        >
-                          <RefreshCw size={13} className={retryingId === r.id ? 'animate-spin' : ''} />
-                          Retry Payout
-                        </button>
-                      )}
-                      {r.status === 'COMPLETED' && (
-                        <span className="text-xs text-emerald-600 font-semibold inline-flex items-center gap-1">
-                          <CheckCircle2 size={14} /> Settled
-                        </span>
-                      )}
-                      {(r.status === 'PROCESSING' || r.status === 'INITIATED') && (
-                        <span className="text-xs text-amber-600 font-semibold inline-flex items-center gap-1">
-                          <RefreshCw size={13} className="animate-spin" /> In Flight
-                        </span>
-                      )}
-                      {r.status === 'FAILED' && isEmployee && (
-                        <span className="text-xs text-red-600 font-medium">
-                          Failed - Finance Reviewing
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                    </div>
+
+                    <div className="text-right">
+                      <span className="text-[10px] text-neutral-400 block">Settled Date</span>
+                      <span className="text-xs text-neutral-600 font-medium">
+                        {r.disbursed_at ? formatDate(r.disbursed_at) : 'In Progress'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {r.status === 'FAILED' && isFinanceOrAdmin && (
+                    <button
+                      disabled={retryingId === r.id}
+                      onClick={() => handleRetry(r.id)}
+                      className="w-full py-2 bg-neutral-900 text-white font-medium rounded-lg text-xs flex items-center justify-center gap-1.5"
+                    >
+                      <RefreshCw size={13} className={retryingId === r.id ? 'animate-spin' : ''} />
+                      Retry Payout
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </>
         )}
       </div>
     </div>

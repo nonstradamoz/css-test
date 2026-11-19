@@ -232,14 +232,28 @@ async def create_expense(
             detail="Receipt upload is mandatory to submit an expense claim."
         )
 
-    # Mandatory bank details check upon submission for employees
-    if submit_now and current_user.role == UserRole.EMPLOYEE:
-        bd = current_user.bank_details or {}
+    # Determine effective submitter (Admin/Reviewer can submit on behalf of an employee)
+    submitter_user = current_user
+    if data.on_behalf_of_user_id:
+        if current_user.role not in [UserRole.ADMIN, UserRole.REVIEWER]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only Admins and Reviewers can submit expense claims on behalf of other employees."
+            )
+        u_res = await db.execute(select(User).where(User.id == data.on_behalf_of_user_id))
+        target_user = u_res.scalars().first()
+        if not target_user:
+            raise HTTPException(status_code=404, detail="Designated employee account not found.")
+        submitter_user = target_user
+
+    # Mandatory bank details check upon submission for target employee
+    if submit_now and submitter_user.role == UserRole.EMPLOYEE:
+        bd = submitter_user.bank_details or {}
         has_bd = bool((bd.get("account_number") and (bd.get("ifsc_code") or bd.get("bank_name"))) or bd.get("upi_id"))
         if not has_bd:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Submission locked: Bank account or UPI details are required to submit an expense claim. Please configure your bank details in Profile Settings before submitting."
+                detail=f"Submission locked: Bank account or UPI details are required for {submitter_user.full_name} ({submitter_user.email}) before submitting an expense claim."
             )
 
     # Auto-extract from receipt if not provided
@@ -261,7 +275,7 @@ async def create_expense(
     line_items = extracted_meta.get("line_items") if extracted_meta else None
     forensic_eval = await ForensicsEngine.evaluate_expense(
         db=db,
-        submitter_id=current_user.id,
+        submitter_id=submitter_user.id,
         amount=data.amount,
         expense_date=data.expense_date,
         category=data.category,
@@ -301,7 +315,7 @@ async def create_expense(
     # Duplicate detection check
     is_dup, dup_msg = await DuplicateDetector.check_duplicate(
         db=db,
-        submitted_by=current_user.id,
+        submitted_by=submitter_user.id,
         amount=data.amount,
         expense_date=data.expense_date,
         receipt_hash=data.receipt_hash,
@@ -315,7 +329,7 @@ async def create_expense(
         validate_category_mandatory_details(data.category, data.category_details)
 
     new_expense = Expense(
-        submitted_by=current_user.id,
+        submitted_by=submitter_user.id,
         title=data.title,
         description=data.description,
         category=data.category,
@@ -789,18 +803,33 @@ async def delete_expense(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Delete an unsubmitted DRAFT expense claim"""
+    """
+    Delete an expense claim:
+    - Admin: Can delete any uploaded expense claim of other users or themselves.
+    - Employee / Reviewer: Can delete their own claims, but CANNOT delete once accepted / approved.
+    """
     result = await db.execute(select(Expense).where(Expense.id == expense_id))
     expense = result.scalars().first()
 
     if not expense:
-        raise HTTPException(status_code=404, detail="Expense not found.")
+        raise HTTPException(status_code=404, detail="Expense claim not found.")
 
-    if current_user.role == UserRole.EMPLOYEE and expense.submitted_by != current_user.id:
-        raise HTTPException(status_code=403, detail="Unauthorized to delete this claim.")
+    is_admin = current_user.role == UserRole.ADMIN
 
-    if expense.status != ExpenseStatus.DRAFT:
-        raise HTTPException(status_code=400, detail="Only DRAFT expenses can be deleted.")
+    if not is_admin:
+        if expense.submitted_by != current_user.id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Unauthorized: You cannot delete another user's claim.")
+
+        # Non-admin users cannot delete accepted/approved claims
+        accepted_statuses = [
+            ExpenseStatus.APPROVED,
+            ExpenseStatus.REIMBURSED
+        ]
+        if expense.status in accepted_statuses:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Action prohibited: Accepted / approved expense claims cannot be deleted by users. Please contact an Administrator."
+            )
 
     await log_audit_event(
         db=db,
@@ -808,7 +837,12 @@ async def delete_expense(
         entity_type="EXPENSE",
         entity_id=expense.id,
         action="DELETE",
-        old_values={"title": expense.title, "amount": str(expense.amount)},
+        old_values={
+            "title": expense.title,
+            "amount": str(expense.amount),
+            "owner_id": expense.submitted_by,
+            "status": expense.status.value
+        },
         ip_address=request.client.host if request.client else None
     )
 

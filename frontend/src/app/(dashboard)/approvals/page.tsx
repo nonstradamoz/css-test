@@ -161,93 +161,156 @@ export default function ApprovalsQueuePage() {
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-neutral-50/75 border-b border-neutral-200 text-xs text-neutral-500 uppercase tracking-wider">
-                <tr>
-                  <th className="px-6 py-3.5">Claim & Submitter</th>
-                  <th className="px-6 py-3.5">Category</th>
-                  <th className="px-6 py-3.5">Forensics Risk</th>
-                  <th className="px-6 py-3.5">Date</th>
-                  <th className="px-6 py-3.5">Amount</th>
-                  <th className="px-6 py-3.5">Tier Target</th>
-                  <th className="px-6 py-3.5 text-right">Quick Decision</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-neutral-200">
-                {pendingExpenses.map((exp) => (
-                  <tr key={exp.id} className="hover:bg-neutral-50/60 transition-colors">
-                    <td className="px-6 py-4">
-                      <Link href={`/expenses/${exp.id}`} className="font-semibold text-neutral-900 hover:text-emerald-600">
+          <>
+            {/* 1. Desktop Table */}
+            <div
+              role="region"
+              aria-label="Pending approvals table"
+              tabIndex={0}
+              className="hidden md:block overflow-x-auto w-full focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            >
+              <table className="w-full text-left text-sm">
+                <thead className="bg-neutral-50/75 border-b border-neutral-200 text-xs text-neutral-500 uppercase tracking-wider">
+                  <tr>
+                    <th className="px-6 py-3.5">Claim & Submitter</th>
+                    <th className="px-6 py-3.5">Category</th>
+                    <th className="px-6 py-3.5">Forensics Risk</th>
+                    <th className="px-6 py-3.5">Date</th>
+                    <th className="px-6 py-3.5">Amount</th>
+                    <th className="px-6 py-3.5">Tier Target</th>
+                    <th className="px-6 py-3.5 text-right">Quick Decision</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-neutral-200">
+                  {pendingExpenses.map((exp) => (
+                    <tr key={exp.id} className="hover:bg-neutral-50/60 transition-colors">
+                      <td className="px-6 py-4">
+                        <Link href={`/expenses/${exp.id}`} className="font-semibold text-neutral-900 hover:text-emerald-600">
+                          {exp.title}
+                        </Link>
+                        <p className="text-xs text-neutral-500">{exp.submitter_name || exp.submitter_email}</p>
+                      </td>
+                      <td className="px-6 py-4 text-xs font-medium text-neutral-600">
+                        <span className="px-2 py-0.5 rounded bg-neutral-100 text-neutral-700">
+                          {categories.find(c => c.code === exp.category)?.name || exp.category}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold border ${
+                          exp.risk_level === 'HIGH'
+                            ? 'bg-red-50 text-red-700 border-red-200'
+                            : exp.risk_level === 'MEDIUM'
+                            ? 'bg-amber-50 text-amber-700 border-amber-200'
+                            : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        }`}>
+                          {exp.risk_level === 'HIGH' ? (
+                            <ShieldAlert size={12} className="text-red-600" />
+                          ) : (
+                            <ShieldCheck size={12} className="text-emerald-600" />
+                          )}
+                          {exp.risk_score}/100 ({exp.risk_level})
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-xs text-neutral-500">
+                        {formatDate(exp.expense_date)}
+                      </td>
+                      <td className="px-6 py-4 font-semibold text-neutral-900">
+                        {formatCurrency(exp.amount, exp.currency)}
+                      </td>
+                      <td className="px-6 py-4 text-xs">
+                        {exp.status === 'SUBMITTED' ? (
+                          <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 font-semibold border border-blue-200">
+                            Tier 1 (Reviewer)
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded bg-amber-50 text-amber-700 font-semibold border border-amber-200">
+                            Tier 2 (Finance)
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => { setSelectedExpense(exp); setDecision('APPROVED'); }}
+                            className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-medium rounded-lg text-xs transition-colors shadow-sm"
+                          >
+                            Approve
+                          </button>
+                          <button
+                            onClick={() => { setSelectedExpense(exp); setDecision('CHANGES_REQUESTED'); }}
+                            className="px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-white font-medium rounded-lg text-xs transition-colors shadow-sm"
+                          >
+                            Request Info
+                          </button>
+                          <button
+                            onClick={() => { setSelectedExpense(exp); setDecision('REJECTED'); }}
+                            className="px-2.5 py-1 bg-neutral-200 hover:bg-red-50 hover:text-red-600 text-neutral-700 font-medium rounded-lg text-xs transition-colors"
+                          >
+                            Reject
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* 2. Mobile Responsive Card List */}
+            <div className="block md:hidden divide-y divide-neutral-200">
+              {pendingExpenses.map((exp) => (
+                <div key={exp.id} className="p-4 space-y-3 hover:bg-neutral-50/60 transition-colors">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <Link href={`/expenses/${exp.id}`} className="font-semibold text-neutral-900 text-sm hover:text-emerald-600">
                         {exp.title}
                       </Link>
-                      <p className="text-xs text-neutral-500">{exp.submitter_name || exp.submitter_email}</p>
-                    </td>
-                    <td className="px-6 py-4 text-xs font-medium text-neutral-600">
-                      <span className="px-2 py-0.5 rounded bg-neutral-100 text-neutral-700">
-                        {categories.find(c => c.code === exp.category)?.name || exp.category}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold border ${
-                        exp.risk_level === 'HIGH'
-                          ? 'bg-red-50 text-red-700 border-red-200'
-                          : exp.risk_level === 'MEDIUM'
-                          ? 'bg-amber-50 text-amber-700 border-amber-200'
-                          : 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                      }`}>
-                        {exp.risk_level === 'HIGH' ? (
-                          <ShieldAlert size={12} className="text-red-600" />
-                        ) : (
-                          <ShieldCheck size={12} className="text-emerald-600" />
-                        )}
-                        {exp.risk_score}/100 ({exp.risk_level})
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-xs text-neutral-500">
-                      {formatDate(exp.expense_date)}
-                    </td>
-                    <td className="px-6 py-4 font-semibold text-neutral-900">
+                      <p className="text-xs text-neutral-500 mt-0.5">{exp.submitter_name || exp.submitter_email}</p>
+                    </div>
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold border shrink-0 ${
+                      exp.risk_level === 'HIGH'
+                        ? 'bg-red-50 text-red-700 border-red-200'
+                        : exp.risk_level === 'MEDIUM'
+                        ? 'bg-amber-50 text-amber-700 border-amber-200'
+                        : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                    }`}>
+                      {exp.risk_score}/100 ({exp.risk_level})
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between text-xs pt-1">
+                    <span className="px-2 py-0.5 rounded bg-neutral-100 text-neutral-700 font-medium">
+                      {categories.find(c => c.code === exp.category)?.name || exp.category}
+                    </span>
+                    <span className="text-base font-bold text-neutral-900">
                       {formatCurrency(exp.amount, exp.currency)}
-                    </td>
-                    <td className="px-6 py-4 text-xs">
-                      {exp.status === 'SUBMITTED' ? (
-                        <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 font-semibold border border-blue-200">
-                          Tier 1 (Reviewer)
-                        </span>
-                      ) : (
-                        <span className="px-2 py-0.5 rounded bg-amber-50 text-amber-700 font-semibold border border-amber-200">
-                          Tier 2 (Finance)
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          onClick={() => { setSelectedExpense(exp); setDecision('APPROVED'); }}
-                          className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-medium rounded-lg text-xs transition-colors shadow-sm"
-                        >
-                          Approve
-                        </button>
-                        <button
-                          onClick={() => { setSelectedExpense(exp); setDecision('CHANGES_REQUESTED'); }}
-                          className="px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-white font-medium rounded-lg text-xs transition-colors shadow-sm"
-                        >
-                          Request Info
-                        </button>
-                        <button
-                          onClick={() => { setSelectedExpense(exp); setDecision('REJECTED'); }}
-                          className="px-2.5 py-1 bg-neutral-200 hover:bg-red-50 hover:text-red-600 text-neutral-700 font-medium rounded-lg text-xs transition-colors"
-                        >
-                          Reject
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-2 border-t border-neutral-100 gap-1.5">
+                    <button
+                      onClick={() => { setSelectedExpense(exp); setDecision('APPROVED'); }}
+                      className="flex-1 py-1.5 bg-emerald-600 text-white font-medium rounded-lg text-xs text-center shadow-sm"
+                    >
+                      Approve
+                    </button>
+                    <button
+                      onClick={() => { setSelectedExpense(exp); setDecision('CHANGES_REQUESTED'); }}
+                      className="flex-1 py-1.5 bg-amber-500 text-white font-medium rounded-lg text-xs text-center shadow-sm"
+                    >
+                      Request Info
+                    </button>
+                    <button
+                      onClick={() => { setSelectedExpense(exp); setDecision('REJECTED'); }}
+                      className="flex-1 py-1.5 bg-neutral-200 text-neutral-700 font-medium rounded-lg text-xs text-center"
+                    >
+                      Reject
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
         )}
       </div>
 

@@ -66,10 +66,10 @@ async def update_my_profile(
 
 @router.get("", response_model=List[UserOut])
 async def list_users(
-    current_user: User = Depends(require_role([UserRole.ADMIN])),
+    current_user: User = Depends(require_role([UserRole.ADMIN, UserRole.REVIEWER])),
     db: AsyncSession = Depends(get_db)
 ):
-    """List all user accounts in the enterprise system (Admin only)"""
+    """List user accounts in the enterprise system (Admin & Reviewer)"""
     result = await db.execute(select(User).order_by(desc(User.created_at)))
     return result.scalars().all()
 
