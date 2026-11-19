@@ -24,7 +24,11 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
         return False
 
 
-def create_access_token(subject: Union[str, Any], expires_delta: Optional[timedelta] = None) -> str:
+def create_access_token(
+    subject: Union[str, Any],
+    expires_delta: Optional[timedelta] = None,
+    **extra_claims: Any
+) -> str:
     """Generate short-lived JWT access token"""
     if expires_delta:
         expire = datetime.now(timezone.utc) + expires_delta
@@ -34,7 +38,8 @@ def create_access_token(subject: Union[str, Any], expires_delta: Optional[timede
     to_encode = {
         "sub": str(subject),
         "exp": expire,
-        "type": "access"
+        "type": "access",
+        **extra_claims
     }
     encoded_jwt = jwt.encode(to_encode, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
     return encoded_jwt

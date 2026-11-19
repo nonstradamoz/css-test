@@ -227,7 +227,7 @@ async def google_oauth_callback(
                 db.add(user)
                 await db.flush()
 
-            access_token = create_access_token(subject=user.id, role=user.role.value)
+            access_token = create_access_token(subject=user.id)
             raw_refresh_token, hashed_token, expires_at = create_refresh_token()
             db.add(RefreshToken(
                 user_id=user.id,
