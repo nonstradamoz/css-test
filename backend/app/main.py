@@ -47,17 +47,28 @@ async def lifespan(app: FastAPI):
             )
             session.add(default_settings)
 
-        # 2. Seed initial admin if zero users exist
-        user_count = await session.scalar(select(func.count(User.id)))
-        if user_count == 0:
+        # 2. Seed initial admin & employee if they don't exist
+        admin_res = await session.execute(select(User).where(User.email == settings.FIRST_SUPERADMIN_EMAIL.lower()))
+        if not admin_res.scalars().first():
             admin_user = User(
-                email=settings.FIRST_SUPERADMIN_EMAIL,
+                email=settings.FIRST_SUPERADMIN_EMAIL.lower(),
                 hashed_password=get_password_hash(settings.FIRST_SUPERADMIN_PASSWORD),
                 full_name="Enterprise Administrator",
                 role=UserRole.ADMIN,
                 is_active=True
             )
             session.add(admin_user)
+
+        emp_res = await session.execute(select(User).where(User.email == "employee.john@crs-corp.com"))
+        if not emp_res.scalars().first():
+            emp_user = User(
+                email="employee.john@crs-corp.com",
+                hashed_password=get_password_hash("Password123!"),
+                full_name="Johnathan Doe",
+                role=UserRole.EMPLOYEE,
+                is_active=True
+            )
+            session.add(emp_user)
 
         # 3. Seed default expense categories if none exist
         cat_count = await session.scalar(select(func.count(ExpenseCategoryModel.id)))
@@ -120,7 +131,7 @@ app.add_middleware(
 
 from fastapi.responses import RedirectResponse
 
-# Mount API Routers
+# Mount API Routers (Standard /api/v1)
 app.include_router(auth_router, prefix=settings.API_V1_STR)
 app.include_router(expenses_router, prefix=settings.API_V1_STR)
 app.include_router(approvals_router, prefix=settings.API_V1_STR)
@@ -130,6 +141,17 @@ app.include_router(settings_router, prefix=settings.API_V1_STR)
 app.include_router(audit_logs_router, prefix=settings.API_V1_STR)
 app.include_router(receipts_router, prefix=settings.API_V1_STR)
 app.include_router(categories_router, prefix=settings.API_V1_STR)
+
+# Resilient route aliases (/auth and /api/*) to avoid 404s when frontend or proxy omits /v1
+app.include_router(auth_router, prefix="", include_in_schema=False)
+app.include_router(auth_router, prefix="/api", include_in_schema=False)
+app.include_router(expenses_router, prefix="/api", include_in_schema=False)
+app.include_router(approvals_router, prefix="/api", include_in_schema=False)
+app.include_router(reimbursements_router, prefix="/api", include_in_schema=False)
+app.include_router(users_router, prefix="/api", include_in_schema=False)
+app.include_router(settings_router, prefix="/api", include_in_schema=False)
+app.include_router(receipts_router, prefix="/api", include_in_schema=False)
+app.include_router(categories_router, prefix="/api", include_in_schema=False)
 
 
 @app.get("/", include_in_schema=False)

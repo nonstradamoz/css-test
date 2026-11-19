@@ -29,7 +29,13 @@ export default function LoginPage() {
     try {
       await login({ email, password });
     } catch (err: any) {
-      setError(err.message || 'Incorrect email or password.');
+      if (err.message === 'Not Found' || err.message?.includes('404')) {
+        setError('Authentication service returned 404 (Not Found). Please check that the backend URL is reachable.');
+      } else if (err.message?.includes('Failed to fetch') || err.message?.includes('NetworkError')) {
+        setError('Cannot reach backend server. Please verify your backend service is running and CORS is enabled.');
+      } else {
+        setError(err.message || 'Incorrect email or password.');
+      }
     } finally {
       setLoading(false);
     }

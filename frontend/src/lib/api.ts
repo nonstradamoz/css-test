@@ -20,7 +20,19 @@ import {
   BankDetails
 } from '../types';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
+function getNormalizedApiBase(): string {
+  const raw = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
+  const clean = raw.trim().replace(/\/+$/, '');
+  if (!clean.endsWith('/api/v1')) {
+    if (clean.endsWith('/api')) {
+      return `${clean}/v1`;
+    }
+    return `${clean}/api/v1`;
+  }
+  return clean;
+}
+
+const API_BASE = getNormalizedApiBase();
 
 class ApiClient {
   private getAccessToken(): string | null {
