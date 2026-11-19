@@ -3,42 +3,34 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
 import { api } from '@/lib/api';
-import { toCents, formatCurrency } from '@/lib/utils';
-import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/Card';
-import { ArrowLeft, Save, Send, AlertTriangle, AlertCircle } from 'lucide-react';
+import { ExpenseCategory } from '@/types';
+import { ArrowLeft, Save, Send, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
 
-const CATEGORIES = [
-  'Travel & Lodging',
-  'Meals & Entertainment',
-  'Office Supplies',
-  'Software & Subscriptions',
-  'Hardware & Equipment',
-  'Telecom & Internet',
-  'Training & Certifications',
-  'Other'
+const CATEGORIES: { label: string; value: ExpenseCategory }[] = [
+  { label: 'Travel & Accommodation', value: 'TRAVEL' },
+  { label: 'Meals & Entertainment', value: 'MEALS' },
+  { label: 'Office Supplies', value: 'SUPPLIES' },
+  { label: 'Software & Cloud Subscriptions', value: 'SOFTWARE' },
+  { label: 'Training & Certifications', value: 'TRAINING' },
+  { label: 'Lodging', value: 'ACCOMMODATION' },
+  { label: 'General / Other', value: 'OTHER' }
 ];
 
 export default function EditExpensePage() {
   const params = useParams();
   const router = useRouter();
   const expenseId = params.id as string;
-  const { activeOrg, user } = useAuth();
-  const orgId = activeOrg?.id;
+  const { user } = useAuth();
 
-  const [merchant, setMerchant] = useState('');
+  const [title, setTitle] = useState('');
   const [amount, setAmount] = useState('');
-  const [currency, setCurrency] = useState('INR');
-  const [category, setCategory] = useState(CATEGORIES[0]);
+  const [category, setCategory] = useState<ExpenseCategory>('TRAVEL');
   const [expenseDate, setExpenseDate] = useState('');
   const [description, setDescription] = useState('');
   const [currentStatus, setCurrentStatus] = useState<string>('DRAFT');
-  const [changeRequestReason, setChangeRequestReason] = useState<string>('');
+  const [hasReceipt, setHasReceipt] = useState<boolean>(false);
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -46,188 +38,183 @@ export default function EditExpensePage() {
 
   useEffect(() => {
     const fetchExpense = async () => {
-      if (!orgId || !expenseId) return;
       try {
-        const snap = await getDoc(doc(db, 'organisations', orgId, 'expenses', expenseId));
-        if (snap.exists()) {
-          const data = snap.data();
-          setMerchant(data.merchant || '');
-          setAmount(((data.amount || 0) / 100).toString());
-          setCurrency(data.currency || 'INR');
-          setCategory(data.category || CATEGORIES[0]);
-          setExpenseDate(data.expenseDate || '');
-          setDescription(data.description || '');
-          setCurrentStatus(data.status || 'DRAFT');
-          setChangeRequestReason(data.changeRequestReason || '');
-        }
+        const exp = await api.expenses.get(expenseId);
+        setTitle(exp.title);
+        setAmount(exp.amount.toString());
+        setCategory(exp.category);
+        setExpenseDate(exp.expense_date.split('T')[0]);
+        setDescription(exp.description || '');
+        setCurrentStatus(exp.status);
+        setHasReceipt(Boolean(exp.receipt_url));
       } catch (err: any) {
-        setError(err.message);
+        setError(err.message || 'Failed to load expense details');
       } finally {
         setIsLoading(false);
       }
     };
-    fetchExpense();
-  }, [orgId, expenseId]);
+    if (expenseId) fetchExpense();
+  }, [expenseId]);
 
-  const handleSave = async (shouldResubmit: boolean) => {
-    if (!orgId || !user) return;
+  const handleSave = async (submitAfterSave = false) => {
+    if (!title || !amount || !expenseDate) {
+      setError('Please provide title, amount, and expense date.');
+      return;
+    }
+
+    const parsedAmount = parseFloat(amount);
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      setError('Please enter a valid positive expense amount.');
+      return;
+    }
+
     setIsSaving(true);
     setError(null);
-
     try {
-      const amountInCents = toCents(parseFloat(amount));
+      await api.expenses.update(expenseId, {
+        title,
+        amount: parsedAmount as any,
+        category,
+        expense_date: new Date(expenseDate).toISOString() as any,
+        description: description || undefined
+      });
 
-      if (currentStatus === 'CHANGES_REQUESTED' && shouldResubmit) {
-        // Use resubmitExpense Cloud Function for validated state transition
-        await api.resubmitExpense({
-          organisationId: orgId,
-          expenseId,
-          updates: {
-            merchant,
-            amount: amountInCents,
-            category,
-            expenseDate,
-            description
-          }
-        });
-      } else {
-        // Direct Firestore update allowed by security rules for DRAFT status
-        const docRef = doc(db, 'organisations', orgId, 'expenses', expenseId);
-        await updateDoc(docRef, {
-          merchant,
-          amount: amountInCents,
-          category,
-          expenseDate,
-          description,
-          updatedAt: serverTimestamp()
-        });
-
-        if (shouldResubmit && currentStatus === 'DRAFT') {
-          await api.submitExpense({ organisationId: orgId, expenseId });
+      if (submitAfterSave) {
+        if (!hasReceipt) {
+          setError('A receipt upload is mandatory to submit an expense claim.');
+          setIsSaving(false);
+          return;
         }
+        await api.expenses.submit(expenseId);
       }
 
       router.push(`/expenses/${expenseId}`);
     } catch (err: any) {
-      console.error(err);
-      setError(err.message || 'Failed to update expense.');
+      setError(err.message || 'Failed to save changes.');
     } finally {
       setIsSaving(false);
     }
   };
 
   if (isLoading) {
-    return <div className="p-12 text-center text-xs text-slate-400">Loading expense details...</div>;
+    return <div className="p-12 text-center text-sm text-neutral-500">Loading claim for editing...</div>;
   }
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
+    <div className="p-8 max-w-3xl mx-auto space-y-6">
       <div className="flex items-center gap-3">
-        <Link href={`/expenses/${expenseId}`}>
-          <Button variant="ghost" size="sm" leftIcon={<ArrowLeft className="w-4 h-4" />}>
-            Cancel & Return
-          </Button>
+        <Link
+          href={`/expenses/${expenseId}`}
+          className="p-2 text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100 rounded-lg transition-colors"
+        >
+          <ArrowLeft size={18} />
         </Link>
+        <div>
+          <h1 className="text-2xl font-bold text-neutral-900 tracking-tight">Edit Claim: {title}</h1>
+          <p className="text-sm text-neutral-500 mt-0.5">Status: {currentStatus}</p>
+        </div>
       </div>
 
-      {changeRequestReason && (
-        <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 flex items-start gap-3">
-          <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-          <div>
-            <h4 className="text-sm font-semibold">Reviewer Change Request</h4>
-            <p className="text-xs text-amber-800 mt-1">{changeRequestReason}</p>
-          </div>
+      {error && (
+        <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center gap-2.5 text-sm text-red-600">
+          <AlertCircle size={18} className="shrink-0" />
+          <span>{error}</span>
         </div>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Edit Expense Claim</CardTitle>
-          <CardDescription>Update your expense details and resubmit for approval.</CardDescription>
-        </CardHeader>
+      <div className="bg-white border border-neutral-200/80 rounded-2xl p-6 shadow-sm space-y-5">
+        <div>
+          <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-500 mb-1.5">
+            Claim Title *
+          </label>
+          <input
+            type="text"
+            required
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            className="w-full px-4 py-2.5 border border-neutral-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+          />
+        </div>
 
-        <CardContent className="space-y-4">
-          {error && (
-            <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-start gap-2">
-              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-              <span>{error}</span>
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Input
-              label="Merchant / Payee Name *"
-              value={merchant}
-              onChange={(e) => setMerchant(e.target.value)}
-              required
-            />
-
-            <Input
-              label={`Amount (${currency}) *`}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-500 mb-1.5">
+              Amount (₹ INR) *
+            </label>
+            <input
               type="number"
               step="0.01"
+              required
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              required
-            />
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 uppercase mb-1.5">Category *</label>
-              <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:ring-2 focus:ring-primary-500/20"
-              >
-                {CATEGORIES.map((cat) => (
-                  <option key={cat} value={cat}>
-                    {cat}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <Input
-              label="Expense Date *"
-              type="date"
-              value={expenseDate}
-              onChange={(e) => setExpenseDate(e.target.value)}
-              required
+              className="w-full px-4 py-2.5 border border-neutral-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-700 uppercase mb-1.5">Description *</label>
-            <textarea
-              rows={3}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              required
-              className="w-full rounded-lg border border-slate-300 p-3 text-sm focus:ring-2 focus:ring-primary-500/20"
-            />
+            <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-500 mb-1.5">
+              Category *
+            </label>
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value as ExpenseCategory)}
+              className="w-full px-4 py-2.5 border border-neutral-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 bg-white"
+            >
+              {CATEGORIES.map((cat) => (
+                <option key={cat.value} value={cat.value}>
+                  {cat.label}
+                </option>
+              ))}
+            </select>
           </div>
-        </CardContent>
+        </div>
 
-        <CardFooter className="flex justify-between">
-          <Button
-            variant="outline"
-            size="sm"
+        <div>
+          <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-500 mb-1.5">
+            Expense Date *
+          </label>
+          <input
+            type="date"
+            required
+            value={expenseDate}
+            onChange={(e) => setExpenseDate(e.target.value)}
+            className="w-full px-4 py-2.5 border border-neutral-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-500 mb-1.5">
+            Description
+          </label>
+          <textarea
+            rows={3}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            className="w-full px-4 py-2.5 border border-neutral-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+          />
+        </div>
+
+        <div className="pt-4 border-t border-neutral-200 flex items-center justify-end gap-3">
+          <button
+            type="button"
+            disabled={isSaving}
             onClick={() => handleSave(false)}
-            isLoading={isSaving}
-            leftIcon={<Save className="w-4 h-4" />}
+            className="px-5 py-2.5 border border-neutral-300 text-neutral-700 hover:bg-neutral-50 font-medium rounded-xl text-sm transition-colors inline-flex items-center gap-2"
           >
+            <Save size={16} />
             Save Changes
-          </Button>
-
-          <Button
-            size="sm"
+          </button>
+          <button
+            type="button"
+            disabled={isSaving}
             onClick={() => handleSave(true)}
-            isLoading={isSaving}
-            leftIcon={<Send className="w-4 h-4" />}
+            className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-medium rounded-xl text-sm transition-colors shadow-sm inline-flex items-center gap-2"
           >
-            {currentStatus === 'CHANGES_REQUESTED' ? 'Resubmit for Review' : 'Save & Submit'}
-          </Button>
-        </CardFooter>
-      </Card>
+            <Send size={16} />
+            {isSaving ? 'Submitting...' : 'Save & Submit'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

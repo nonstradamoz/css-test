@@ -1,157 +1,45 @@
-export type Role = 'ADMIN' | 'FINANCE' | 'REVIEWER' | 'MEMBER';
+import { components } from './api.generated';
 
-export type ExpenseStatus =
-  | 'DRAFT'
-  | 'SUBMITTED'
-  | 'UNDER_REVIEW'
-  | 'CHANGES_REQUESTED'
-  | 'RESUBMITTED'
-  | 'APPROVED'
-  | 'REJECTED'
-  | 'REFUND_PENDING'
-  | 'REFUNDED'
-  | 'REFUND_FAILED';
+export type BankDetails = {
+  account_holder_name?: string | null;
+  bank_name?: string | null;
+  account_number?: string | null;
+  ifsc_code?: string | null;
+  upi_id?: string | null;
+};
 
-export type ReimbursementStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+// Core Schema Types mapped directly from FastAPI OpenAPI
+export type User = components["schemas"]["UserOut"] & {
+  bank_details?: BankDetails | null;
+};
+export type Role = components["schemas"]["UserRole"];
+export type UserRole = components["schemas"]["UserRole"];
 
-export type AuditAction =
-  | 'EXPENSE_CREATED'
-  | 'EXPENSE_SUBMITTED'
-  | 'EXPENSE_UPDATED'
-  | 'CHANGES_REQUESTED'
-  | 'EXPENSE_RESUBMITTED'
-  | 'EXPENSE_APPROVED'
-  | 'EXPENSE_REJECTED'
-  | 'REFUND_CREATED'
-  | 'REFUND_PROCESSING'
-  | 'REFUND_COMPLETED'
-  | 'REFUND_FAILED'
-  | 'REFUND_RETRIED'
-  | 'MEMBER_INVITED'
-  | 'MEMBER_REMOVED'
-  | 'ROLE_CHANGED'
-  | 'ORGANISATION_CREATED'
-  | 'RECEIPT_UPLOADED';
+export type Expense = components["schemas"]["ExpenseOut"];
+export type ExpenseStatus = components["schemas"]["ExpenseStatus"];
+export type ExpenseCategory = string;
 
-export interface Organisation {
-  id: string;
-  name: string;
-  currency: string;
-  createdBy: string;
-  createdAt: any;
-  updatedAt: any;
-  settings?: {
-    autoApproveUnderCents?: number;
-    duplicateWindowDays?: number;
-    mockRefundOutcome?: 'SUCCESS' | 'FAILURE' | 'TIMEOUT';
-  };
-}
+export type ExpenseApproval = components["schemas"]["ExpenseApprovalOut"];
+export type ApprovalDecision = components["schemas"]["ApprovalDecision"];
 
-export interface Member {
-  id: string;
-  organisationId: string;
-  email: string;
-  displayName: string;
-  role: Role;
-  joinedAt: any;
-  invitedBy?: string;
-}
+export type Reimbursement = components["schemas"]["ReimbursementOut"] & {
+  expense_title?: string | null;
+  submitter_name?: string | null;
+};
+export type ReimbursementStatus = components["schemas"]["ReimbursementStatus"];
 
-export interface ReceiptMetadata {
-  id: string;
-  organisationId: string;
-  expenseId: string;
-  storageProvider: 'cloudinary' | 's3' | 'mock';
-  storageKey: string;
-  fileName: string;
-  contentType: string;
-  fileSize: number;
-  checksum: string;
-  uploadedBy: string;
-  createdAt: any;
-}
+export type SystemSettings = components["schemas"]["SystemSettingsOut"];
+export type AuditLog = components["schemas"]["AuditLogOut"];
+export type PresignedUploadResponse = components["schemas"]["PresignedUploadResponse"];
 
-export interface Expense {
-  id: string;
-  organisationId: string;
-  submittedBy: string;
-  submitterEmail?: string;
-  submitterName?: string;
-  amount: number; // in cents/paise
-  currency: string;
-  category: string;
-  merchant: string;
-  expenseDate: string; // YYYY-MM-DD
-  description: string;
-  status: ExpenseStatus;
-  receipt?: ReceiptMetadata;
-  duplicateWarning?: {
-    isDuplicate: boolean;
-    matchingExpenseId?: string;
-    matchedOn?: string[];
-  };
-  changeRequestReason?: string;
-  rejectionReason?: string;
-  approvedBy?: string;
-  approvedAt?: any;
-  rejectedBy?: string;
-  rejectedAt?: any;
-  reimbursementId?: string;
-  createdAt: any;
-  updatedAt: any;
-  submittedAt?: any;
-}
+export type ExpenseCreate = components["schemas"]["ExpenseCreate"];
+export type ExpenseUpdate = components["schemas"]["ExpenseUpdate"];
 
-export interface ApprovalRecord {
-  id: string;
-  organisationId: string;
-  expenseId: string;
-  decision: 'APPROVED' | 'REJECTED' | 'CHANGES_REQUESTED';
-  reviewerId: string;
-  reviewerName?: string;
-  reviewerEmail?: string;
-  reason?: string;
-  timestamp: any;
-}
+export type Category = components["schemas"]["CategoryOut"];
+export type CategoryCreate = components["schemas"]["CategoryCreate"];
+export type CategoryUpdate = components["schemas"]["CategoryUpdate"];
 
-export interface Reimbursement {
-  id: string;
-  organisationId: string;
-  expenseId: string;
-  submittedBy: string;
-  amount: number;
-  currency: string;
-  status: ReimbursementStatus;
-  provider: string;
-  providerReference?: string;
-  attemptCount: number;
-  maxAttempts: number;
-  lastAttemptAt?: any;
-  failureReason?: string;
-  createdAt: any;
-  updatedAt: any;
-  completedAt?: any;
-  failedAt?: any;
-}
-
-export interface AuditLog {
-  id: string;
-  organisationId: string;
-  actorId: string;
-  actorEmail?: string;
-  action: AuditAction;
-  entityType: 'EXPENSE' | 'REIMBURSEMENT' | 'MEMBER' | 'ORGANISATION' | 'RECEIPT';
-  entityId: string;
-  before?: Record<string, any> | null;
-  after?: Record<string, any> | null;
-  metadata?: Record<string, any>;
-  requestId?: string;
-  timestamp: any;
-}
-
-export interface UserProfile {
-  uid: string;
-  email: string;
-  displayName: string;
-  organisations?: string[];
-}
+export type ReceiptAnalysisResponse = components["schemas"]["ReceiptAnalysisResponse"];
+export type ExtractedLineItem = components["schemas"]["ExtractedLineItem"];
+export type ForensicsPreviewResponse = components["schemas"]["ForensicsPreviewResponse"];
+export type ForensicFlagItem = components["schemas"]["ForensicFlagItem"];

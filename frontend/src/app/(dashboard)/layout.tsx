@@ -45,11 +45,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   if (!user) return null;
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh' }}>
+    <div className="flex h-screen overflow-hidden bg-neutral-50">
       <Sidebar />
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+      <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
         <Navbar />
-        <main style={{ flex: 1, padding: '24px 28px', overflowY: 'auto' }} className="page-wrap">
+        <main className="flex-1 overflow-y-auto page-wrap">
           {children}
         </main>
       </div>

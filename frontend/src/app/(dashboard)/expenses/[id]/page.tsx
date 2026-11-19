@@ -3,727 +3,419 @@
 import React, { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { useQuery } from '@tanstack/react-query';
-import { createClient } from '@/lib/supabase';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { formatCurrency, formatDate, formatDateTime } from '@/lib/utils';
-import { Expense, AuditLog, ApprovalRecord } from '@/types';
+import { formatCurrency, formatDate } from '@/lib/utils';
+import { Expense, ApprovalDecision } from '@/types';
 import { Badge } from '@/components/ui/Badge';
-import { Button } from '@/components/ui/Button';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
-import { Modal } from '@/components/ui/Modal';
-import { TimelineStepper } from '@/components/ui/TimelineStepper';
 import {
-  ArrowLeft,
-  FileText,
-  Download,
-  CheckCircle2,
-  XCircle,
-  AlertTriangle,
-  Send,
-  CreditCard,
-  Edit3,
-  ExternalLink,
-  Clock,
-  ShieldAlert,
-  User,
-  Calendar,
-  Building
+  ArrowLeft, FileText, CheckCircle2, XCircle,
+  AlertTriangle, Send, CreditCard, ExternalLink,
+  Clock, ShieldCheck, ShieldAlert, PenTool, Sparkles, Tag, User, Calendar
 } from 'lucide-react';
 import Link from 'next/link';
 
 export default function ExpenseDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const expenseId = params.id as string;
-  const { activeOrg, activeRole, user } = useAuth();
-  const orgId = activeOrg?.id;
+  const { role, user } = useAuth();
 
-  // Modals state
-  const [isApproveOpen, setIsApproveOpen] = useState(false);
-  const [isRejectOpen, setIsRejectOpen] = useState(false);
-  const [isChangesOpen, setIsChangesOpen] = useState(false);
-  const [isPayoutOpen, setIsPayoutOpen] = useState(false);
-  const [actionReason, setActionReason] = useState('');
-  const [isProcessingAction, setIsProcessingAction] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
+  const [comments, setComments] = useState('');
+  const [auditExemption, setAuditExemption] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Receipt download state
-  const [isDownloadingReceipt, setIsDownloadingReceipt] = useState(false);
-
-  // Query expense doc
   const { data: expense, isLoading, refetch } = useQuery({
-    queryKey: ['expense-detail', orgId, expenseId],
-    queryFn: async () => {
-      if (!orgId || !expenseId) return null;
-      const supabase = createClient();
-      const { data, error } = await supabase
-        .from('expenses')
-        .select('*')
-        .eq('organisation_id', orgId)
-        .eq('id', expenseId)
-        .single();
-        
-      if (error || !data) return null;
-      
-      return {
-        id: data.id,
-        organisationId: data.organisation_id,
-        submittedBy: data.submitted_by,
-        submitterEmail: data.submitter_email,
-        submitterName: data.submitter_name,
-        amount: data.amount,
-        currency: data.currency,
-        category: data.category,
-        merchant: data.merchant,
-        expenseDate: data.expense_date,
-        description: data.description,
-        status: data.status,
-        receipt: data.receipt,
-        duplicateWarning: data.duplicate_warning,
-        changeRequestReason: data.change_request_reason,
-        rejectionReason: data.rejection_reason,
-        approvedBy: data.approved_by,
-        approvedAt: data.approved_at,
-        rejectedBy: data.rejected_by,
-        rejectedAt: data.rejected_at,
-        reimbursementId: data.reimbursement_id,
-        createdAt: data.created_at,
-        updatedAt: data.updated_at,
-        submittedAt: data.submitted_at
-      } as Expense;
-    },
-    enabled: !!orgId && !!expenseId
+    queryKey: ['expense-detail', expenseId],
+    queryFn: () => api.expenses.get(expenseId),
+    enabled: !!expenseId
   });
 
-  // Query activity / audit logs for this expense
-  const { data: auditLogs = [] } = useQuery({
-    queryKey: ['expense-audit-logs', orgId, expenseId],
-    queryFn: async () => {
-      if (!orgId || !expenseId) return [];
-      const supabase = createClient();
-      const { data, error } = await supabase
-        .from('audit_logs')
-        .select('*')
-        .eq('organisation_id', orgId)
-        .order('created_at', { ascending: false });
-        
-      if (error || !data) return [];
-      
-      const allLogs = data.map((d: any) => ({
-        id: d.id,
-        organisationId: d.organisation_id,
-        actorId: d.actor_id,
-        actorEmail: d.actor_email,
-        action: d.action,
-        entityType: d.entity_type,
-        entityId: d.entity_id,
-        before: d.before_data,
-        after: d.after_data,
-        timestamp: d.created_at
-      })) as AuditLog[];
-      
-      return allLogs.filter((log) => log.entityId === expenseId || log.metadata?.expenseId === expenseId);
-    },
-    enabled: !!orgId && !!expenseId
-  });
+  const handleApprovalAction = async (decision: ApprovalDecision) => {
+    if (decision === 'APPROVED' && expense?.risk_level === 'HIGH' && !auditExemption.trim()) {
+      setErrorMsg('Audit Compliance Policy: An explicit Audit Exemption Reason is mandatory when approving claims flagged as HIGH RISK.');
+      return;
+    }
 
-  // Query approval records
-  const { data: approvals = [] } = useQuery({
-    queryKey: ['expense-approvals', orgId, expenseId],
-    queryFn: async () => {
-      // Approval records might not be a separate table yet, keeping empty array for now
-      return [] as ApprovalRecord[];
-    },
-    enabled: !!orgId && !!expenseId
-  });
-
-  if (isLoading) {
-    return (
-      <div className="p-12 text-center text-xs text-slate-400">Loading expense details...</div>
-    );
-  }
-
-  if (!expense) {
-    return (
-      <div className="p-12 text-center space-y-4">
-        <h3 className="text-base font-semibold text-slate-800">Expense Claim Not Found</h3>
-        <p className="text-xs text-slate-500">The requested expense claim does not exist or you do not have permission.</p>
-        <Link href="/expenses">
-          <Button size="sm" variant="outline">
-            Back to Expenses
-          </Button>
-        </Link>
-      </div>
-    );
-  }
-
-  const isOwner = user?.id === expense.submittedBy;
-  const isReviewerOrAdmin = activeRole === 'REVIEWER' || activeRole === 'ADMIN';
-  const isFinanceOrAdmin = activeRole === 'FINANCE' || activeRole === 'ADMIN';
-
-  const canSubmit = (expense.status === 'DRAFT') && (isOwner || activeRole === 'ADMIN');
-  const canReview = (expense.status === 'SUBMITTED' || expense.status === 'UNDER_REVIEW' || expense.status === 'RESUBMITTED') && isReviewerOrAdmin;
-  const canEdit = (expense.status === 'DRAFT' || expense.status === 'CHANGES_REQUESTED') && isOwner;
-  const canPayout = (expense.status === 'APPROVED' || expense.status === 'REFUND_PENDING') && isFinanceOrAdmin;
-
-  // Actions
-  const handleApprove = async () => {
-    if (!orgId) return;
-    setIsProcessingAction(true);
-    setActionError(null);
+    setIsProcessing(true);
+    setErrorMsg(null);
     try {
-      await api.approveExpense({
-        organisationId: orgId,
-        expenseId,
-        reason: actionReason || 'Approved as legitimate business expense'
+      await api.approvals.review(expenseId, {
+        decision,
+        comments: comments || undefined,
+        audit_exemption_reason: auditExemption.trim() || undefined
       });
-      setIsApproveOpen(false);
-      setActionReason('');
-      refetch();
+      setComments('');
+      setAuditExemption('');
+      await Promise.all([
+        refetch(),
+        queryClient.invalidateQueries({ queryKey: ['expenses-list'] }),
+        queryClient.invalidateQueries({ queryKey: ['approvals-list'] }),
+        queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] })
+      ]);
     } catch (err: any) {
-      setActionError(err.message || 'Approval failed.');
+      setErrorMsg(err.message || 'Action failed');
     } finally {
-      setIsProcessingAction(false);
+      setIsProcessing(false);
     }
   };
 
-  const handleReject = async () => {
-    if (!orgId) return;
-    if (!actionReason.trim()) {
-      setActionError('A rejection reason is required.');
-      return;
-    }
-    setIsProcessingAction(true);
-    setActionError(null);
+  const handleDisbursement = async () => {
+    setIsProcessing(true);
+    setErrorMsg(null);
     try {
-      await api.rejectExpense({
-        organisationId: orgId,
-        expenseId,
-        reason: actionReason.trim()
-      });
-      setIsRejectOpen(false);
-      setActionReason('');
-      refetch();
+      const idempotencyKey = `payout-${expenseId}-${Date.now()}`;
+      await api.reimbursements.create(expenseId, idempotencyKey);
+      await Promise.all([
+        refetch(),
+        queryClient.invalidateQueries({ queryKey: ['reimbursements-list'] }),
+        queryClient.invalidateQueries({ queryKey: ['expenses-list'] }),
+        queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] })
+      ]);
     } catch (err: any) {
-      setActionError(err.message || 'Rejection failed.');
+      setErrorMsg(err.message || 'Failed to trigger payout disbursement');
     } finally {
-      setIsProcessingAction(false);
-    }
-  };
-
-  const handleRequestChanges = async () => {
-    if (!orgId) return;
-    if (!actionReason.trim()) {
-      setActionError('A reason/instructions for the submitter is required.');
-      return;
-    }
-    setIsProcessingAction(true);
-    setActionError(null);
-    try {
-      await api.requestExpenseChanges({
-        organisationId: orgId,
-        expenseId,
-        reason: actionReason.trim()
-      });
-      setIsChangesOpen(false);
-      setActionReason('');
-      refetch();
-    } catch (err: any) {
-      setActionError(err.message || 'Action failed.');
-    } finally {
-      setIsProcessingAction(false);
+      setIsProcessing(false);
     }
   };
 
   const handleSubmitDraft = async () => {
-    if (!orgId) return;
-    setIsProcessingAction(true);
+    if (!expense?.receipt_url) {
+      setErrorMsg('A receipt upload is mandatory to submit an expense claim. Please edit the claim to attach a receipt.');
+      return;
+    }
+    setIsProcessing(true);
+    setErrorMsg(null);
     try {
-      await api.submitExpense({
-        organisationId: orgId,
-        expenseId
-      });
-      refetch();
+      await api.expenses.submit(expenseId);
+      await Promise.all([
+        refetch(),
+        queryClient.invalidateQueries({ queryKey: ['expenses-list'] }),
+        queryClient.invalidateQueries({ queryKey: ['approvals-list'] }),
+        queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] })
+      ]);
     } catch (err: any) {
-      alert(err.message || 'Submission failed.');
+      setErrorMsg(err.message || 'Failed to submit claim');
     } finally {
-      setIsProcessingAction(false);
+      setIsProcessing(false);
     }
   };
 
-  const handleInitiatePayout = async (forcedOutcome?: 'SUCCESS' | 'FAILURE' | 'TIMEOUT') => {
-    if (!orgId) return;
-    setIsProcessingAction(true);
-    setActionError(null);
-    try {
-      // Deterministic idempotency key for this expense payout
-      const idempotencyKey = `payout_${expenseId}_${Date.now()}`;
-      await api.createReimbursement({
-        organisationId: orgId,
-        expenseId,
-        idempotencyKey,
-        forcedOutcome
-      });
-      setIsPayoutOpen(false);
-      refetch();
-    } catch (err: any) {
-      setActionError(err.message || 'Payout creation failed.');
-    } finally {
-      setIsProcessingAction(false);
-    }
-  };
+  if (isLoading) {
+    return <div className="p-12 text-center text-sm text-neutral-500">Loading claim details...</div>;
+  }
 
-  const handleDownloadReceipt = async () => {
-    if (!orgId) return;
-    setIsDownloadingReceipt(true);
-    try {
-      const { downloadUrl, fileName } = await api.generateReceiptDownloadUrl({
-        organisationId: orgId,
-        expenseId
-      });
+  if (!expense) {
+    return <div className="p-12 text-center text-sm text-neutral-500">Expense claim not found.</div>;
+  }
 
-      if (downloadUrl.startsWith('https://mock-cloudinary.storage.local')) {
-        alert(`Mock signed URL generated securely: \n${downloadUrl}\nIn production, Cloudinary delivers the pre-signed binary.`);
-      } else {
-        window.open(downloadUrl, '_blank');
-      }
-    } catch (err: any) {
-      alert(err.message || 'Failed to generate download URL.');
-    } finally {
-      setIsDownloadingReceipt(false);
-    }
-  };
+  const isOwner = user?.id === expense.submitted_by;
+  const canReviewTier1 = ['ADMIN', 'REVIEWER'].includes(role || '') && expense.status === 'SUBMITTED';
+  const canReviewTier2 = ['ADMIN', 'FINANCE'].includes(role || '') && expense.status === 'UNDER_REVIEW';
+  const canDisburse = ['ADMIN', 'FINANCE'].includes(role || '') && expense.status === 'APPROVED';
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
-      {/* Top Breadcrumb & Actions */}
+    <div className="p-8 max-w-4xl mx-auto space-y-6">
+      {/* Header */}
       <div className="flex items-center justify-between">
-        <Link href="/expenses">
-          <Button variant="ghost" size="sm" leftIcon={<ArrowLeft className="w-4 h-4" />}>
-            Back to Expenses
-          </Button>
-        </Link>
-
+        <div className="flex items-center gap-3">
+          <Link
+            href="/expenses"
+            className="p-2 text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100 rounded-lg transition-colors"
+          >
+            <ArrowLeft size={18} />
+          </Link>
+          <div>
+            <h1 className="text-2xl font-bold text-neutral-900 tracking-tight">{expense.title}</h1>
+            <p className="text-xs text-neutral-500 mt-0.5">Claim ID: {expense.id}</p>
+          </div>
+        </div>
         <div className="flex items-center gap-2">
-          {canEdit && (
-            <Link href={`/expenses/${expenseId}/edit`}>
-              <Button size="sm" variant="outline" leftIcon={<Edit3 className="w-4 h-4" />}>
-                Edit Expense
-              </Button>
-            </Link>
-          )}
-
-          {canSubmit && (
-            <Button size="sm" onClick={handleSubmitDraft} isLoading={isProcessingAction} leftIcon={<Send className="w-4 h-4" />}>
-              Submit for Review
-            </Button>
-          )}
-
-          {canReview && (
-            <>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  setActionReason('');
-                  setActionError(null);
-                  setIsChangesOpen(true);
-                }}
-              >
-                Request Changes
-              </Button>
-
-              <Button
-                size="sm"
-                variant="danger"
-                onClick={() => {
-                  setActionReason('');
-                  setActionError(null);
-                  setIsRejectOpen(true);
-                }}
-              >
-                Reject
-              </Button>
-
-              <Button
-                size="sm"
-                variant="success"
-                onClick={() => {
-                  setActionReason('');
-                  setActionError(null);
-                  setIsApproveOpen(true);
-                }}
-                leftIcon={<CheckCircle2 className="w-4 h-4" />}
-              >
-                Approve
-              </Button>
-            </>
-          )}
-
-          {canPayout && (
-            <Button
-              size="sm"
-              variant="primary"
-              onClick={() => setIsPayoutOpen(true)}
-              leftIcon={<CreditCard className="w-4 h-4" />}
-            >
-              Initiate Reimbursement Payout
-            </Button>
+          <Badge status={expense.status} />
+          {expense.approval_tier_required === 2 && (
+            <span className="text-xs font-semibold px-2 py-1 rounded bg-amber-50 text-amber-700 border border-amber-200">
+              Tier {expense.current_approval_tier} of 2
+            </span>
           )}
         </div>
       </div>
 
-      {/* Duplicate Warning Callout */}
-      {expense.duplicateWarning?.isDuplicate && (
-        <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 flex items-start justify-between gap-4">
-          <div className="flex items-start gap-3">
-            <ShieldAlert className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-            <div>
-              <h4 className="text-sm font-semibold">Possible Duplicate Expense Detected</h4>
-              <p className="text-xs text-amber-800 mt-1">
-                Our multi-signal verification detected an existing claim matching amount, merchant, date, or receipt checksum. Reviewers should verify before approval.
-              </p>
-              {expense.duplicateWarning.matchingExpenseId && (
-                <div className="mt-2">
-                  <Link
-                    href={`/expenses/${expense.duplicateWarning.matchingExpenseId}`}
-                    target="_blank"
-                    className="inline-flex items-center gap-1 text-xs font-bold text-amber-900 underline hover:text-amber-950"
-                  >
-                    Inspect Potential Matching Expense <ExternalLink className="w-3 h-3" />
-                  </Link>
-                </div>
-              )}
+      {errorMsg && (
+        <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center gap-2.5 text-sm text-red-600">
+          <AlertTriangle size={18} className="shrink-0" />
+          <span>{errorMsg}</span>
+        </div>
+      )}
+
+      {/* Claim Summary Card */}
+      <div className="bg-white border border-neutral-200/80 rounded-2xl p-6 shadow-sm space-y-6">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pb-6 border-b border-neutral-200">
+          <div>
+            <p className="text-xs font-semibold text-neutral-400 uppercase">Amount</p>
+            <p className="text-xl font-bold text-neutral-900 mt-1">
+              {formatCurrency(expense.amount, expense.currency)}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-neutral-400 uppercase">Category</p>
+            <p className="text-sm font-semibold text-neutral-800 mt-1.5">{expense.category}</p>
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-neutral-400 uppercase">Expense Date</p>
+            <p className="text-sm text-neutral-700 mt-1.5">{formatDate(expense.expense_date)}</p>
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-neutral-400 uppercase">Submitter</p>
+            <p className="text-sm text-neutral-700 mt-1.5 font-medium">{expense.submitter_name || expense.submitter_email}</p>
+          </div>
+        </div>
+
+        <div>
+          <p className="text-xs font-semibold text-neutral-400 uppercase mb-1">Business Purpose / Description</p>
+          <p className="text-sm text-neutral-700 leading-relaxed">
+            {expense.description || 'No description provided.'}
+          </p>
+        </div>
+
+        {/* Receipt Attachment */}
+        {expense.receipt_url && (
+          <div className="p-4 bg-neutral-50 rounded-xl border border-neutral-200 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-emerald-100 text-emerald-700 rounded-lg">
+                <FileText size={20} />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-neutral-800">Attached Receipt Document</p>
+                <p className="text-xs text-neutral-500">Stored on Cloudflare R2</p>
+              </div>
             </div>
+            <a
+              href={expense.receipt_url}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-neutral-300 rounded-lg text-xs font-semibold text-neutral-700 hover:bg-neutral-50 shadow-sm"
+            >
+              View Document <ExternalLink size={14} />
+            </a>
+          </div>
+        )}
+
+        {/* Approvals History */}
+        {expense.approvals && expense.approvals.length > 0 && (
+          <div className="space-y-3 pt-4 border-t border-neutral-200">
+            <h3 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">
+              Approval Audit Trail
+            </h3>
+            <div className="space-y-2">
+              {expense.approvals.map((appr) => (
+                <div key={appr.id} className="p-3 bg-neutral-50/70 border border-neutral-200 rounded-xl text-xs flex items-center justify-between">
+                  <div>
+                    <span className="font-semibold text-neutral-800">
+                      Tier {appr.tier} {appr.decision}:
+                    </span>
+                    <span className="text-neutral-600 ml-2">{appr.comments || 'No comments'}</span>
+                  </div>
+                  <span className="text-neutral-400">{formatDate(appr.created_at)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Reimbursement Details */}
+        {expense.reimbursement && (
+          <div className="p-4 bg-emerald-50/60 border border-emerald-200 rounded-xl text-xs space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-emerald-900">Reimbursement Payout: {expense.reimbursement.status}</span>
+              <span className="text-emerald-700 font-semibold">{formatCurrency(expense.reimbursement.amount, expense.reimbursement.currency)}</span>
+            </div>
+            <p className="text-emerald-800">Idempotency Key: {expense.reimbursement.idempotency_key}</p>
+          </div>
+        )}
+      </div>
+
+      {/* AI Forensic Inspector Card */}
+      <div className={`border rounded-2xl p-6 shadow-sm space-y-4 ${
+        expense.risk_level === 'HIGH'
+          ? 'bg-red-50/40 border-red-200'
+          : expense.risk_level === 'MEDIUM'
+          ? 'bg-amber-50/40 border-amber-200'
+          : 'bg-white border-neutral-200/80'
+      }`}>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            {expense.risk_level === 'HIGH' ? (
+              <ShieldAlert size={20} className="text-red-600 shrink-0" />
+            ) : expense.risk_level === 'MEDIUM' ? (
+              <AlertTriangle size={20} className="text-amber-600 shrink-0" />
+            ) : (
+              <ShieldCheck size={20} className="text-emerald-600 shrink-0" />
+            )}
+            <div>
+              <h2 className="text-sm font-bold text-neutral-900 flex items-center gap-2">
+                <span>AI Forensic Compliance Inspector</span>
+                <span className={`text-xs px-2 py-0.5 rounded-full font-bold border ${
+                  expense.risk_level === 'HIGH'
+                    ? 'bg-red-100 text-red-700 border-red-200'
+                    : expense.risk_level === 'MEDIUM'
+                    ? 'bg-amber-100 text-amber-800 border-amber-200'
+                    : 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                }`}>
+                  {expense.risk_score}/100 Risk Score ({expense.risk_level} RISK)
+                </span>
+              </h2>
+              <p className="text-xs text-neutral-500 mt-0.5">
+                Automated multi-vector inspection for threshold smurfing, collusion, prohibited keywords, and weekend anomalies.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Forensic Flags List */}
+        {Array.isArray(expense.forensic_flags) && expense.forensic_flags.length > 0 ? (
+          <div className="space-y-2 pt-1">
+            {(expense.forensic_flags as any[]).map((flag: any, idx: number) => (
+              <div key={idx} className="p-3 bg-white/90 border border-neutral-200 rounded-xl text-xs space-y-0.5 shadow-sm">
+                <div className="flex items-center gap-2">
+                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                    flag.severity === 'CRITICAL' ? 'bg-red-600 text-white' :
+                    flag.severity === 'HIGH' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
+                  }`}>
+                    {flag.severity}
+                  </span>
+                  <span className="font-bold text-neutral-900">{flag.label}</span>
+                </div>
+                <p className="text-neutral-600 pl-0.5">{flag.description}</p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-emerald-800 font-medium">
+            ✓ Claim passed all forensic checks. No smurfing evasion or collusion detected.
+          </p>
+        )}
+
+        {/* Handwritten Recognition Metadata */}
+        {Boolean((expense.extracted_metadata as any)?.is_handwritten) && (
+          <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs flex items-center gap-2 text-amber-800">
+            <PenTool size={16} className="text-amber-600 shrink-0" />
+            <span>
+              <strong>Handwritten Receipt Recognized:</strong> {String((expense.extracted_metadata as any)?.handwritten_notes || 'Extracted via Multimodal AI')}.
+            </span>
+          </div>
+        )}
+
+        {/* Existing Audit Exemption Record */}
+        {expense.audit_exemption_reason && (
+          <div className="p-3 bg-neutral-900 text-neutral-200 rounded-xl text-xs space-y-1">
+            <span className="font-bold text-amber-400 uppercase tracking-wider text-[10px]">
+              Documented Audit Exemption Justification:
+            </span>
+            <p className="italic text-neutral-300">"{expense.audit_exemption_reason}"</p>
+          </div>
+        )}
+      </div>
+
+      {/* Reviewer / Admin Actions */}
+      {(canReviewTier1 || canReviewTier2) && (
+        <div className="bg-white border border-neutral-200/80 rounded-2xl p-6 shadow-sm space-y-4">
+          <h2 className="text-sm font-bold text-neutral-900">
+            {canReviewTier1 ? 'Tier 1 Review (Reviewer / Admin)' : 'Tier 2 Secondary Review (Finance / Admin)'}
+          </h2>
+
+          {/* Mandatory Audit Exemption input for HIGH risk */}
+          {expense.risk_level === 'HIGH' && (
+            <div className="p-4 bg-red-50/80 border border-red-200 rounded-xl space-y-1.5">
+              <label className="block text-xs font-bold text-red-900 uppercase tracking-wider flex items-center gap-1.5">
+                <AlertTriangle size={14} className="text-red-600" />
+                Mandatory Audit Exemption Reason (Required for High-Risk Approval) *
+              </label>
+              <input
+                type="text"
+                required
+                placeholder="e.g. Approved under Executive Client Hospitality budget code EX-901"
+                value={auditExemption}
+                onChange={(e) => setAuditExemption(e.target.value)}
+                className="w-full px-3.5 py-2 bg-white border border-red-300 rounded-lg text-sm text-neutral-900 placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-red-500/30"
+              />
+              <p className="text-[11px] text-red-700">
+                This claim is flagged as HIGH RISK. Enterprise compliance requires reviewers to document an explicit exemption rationale before approving.
+              </p>
+            </div>
+          )}
+
+          <div>
+            <textarea
+              rows={2}
+              placeholder="Add review comments or change instructions..."
+              value={comments}
+              onChange={(e) => setComments(e.target.value)}
+              className="w-full px-4 py-2.5 border border-neutral-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+            />
+          </div>
+          <div className="flex items-center justify-end gap-3">
+            <button
+              disabled={isProcessing}
+              onClick={() => handleApprovalAction('CHANGES_REQUESTED')}
+              className="px-4 py-2 border border-amber-300 text-amber-800 hover:bg-amber-50 font-medium rounded-xl text-sm transition-colors"
+            >
+              Request Changes
+            </button>
+            <button
+              disabled={isProcessing}
+              onClick={() => handleApprovalAction('REJECTED')}
+              className="px-4 py-2 border border-red-300 text-red-700 hover:bg-red-50 font-medium rounded-xl text-sm transition-colors"
+            >
+              Reject Claim
+            </button>
+            <button
+              disabled={isProcessing}
+              onClick={() => handleApprovalAction('APPROVED')}
+              className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-medium rounded-xl text-sm transition-colors shadow-sm disabled:opacity-50"
+            >
+              Approve Claim
+            </button>
           </div>
         </div>
       )}
 
-      {/* Main Expense Header Card */}
-      <Card>
-        <CardContent className="p-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-100">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2.5">
-                <h1 className="text-xl font-bold text-slate-900 tracking-tight">{expense.merchant}</h1>
-                <Badge status={expense.status} />
-              </div>
-              <p className="text-xs text-slate-500 font-mono">Claim Reference: #{expense.id.toUpperCase()}</p>
-            </div>
-
-            <div className="sm:text-right">
-              <div className="text-2xl font-black text-slate-900 tracking-tight">
-                {formatCurrency(expense.amount, expense.currency)}
-              </div>
-              <div className="text-xs text-slate-400 mt-0.5">{expense.category}</div>
-            </div>
-          </div>
-
-          {/* Stepper Progress */}
-          <TimelineStepper
-            status={expense.status}
-            rejectionReason={expense.rejectionReason}
-            changeRequestReason={expense.changeRequestReason}
-          />
-        </CardContent>
-      </Card>
-
-      {/* Details & Receipt Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Left 2 Cols: Details & Description */}
-        <div className="md:col-span-2 space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Expense Information</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4 text-xs">
-                <div>
-                  <span className="text-slate-400 font-medium">Submitted By</span>
-                  <p className="font-semibold text-slate-800 mt-0.5">
-                    {expense.submitterName || expense.submitterEmail}
-                  </p>
-                  <p className="text-[11px] text-slate-400">{expense.submitterEmail}</p>
-                </div>
-
-                <div>
-                  <span className="text-slate-400 font-medium">Expense Date</span>
-                  <p className="font-semibold text-slate-800 mt-0.5">{formatDate(expense.expenseDate)}</p>
-                </div>
-
-                <div>
-                  <span className="text-slate-400 font-medium">Category</span>
-                  <p className="font-semibold text-slate-800 mt-0.5">{expense.category}</p>
-                </div>
-
-                <div>
-                  <span className="text-slate-400 font-medium">Created On</span>
-                  <p className="font-semibold text-slate-800 mt-0.5">{formatDateTime(expense.createdAt)}</p>
-                </div>
-              </div>
-
-              <div className="pt-3 border-t border-slate-100">
-                <span className="text-xs text-slate-400 font-medium">Business Justification</span>
-                <p className="text-xs text-slate-700 mt-1 whitespace-pre-wrap leading-relaxed">
-                  {expense.description}
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Activity / Audit Trail */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Activity & Audit Trail</CardTitle>
-              <span className="text-xs text-slate-400 font-medium">{auditLogs.length} events logged</span>
-            </CardHeader>
-            <CardContent className="p-0">
-              {auditLogs.length === 0 ? (
-                <div className="p-6 text-center text-xs text-slate-400">No activity recorded yet.</div>
-              ) : (
-                <div className="divide-y divide-slate-100">
-                  {auditLogs.map((log) => (
-                    <div key={log.id} className="p-4 flex items-start gap-3 text-xs">
-                      <div className="w-2 h-2 rounded-full bg-primary-600 mt-1.5 shrink-0" />
-                      <div className="space-y-0.5 flex-1">
-                        <div className="flex items-center justify-between">
-                          <span className="font-semibold text-slate-800">{log.action.replace(/_/g, ' ')}</span>
-                          <span className="text-[10px] text-slate-400">{formatDateTime(log.timestamp)}</span>
-                        </div>
-                        <p className="text-slate-500 text-[11px]">
-                          By: <span className="font-medium text-slate-700">{log.actorEmail}</span>
-                        </p>
-                        {log.after && (
-                          <div className="text-[10px] bg-slate-50 text-slate-600 p-2 rounded mt-1 font-mono">
-                            {JSON.stringify(log.after)}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Right Col: Receipt & Approvers */}
-        <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Attached Receipt</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {expense.receipt ? (
-                <div className="space-y-3">
-                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-center space-y-2">
-                    <FileText className="w-10 h-10 text-primary-600 mx-auto" />
-                    <div>
-                      <p className="text-xs font-semibold text-slate-800 truncate">{expense.receipt.fileName}</p>
-                      <p className="text-[11px] text-slate-400">
-                        {(expense.receipt.fileSize / 1024).toFixed(1)} KB • {expense.receipt.contentType}
-                      </p>
-                    </div>
-                    {expense.receipt.checksum && (
-                      <div className="text-[10px] font-mono text-slate-400 break-all bg-white p-1 rounded border border-slate-100">
-                        SHA256: {expense.receipt.checksum.substring(0, 16)}...
-                      </div>
-                    )}
-                  </div>
-
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="w-full"
-                    onClick={handleDownloadReceipt}
-                    isLoading={isDownloadingReceipt}
-                    leftIcon={<Download className="w-4 h-4" />}
-                  >
-                    View / Download Receipt
-                  </Button>
-                </div>
-              ) : (
-                <div className="p-6 text-center text-xs text-slate-400 space-y-1">
-                  <p>No receipt attached.</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Approvals Information */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Review Decisions</CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              {approvals.length === 0 ? (
-                <div className="p-4 text-center text-xs text-slate-400">Awaiting reviewer action</div>
-              ) : (
-                <div className="divide-y divide-slate-100">
-                  {approvals.map((app) => (
-                    <div key={app.id} className="p-4 text-xs space-y-1">
-                      <div className="flex items-center justify-between">
-                        <span className="font-semibold text-slate-800">{app.reviewerEmail || app.reviewerId}</span>
-                        <Badge variant={app.decision === 'APPROVED' ? 'success' : app.decision === 'REJECTED' ? 'danger' : 'warning'}>
-                          {app.decision}
-                        </Badge>
-                      </div>
-                      {app.reason && <p className="text-slate-600 italic mt-1">"{app.reason}"</p>}
-                      <p className="text-[10px] text-slate-400">{formatDateTime(app.timestamp)}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-
-      {/* Modal: Approve */}
-      <Modal
-        isOpen={isApproveOpen}
-        onClose={() => setIsApproveOpen(false)}
-        title="Approve Expense Claim"
-        description="Authorise this expense for reimbursement settlement."
-      >
-        <div className="space-y-4">
-          {actionError && <div className="text-xs text-red-600 bg-red-50 p-2 rounded">{actionError}</div>}
+      {/* Finance Disbursement Action */}
+      {canDisburse && (
+        <div className="bg-white border border-emerald-200 rounded-2xl p-6 shadow-sm flex items-center justify-between">
           <div>
-            <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">Approval Note (Optional)</label>
-            <textarea
-              rows={2}
-              className="w-full rounded-lg border border-slate-300 p-2.5 text-xs focus:ring-2 focus:ring-primary-500/20"
-              placeholder="e.g. Approved per company travel policy"
-              value={actionReason}
-              onChange={(e) => setActionReason(e.target.value)}
-            />
+            <h2 className="text-sm font-bold text-neutral-900">Approved for Disbursement</h2>
+            <p className="text-xs text-neutral-500 mt-0.5">Trigger idempotent bank transfer / refund settlement.</p>
           </div>
-          <div className="flex justify-end gap-2">
-            <Button variant="ghost" size="sm" onClick={() => setIsApproveOpen(false)}>
-              Cancel
-            </Button>
-            <Button variant="success" size="sm" onClick={handleApprove} isLoading={isProcessingAction}>
-              Confirm Approval
-            </Button>
-          </div>
+          <button
+            disabled={isProcessing}
+            onClick={handleDisbursement}
+            className="px-5 py-2.5 bg-neutral-900 hover:bg-neutral-800 text-white font-medium rounded-xl text-sm transition-colors shadow-sm inline-flex items-center gap-2"
+          >
+            <CreditCard size={16} />
+            {isProcessing ? 'Processing Payout...' : 'Disburse Payout'}
+          </button>
         </div>
-      </Modal>
+      )}
 
-      {/* Modal: Reject */}
-      <Modal
-        isOpen={isRejectOpen}
-        onClose={() => setIsRejectOpen(false)}
-        title="Reject Expense Claim"
-        description="Provide a mandatory reason explaining why this claim was rejected."
-      >
-        <div className="space-y-4">
-          {actionError && <div className="text-xs text-red-600 bg-red-50 p-2 rounded">{actionError}</div>}
+      {/* Employee Submit Draft Action */}
+      {isOwner && ['DRAFT', 'CHANGES_REQUESTED'].includes(expense.status) && (
+        <div className="bg-white border border-neutral-200/80 rounded-2xl p-6 shadow-sm flex items-center justify-between">
           <div>
-            <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">Rejection Reason *</label>
-            <textarea
-              rows={3}
-              required
-              className="w-full rounded-lg border border-slate-300 p-2.5 text-xs focus:ring-2 focus:ring-red-500/20"
-              placeholder="e.g. Non-compliant expense category or missing itemized receipt"
-              value={actionReason}
-              onChange={(e) => setActionReason(e.target.value)}
-            />
+            <h2 className="text-sm font-bold text-neutral-900">Ready to Submit?</h2>
+            <p className="text-xs text-neutral-500 mt-0.5">Send claim to Reviewers for evaluation.</p>
           </div>
-          <div className="flex justify-end gap-2">
-            <Button variant="ghost" size="sm" onClick={() => setIsRejectOpen(false)}>
-              Cancel
-            </Button>
-            <Button variant="danger" size="sm" onClick={handleReject} isLoading={isProcessingAction}>
-              Confirm Rejection
-            </Button>
-          </div>
+          <button
+            disabled={isProcessing}
+            onClick={handleSubmitDraft}
+            className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-medium rounded-xl text-sm transition-colors shadow-sm inline-flex items-center gap-2"
+          >
+            <Send size={16} />
+            {isProcessing ? 'Submitting...' : 'Submit Claim'}
+          </button>
         </div>
-      </Modal>
-
-      {/* Modal: Request Changes */}
-      <Modal
-        isOpen={isChangesOpen}
-        onClose={() => setIsChangesOpen(false)}
-        title="Request Changes from Submitter"
-        description="Instruct the employee on required corrections before this expense can be approved."
-      >
-        <div className="space-y-4">
-          {actionError && <div className="text-xs text-red-600 bg-red-50 p-2 rounded">{actionError}</div>}
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">Required Changes *</label>
-            <textarea
-              rows={3}
-              required
-              className="w-full rounded-lg border border-slate-300 p-2.5 text-xs focus:ring-2 focus:ring-amber-500/20"
-              placeholder="e.g. Please attach the tax invoice rather than credit card receipt"
-              value={actionReason}
-              onChange={(e) => setActionReason(e.target.value)}
-            />
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button variant="ghost" size="sm" onClick={() => setIsChangesOpen(false)}>
-              Cancel
-            </Button>
-            <Button variant="primary" size="sm" onClick={handleRequestChanges} isLoading={isProcessingAction}>
-              Send Change Request
-            </Button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* Modal: Initiate Reimbursement / Payout */}
-      <Modal
-        isOpen={isPayoutOpen}
-        onClose={() => setIsPayoutOpen(false)}
-        title="Process Financial Reimbursement"
-        description="Trigger bank / gateway payout with idempotency and retry protection."
-      >
-        <div className="space-y-4">
-          {actionError && <div className="text-xs text-red-600 bg-red-50 p-2 rounded">{actionError}</div>}
-          <div className="p-3 bg-slate-50 rounded-lg text-xs space-y-1">
-            <div className="flex justify-between">
-              <span className="text-slate-500">Payee:</span>
-              <span className="font-semibold text-slate-800">{expense.submitterEmail}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-500">Amount:</span>
-              <span className="font-bold text-slate-900">{formatCurrency(expense.amount, expense.currency)}</span>
-            </div>
-          </div>
-
-          <div className="text-xs text-slate-500">
-            For demonstration and test simulation, choose the desired outcome:
-          </div>
-
-          <div className="grid grid-cols-3 gap-2">
-            <Button
-              variant="success"
-              size="sm"
-              onClick={() => handleInitiatePayout('SUCCESS')}
-              isLoading={isProcessingAction}
-            >
-              Simulate Success
-            </Button>
-            <Button
-              variant="danger"
-              size="sm"
-              onClick={() => handleInitiatePayout('FAILURE')}
-              isLoading={isProcessingAction}
-            >
-              Simulate Failure
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => handleInitiatePayout('TIMEOUT')}
-              isLoading={isProcessingAction}
-            >
-              Simulate Timeout
-            </Button>
-          </div>
-        </div>
-      </Modal>
+      )}
     </div>
   );
 }

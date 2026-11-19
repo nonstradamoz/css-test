@@ -1,0 +1,297 @@
+from datetime import datetime
+from decimal import Decimal
+from typing import Optional, List, Dict, Any
+from pydantic import BaseModel, EmailStr, Field, ConfigDict
+from app.models import (
+    UserRole,
+    ExpenseStatus,
+    ExpenseCategory,
+    ApprovalDecision,
+    ReimbursementStatus
+)
+
+
+# ==================== Auth & User Schemas ====================
+
+class BankDetails(BaseModel):
+    account_holder_name: Optional[str] = None
+    bank_name: Optional[str] = None
+    account_number: Optional[str] = None
+    ifsc_code: Optional[str] = None
+    upi_id: Optional[str] = None
+
+
+class UserBase(BaseModel):
+    email: EmailStr
+    full_name: str
+
+
+class UserCreate(UserBase):
+    password: str = Field(..., min_length=8)
+    role: UserRole = UserRole.EMPLOYEE
+    bank_details: Optional[BankDetails] = None
+
+
+class UserUpdate(BaseModel):
+    full_name: Optional[str] = None
+    role: Optional[UserRole] = None
+    is_active: Optional[bool] = None
+    bank_details: Optional[BankDetails] = None
+
+
+class UserProfileUpdate(BaseModel):
+    full_name: Optional[str] = None
+    password: Optional[str] = Field(None, min_length=8)
+    bank_details: Optional[BankDetails] = None
+
+
+class UserOut(UserBase):
+    id: str
+    role: UserRole
+    is_active: bool
+    bank_details: Optional[Dict[str, Any]] = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    user: UserOut
+
+
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
+
+
+# ==================== System Settings ====================
+
+class SystemSettingsOut(BaseModel):
+    company_name: str
+    default_currency: str
+    tier2_approval_threshold: Decimal
+    allow_self_approval: bool
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SystemSettingsUpdate(BaseModel):
+    company_name: Optional[str] = None
+    default_currency: Optional[str] = None
+    tier2_approval_threshold: Optional[Decimal] = None
+    allow_self_approval: Optional[bool] = None
+
+
+# ==================== Approval Schemas ====================
+
+class ApprovalActionRequest(BaseModel):
+    decision: ApprovalDecision
+    comments: Optional[str] = None
+    audit_exemption_reason: Optional[str] = None
+
+
+class ExpenseApprovalOut(BaseModel):
+    id: str
+    reviewer_id: str
+    tier: int
+    decision: ApprovalDecision
+    comments: Optional[str]
+    created_at: datetime
+    reviewer_name: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ==================== Reimbursement Schemas ====================
+
+class ReimbursementCreate(BaseModel):
+    expense_id: str
+    idempotency_key: str = Field(..., min_length=16, description="Client-generated unique UUID to prevent double payouts")
+
+
+class ReimbursementOut(BaseModel):
+    id: str
+    expense_id: str
+    processed_by: str
+    amount: Decimal
+    currency: str
+    status: ReimbursementStatus
+    idempotency_key: str
+    retry_count: int
+    provider_response: Optional[Dict[str, Any]] = None
+    disbursed_at: Optional[datetime] = None
+    created_at: datetime
+    expense_title: Optional[str] = None
+    submitter_name: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ==================== Expense Schemas ====================
+
+class ExpenseCreate(BaseModel):
+    title: str = Field(..., min_length=3, max_length=255)
+    description: Optional[str] = None
+    category: str = Field(..., min_length=1, max_length=64)
+    amount: Decimal = Field(..., gt=0)
+    currency: str = "INR"
+    expense_date: datetime
+    receipt_url: Optional[str] = None
+    receipt_hash: Optional[str] = None
+    extracted_metadata: Optional[Dict[str, Any]] = None
+
+
+class ExpenseUpdate(BaseModel):
+    title: Optional[str] = Field(None, min_length=3, max_length=255)
+    description: Optional[str] = None
+    category: Optional[str] = Field(None, min_length=1, max_length=64)
+    amount: Optional[Decimal] = Field(None, gt=0)
+    currency: Optional[str] = None
+    expense_date: Optional[datetime] = None
+    receipt_url: Optional[str] = None
+    receipt_hash: Optional[str] = None
+    extracted_metadata: Optional[Dict[str, Any]] = None
+
+
+class ExpenseOut(BaseModel):
+    id: str
+    submitted_by: str
+    title: str
+    description: Optional[str]
+    category: str
+    amount: Decimal
+    currency: str
+    receipt_url: Optional[str]
+    receipt_hash: Optional[str]
+    status: ExpenseStatus
+    approval_tier_required: int
+    current_approval_tier: int
+    expense_date: datetime
+    risk_score: int = 0
+    risk_level: str = "LOW"
+    forensic_flags: List[Dict[str, Any]] = []
+    extracted_metadata: Optional[Dict[str, Any]] = None
+    audit_exemption_reason: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    submitter_name: Optional[str] = None
+    submitter_email: Optional[str] = None
+    approvals: List[ExpenseApprovalOut] = []
+    reimbursement: Optional[ReimbursementOut] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ==================== AI Receipt & Forensics Schemas ====================
+
+class ExtractedLineItem(BaseModel):
+    description: str
+    amount: float
+    flagged: bool = False
+    reason: Optional[str] = None
+
+
+class ReceiptAnalysisResponse(BaseModel):
+    merchant_name: str
+    amount: float
+    currency: str = "INR"
+    expense_date: Optional[str] = None
+    suggested_category: str
+    tax_amount: Optional[float] = None
+    line_items: List[ExtractedLineItem] = []
+    confidence_score: float = 0.95
+    is_handwritten: bool = False
+    handwritten_notes: Optional[str] = None
+    invoice_number: Optional[str] = None
+
+
+class ForensicsPreviewRequest(BaseModel):
+    amount: Decimal
+    expense_date: datetime
+    category: str
+    receipt_hash: Optional[str] = None
+    line_items: Optional[List[Dict[str, Any]]] = None
+
+
+class ForensicFlagItem(BaseModel):
+    code: str
+    label: str
+    severity: str  # CRITICAL, HIGH, MEDIUM, LOW
+    description: str
+
+
+class ForensicsPreviewResponse(BaseModel):
+    risk_score: int
+    risk_level: str  # LOW, MEDIUM, HIGH
+    flags: List[ForensicFlagItem]
+    will_escalate_tier2: bool
+    is_blocked: bool = False
+    block_reason: Optional[str] = None
+
+
+# ==================== Category Schemas ====================
+
+class CategoryCreate(BaseModel):
+    code: str = Field(..., min_length=2, max_length=50)
+    name: str = Field(..., min_length=2, max_length=100)
+    description: Optional[str] = None
+    is_active: bool = True
+
+
+class CategoryUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=2, max_length=100)
+    description: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class CategoryOut(BaseModel):
+    id: str
+    code: str
+    name: str
+    description: Optional[str] = None
+    is_active: bool
+    is_system: bool
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ==================== Storage Schemas (Cloudflare R2) ====================
+
+class PresignedUploadRequest(BaseModel):
+    filename: str
+    content_type: str = Field(..., pattern="^(image/.*|application/pdf)$")
+    file_size_bytes: int = Field(..., gt=0, le=15 * 1024 * 1024)  # Max 15MB
+
+
+class PresignedUploadResponse(BaseModel):
+    upload_url: str
+    key: str
+    public_url: str
+    fields: Optional[Dict[str, Any]] = None
+
+
+# ==================== Audit Log Schemas ====================
+
+class AuditLogOut(BaseModel):
+    id: str
+    actor_id: Optional[str]
+    entity_type: str
+    entity_id: str
+    action: str
+    old_values: Optional[Dict[str, Any]]
+    new_values: Optional[Dict[str, Any]]
+    ip_address: Optional[str]
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)

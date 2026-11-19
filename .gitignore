@@ -129,3 +129,25 @@ functions/lib/
 functions/node_modules/
 frontend/node_modules/
 scratch/
+
+# Python virtual environments & bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+backend/.venv/
+.venv/
+env/
+venv/
+.pytest_cache/
+*.egg-info/
+.coverage
+
+# Local development SQLite databases
+*.db
+*.sqlite3
+crs_dev.db
+
+# Local uploads
+uploads/
+backend/uploads/
+

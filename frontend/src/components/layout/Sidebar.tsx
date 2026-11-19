@@ -6,174 +6,121 @@ import { usePathname } from 'next/navigation';
 import { useAuth } from '@/components/providers/AuthProvider';
 import {
   LayoutDashboard, Receipt, PlusCircle, CheckSquare,
-  CreditCard, AlertOctagon, Users, ScrollText, Settings,
-  ShieldAlert, LogOut, ChevronDown, Building2
+  CreditCard, Users, ScrollText, Settings,
+  ShieldCheck, LogOut, User
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Role } from '@/types';
 
 const NAV_ITEMS: Record<string, { label: string; href: string; icon: any }[]> = {
-  MEMBER: [
-    { label: 'Dashboard',       href: '/dashboard',    icon: LayoutDashboard },
-    { label: 'My Expenses',     href: '/expenses',     icon: Receipt },
-    { label: 'Submit Expense',  href: '/expenses/new', icon: PlusCircle }
+  EMPLOYEE: [
+    { label: 'Dashboard',       href: '/dashboard',      icon: LayoutDashboard },
+    { label: 'My Expenses',     href: '/expenses',       icon: Receipt },
+    { label: 'Submit Expense',  href: '/expenses/new',   icon: PlusCircle },
+    { label: 'Reimbursements',  href: '/reimbursements', icon: CreditCard },
+    { label: 'My Profile',      href: '/profile',        icon: User }
   ],
   REVIEWER: [
-    { label: 'Dashboard',       href: '/dashboard',  icon: LayoutDashboard },
-    { label: 'All Expenses',    href: '/expenses',   icon: Receipt },
-    { label: 'Approvals Queue', href: '/approvals',  icon: CheckSquare }
+    { label: 'Dashboard',       href: '/dashboard',      icon: LayoutDashboard },
+    { label: 'All Expenses',    href: '/expenses',       icon: Receipt },
+    { label: 'Approvals Queue', href: '/approvals',      icon: CheckSquare },
+    { label: 'Reimbursements',  href: '/reimbursements', icon: CreditCard },
+    { label: 'My Profile',      href: '/profile',        icon: User }
   ],
   FINANCE: [
-    { label: 'Dashboard',      href: '/dashboard',                    icon: LayoutDashboard },
-    { label: 'Approved Claims', href: '/expenses?status=APPROVED',   icon: Receipt },
-    { label: 'Reimbursements', href: '/reimbursements',              icon: CreditCard },
-    { label: 'Failed Refunds', href: '/reimbursements?status=FAILED', icon: AlertOctagon },
-    { label: 'Audit Logs',     href: '/audit-logs',                  icon: ScrollText }
+    { label: 'Dashboard',       href: '/dashboard',      icon: LayoutDashboard },
+    { label: 'Expenses',        href: '/expenses',       icon: Receipt },
+    { label: 'Approvals (T2)',  href: '/approvals',      icon: CheckSquare },
+    { label: 'Reimbursements',  href: '/reimbursements', icon: CreditCard },
+    { label: 'Audit Logs',      href: '/audit-logs',     icon: ScrollText },
+    { label: 'My Profile',      href: '/profile',        icon: User }
   ],
   ADMIN: [
-    { label: 'Dashboard',      href: '/dashboard',      icon: LayoutDashboard },
-    { label: 'Expenses',       href: '/expenses',       icon: Receipt },
-    { label: 'Approvals',      href: '/approvals',      icon: CheckSquare },
-    { label: 'Reimbursements', href: '/reimbursements', icon: CreditCard },
-    { label: 'Members',        href: '/members',        icon: Users },
-    { label: 'Audit Logs',     href: '/audit-logs',     icon: ScrollText },
-    { label: 'Settings',       href: '/settings',       icon: Settings }
+    { label: 'Dashboard',       href: '/dashboard',      icon: LayoutDashboard },
+    { label: 'Expenses',        href: '/expenses',       icon: Receipt },
+    { label: 'Approvals Queue', href: '/approvals',      icon: CheckSquare },
+    { label: 'Reimbursements',  href: '/reimbursements', icon: CreditCard },
+    { label: 'User Management', href: '/users',          icon: Users },
+    { label: 'Audit Logs',      href: '/audit-logs',     icon: ScrollText },
+    { label: 'Settings',        href: '/settings',       icon: Settings },
+    { label: 'My Profile',      href: '/profile',        icon: User }
   ]
 };
 
 export const Sidebar: React.FC = () => {
   const pathname = usePathname();
-  const { activeRole, isSuperAdmin, user, activeOrg, userOrgs, switchOrg, signOut } = useAuth();
+  const { role, user, logout } = useAuth();
 
-  const items = NAV_ITEMS[activeRole || 'ADMIN'] ?? NAV_ITEMS.ADMIN;
-  const initials = user?.email?.substring(0, 2).toUpperCase() ?? 'U';
-  const displayName = user?.user_metadata?.display_name || user?.email?.split('@')[0] || 'User';
+  const currentRole = (role as string) || 'EMPLOYEE';
+  const items = NAV_ITEMS[currentRole] ?? NAV_ITEMS.EMPLOYEE;
+  const initials = user?.full_name ? user.full_name.substring(0, 2).toUpperCase() : 'U';
+  const displayName = user?.full_name || user?.email?.split('@')[0] || 'User';
 
   const isActive = (href: string) =>
     pathname === href ||
     (href !== '/dashboard' && pathname.startsWith(href.split('?')[0]) && !href.includes('?'));
 
   return (
-    <nav className="nav-rail">
-      {/* Brand */}
-      <div style={{ padding: '20px 14px 16px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <ShieldAlert size={20} color="var(--accent)" />
-          <span style={{ fontSize: 16, fontWeight: 750, color: '#fff', letterSpacing: '-0.02em' }}>
-            AmritaCRS
-          </span>
+    <nav className="w-64 bg-neutral-900 text-neutral-200 h-screen sticky top-0 flex flex-col justify-between p-4 shrink-0 z-30 overflow-y-auto">
+      <div>
+        {/* Brand */}
+        <div className="flex items-center gap-3 px-2 py-4 mb-4 border-b border-neutral-800">
+          <div className="p-2 bg-emerald-500/10 text-emerald-400 rounded-lg">
+            <ShieldCheck size={22} />
+          </div>
+          <div>
+            <span className="font-bold text-white text-base tracking-tight block">
+              CRS Enterprise
+            </span>
+            <span className="text-xs text-neutral-400">Refund & Expense</span>
+          </div>
+        </div>
+
+        {/* Navigation Items */}
+        <div className="space-y-1">
+          {items.map((item) => {
+            const Icon = item.icon;
+            const active = isActive(item.href);
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn(
+                  "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
+                  active
+                    ? "bg-neutral-800 text-white font-semibold"
+                    : "text-neutral-400 hover:text-white hover:bg-neutral-800/60"
+                )}
+              >
+                <Icon size={18} className={active ? "text-emerald-400" : "text-neutral-400"} />
+                {item.label}
+              </Link>
+            );
+          })}
         </div>
       </div>
 
-      {/* Org Switcher */}
-      {userOrgs.length > 0 && (
-        <div style={{ padding: '0 10px 12px' }}>
-          <div className="relative group" style={{ position: 'relative' }}>
-            <button style={{
-              width: '100%', display: 'flex', alignItems: 'center', gap: 7,
-              padding: '7px 10px', borderRadius: 7, cursor: 'pointer',
-              background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.07)',
-              color: 'rgba(255,255,255,0.6)', fontSize: 12, fontWeight: 500
-            }}>
-              <Building2 size={13} />
-              <span style={{ flex: 1, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {activeOrg?.name ?? 'Select org'}
-              </span>
-              <ChevronDown size={12} style={{ opacity: 0.5, flexShrink: 0 }} />
-            </button>
-            <div className="group-hover:block hidden" style={{
-              position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4,
-              background: '#252319', border: '1px solid rgba(255,255,255,0.09)',
-              borderRadius: 8, overflow: 'hidden', zIndex: 50,
-              boxShadow: '0 8px 24px rgba(0,0,0,0.5)'
-            }}>
-              {userOrgs.map(org => (
-                <button
-                  key={org.id}
-                  onClick={() => switchOrg(org.id)}
-                  style={{
-                    width: '100%', textAlign: 'left', padding: '8px 12px',
-                    fontSize: 12, fontWeight: 500, display: 'flex',
-                    alignItems: 'center', justifyContent: 'space-between',
-                    cursor: 'pointer', background: 'transparent',
-                    color: activeOrg?.id === org.id ? 'var(--accent-mid)' : 'rgba(255,255,255,0.55)',
-                    borderBottom: '1px solid rgba(255,255,255,0.04)'
-                  }}
-                >
-                  {org.name}
-                  {activeOrg?.id === org.id && (
-                    <span style={{ width: 5, height: 5, borderRadius: 99, background: 'var(--accent-mid)' }} />
-                  )}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Nav items */}
-      <div style={{ padding: '0 10px', flex: 1 }}>
-        <div className="nav-section-label">Menu</div>
-        {items.map(item => {
-          const Icon = item.icon;
-          const active = isActive(item.href);
-          return (
-            <Link key={item.label} href={item.href} className={cn('nav-item', active && 'active')}>
-              <div className="nav-icon"><Icon size={14} /></div>
-              {item.label}
-            </Link>
-          );
-        })}
-
-        {isSuperAdmin && (
-          <>
-            <div className="nav-section-label" style={{ color: 'rgba(167,139,250,0.35)' }}>System</div>
-            <Link href="/superadmin" className={cn('nav-item', pathname.startsWith('/superadmin') && 'active')}>
-              <div className="nav-icon" style={pathname.startsWith('/superadmin') ? { background: '#7c3aed' } : {}}>
-                <ShieldAlert size={14} />
-              </div>
-              Platform Admin
-            </Link>
-          </>
-        )}
-      </div>
-
-      {/* Footer: user */}
-      <div style={{
-        margin: '8px 10px 12px',
-        padding: '10px',
-        borderRadius: 8,
-        background: 'rgba(255,255,255,0.05)',
-        border: '1px solid rgba(255,255,255,0.06)'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{
-            width: 28, height: 28, borderRadius: 99, flexShrink: 0,
-            background: 'var(--accent)', color: '#fff',
-            fontSize: 11, fontWeight: 700,
-            display: 'flex', alignItems: 'center', justifyContent: 'center'
-          }}>
-            {initials}
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: '#fff', lineHeight: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {displayName}
-            </div>
-            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {user?.email}
-            </div>
-          </div>
-          <button
-            onClick={() => signOut()}
-            title="Sign out"
-            style={{
-              padding: 5, borderRadius: 6, background: 'transparent',
-              color: 'rgba(255,255,255,0.25)', cursor: 'pointer',
-              flexShrink: 0, transition: 'color 0.12s, background 0.12s'
-            }}
-            onMouseEnter={e => { (e.currentTarget as any).style.color = '#f87171'; (e.currentTarget as any).style.background = 'rgba(248,113,113,0.1)'; }}
-            onMouseLeave={e => { (e.currentTarget as any).style.color = 'rgba(255,255,255,0.25)'; (e.currentTarget as any).style.background = 'transparent'; }}
+      {/* User Footer */}
+      <div className="pt-4 border-t border-neutral-800">
+        <div className="flex items-center justify-between px-2 py-2">
+          <Link
+            href="/profile"
+            className="flex items-center gap-2.5 overflow-hidden group hover:opacity-90 transition-opacity"
           >
-            <LogOut size={13} />
+            <div className="w-8 h-8 rounded-full bg-emerald-700 text-white flex items-center justify-center font-bold text-xs shrink-0 group-hover:ring-2 group-hover:ring-emerald-400">
+              {initials}
+            </div>
+            <div className="truncate">
+              <p className="text-sm font-medium text-white truncate leading-tight group-hover:text-emerald-400 transition-colors">{displayName}</p>
+              <p className="text-xs text-neutral-400 truncate">{user?.email}</p>
+            </div>
+          </Link>
+          <button
+            onClick={() => logout()}
+            title="Log Out"
+            className="p-1.5 text-neutral-400 hover:text-red-400 hover:bg-neutral-800 rounded-lg transition-colors ml-1"
+          >
+            <LogOut size={16} />
           </button>
         </div>
       </div>

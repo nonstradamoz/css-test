@@ -2,300 +2,320 @@
 
 import React, { useState } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { useQuery } from '@tanstack/react-query';
-import { createClient } from '@/lib/supabase';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { Expense } from '@/types';
+import { Expense, ApprovalDecision } from '@/types';
 import { formatCurrency, formatDate } from '@/lib/utils';
-import { Badge } from '@/components/ui/Badge';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
-import { Modal } from '@/components/ui/Modal';
-import { CheckSquare, CheckCircle2, XCircle, AlertTriangle, ExternalLink, ShieldCheck } from 'lucide-react';
+import {
+  CheckSquare, CheckCircle2, XCircle, AlertTriangle,
+  ExternalLink, ShieldCheck, ShieldAlert, Search, Filter, ArrowUpDown, Tag
+} from 'lucide-react';
 import Link from 'next/link';
 
 export default function ApprovalsQueuePage() {
-  const { activeOrg, activeRole, user } = useAuth();
-  const orgId = activeOrg?.id;
-
+  const { role } = useAuth();
+  const queryClient = useQueryClient();
   const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null);
-  const [modalType, setModalType] = useState<'APPROVE' | 'REJECT' | 'CHANGES' | null>(null);
-  const [actionReason, setActionReason] = useState('');
+  const [decision, setDecision] = useState<ApprovalDecision | null>(null);
+  const [comments, setComments] = useState('');
+  const [auditExemption, setAuditExemption] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const { data: pendingExpenses = [], isLoading, refetch } = useQuery({
-    queryKey: ['approvals-queue', orgId],
-    queryFn: async () => {
-      if (!orgId) return [];
-      const supabase = createClient();
-      const { data, error } = await supabase
-        .from('expenses')
-        .select('*')
-        .eq('organisation_id', orgId)
-        .in('status', ['SUBMITTED', 'UNDER_REVIEW', 'RESUBMITTED'])
-        .order('created_at', { ascending: false });
-        
-      if (error || !data) return [];
-      
-      return data.map((d: any) => ({
-        id: d.id,
-        organisationId: d.organisation_id,
-        submittedBy: d.submitted_by,
-        submitterEmail: d.submitter_email,
-        submitterName: d.submitter_name,
-        amount: d.amount,
-        currency: d.currency,
-        category: d.category,
-        merchant: d.merchant,
-        expenseDate: d.expense_date,
-        description: d.description,
-        status: d.status,
-        receipt: d.receipt,
-        duplicateWarning: d.duplicate_warning,
-        changeRequestReason: d.change_request_reason,
-        rejectionReason: d.rejection_reason,
-        approvedBy: d.approved_by,
-        approvedAt: d.approved_at,
-        rejectedBy: d.rejected_by,
-        rejectedAt: d.rejected_at,
-        reimbursementId: d.reimbursement_id,
-        createdAt: d.created_at,
-        updatedAt: d.updated_at,
-        submittedAt: d.submitted_at
-      })) as Expense[];
-    },
-    enabled: !!orgId
+  // Search, Filter & Sort state
+  const [search, setSearch] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('ALL');
+  const [sortBy, setSortBy] = useState('created_at');
+  const [sortOrder, setSortOrder] = useState('desc');
+
+  // Load active dynamic categories
+  const { data: categories = [] } = useQuery({
+    queryKey: ['categories-active'],
+    queryFn: () => api.categories.list()
   });
 
-  const handleActionSubmit = async () => {
-    if (!orgId || !selectedExpense || !modalType) return;
+  const { data: pendingExpenses = [], isLoading, refetch } = useQuery({
+    queryKey: ['pending-approvals', search, categoryFilter, sortBy, sortOrder],
+    queryFn: () => api.approvals.listPending({
+      search: search || undefined,
+      category: categoryFilter !== 'ALL' ? categoryFilter : undefined,
+      sort_by: sortBy,
+      sort_order: sortOrder
+    })
+  });
+
+  const handleAction = async () => {
+    if (!selectedExpense || !decision) return;
+    if (decision === 'APPROVED' && selectedExpense.risk_level === 'HIGH' && !auditExemption.trim()) {
+      setError('Audit Compliance Policy: An explicit Audit Exemption Reason is mandatory when approving claims flagged as HIGH RISK.');
+      return;
+    }
+
     setIsProcessing(true);
     setError(null);
-
     try {
-      if (modalType === 'APPROVE') {
-        await api.approveExpense({
-          organisationId: orgId,
-          expenseId: selectedExpense.id,
-          reason: actionReason || 'Approved as legitimate business expense'
-        });
-      } else if (modalType === 'REJECT') {
-        if (!actionReason.trim()) {
-          setError('A rejection reason is required.');
-          setIsProcessing(false);
-          return;
-        }
-        await api.rejectExpense({
-          organisationId: orgId,
-          expenseId: selectedExpense.id,
-          reason: actionReason.trim()
-        });
-      } else if (modalType === 'CHANGES') {
-        if (!actionReason.trim()) {
-          setError('Instructions/reason for changes are required.');
-          setIsProcessing(false);
-          return;
-        }
-        await api.requestExpenseChanges({
-          organisationId: orgId,
-          expenseId: selectedExpense.id,
-          reason: actionReason.trim()
-        });
-      }
-
-      setModalType(null);
+      await api.approvals.review(selectedExpense.id, {
+        decision,
+        comments: comments || undefined,
+        audit_exemption_reason: auditExemption.trim() || undefined
+      });
       setSelectedExpense(null);
-      setActionReason('');
-      refetch();
+      setDecision(null);
+      setComments('');
+      setAuditExemption('');
+      await Promise.all([
+        refetch(),
+        queryClient.invalidateQueries({ queryKey: ['expenses-list'] }),
+        queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] })
+      ]);
     } catch (err: any) {
-      setError(err.message || 'Action failed.');
+      setError(err.message || 'Approval action failed');
     } finally {
       setIsProcessing(false);
     }
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Approvals Queue</h1>
-          <p className="text-xs text-slate-500 mt-1">
-            Review and authorise pending employee expense claims with transactional concurrency safety.
-          </p>
+    <div className="p-8 max-w-7xl mx-auto space-y-6">
+      {/* Header */}
+      <div>
+        <h1 className="text-2xl font-bold text-neutral-900 tracking-tight">Approvals Queue</h1>
+        <p className="text-sm text-neutral-500 mt-1">
+          Review, approve, or request modifications for pending employee claims.
+        </p>
+      </div>
+
+      {error && (
+        <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center gap-2.5 text-sm text-red-600">
+          <AlertTriangle size={18} className="shrink-0" />
+          <span>{error}</span>
         </div>
-        <div className="text-xs font-semibold text-slate-600 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">
-          {pendingExpenses.length} Claims Awaiting Review
+      )}
+
+      {/* Filter and Search Bar */}
+      <div className="bg-white rounded-xl border border-neutral-200/80 p-4 shadow-sm flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
+        <div className="relative flex-1">
+          <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400" />
+          <input
+            type="text"
+            placeholder="Search by submitter name, claim title, or ID..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 bg-neutral-50 border border-neutral-200 rounded-lg text-sm text-neutral-900 placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 transition-all"
+          />
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Category Filter */}
+          <div className="flex items-center gap-1.5">
+            <Tag size={15} className="text-neutral-400 shrink-0" />
+            <select
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              className="py-2 px-3 bg-neutral-50 border border-neutral-200 rounded-lg text-xs font-semibold text-neutral-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+            >
+              <option value="ALL">All Categories</option>
+              {categories.map((c) => (
+                <option key={c.code} value={c.code}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Sort Selector */}
+          <div className="flex items-center gap-1.5">
+            <ArrowUpDown size={15} className="text-neutral-400 shrink-0" />
+            <select
+              value={`${sortBy}-${sortOrder}`}
+              onChange={(e) => {
+                const [sb, so] = e.target.value.split('-');
+                setSortBy(sb);
+                setSortOrder(so);
+              }}
+              className="py-2 px-3 bg-neutral-50 border border-neutral-200 rounded-lg text-xs font-semibold text-neutral-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+            >
+              <option value="created_at-desc">Date (Newest First)</option>
+              <option value="created_at-asc">Date (Oldest First)</option>
+              <option value="amount-desc">Amount (Highest First - Priority)</option>
+              <option value="amount-asc">Amount (Lowest First)</option>
+              <option value="title-asc">Title (A-Z)</option>
+            </select>
+          </div>
         </div>
       </div>
 
-      <Card>
-        <CardContent className="p-0">
-          {isLoading ? (
-            <div className="p-12 text-center text-xs text-slate-400">Loading approval queue...</div>
-          ) : pendingExpenses.length === 0 ? (
-            <div className="p-12 text-center space-y-3">
-              <CheckSquare className="w-10 h-10 text-emerald-500/60 mx-auto" />
-              <h3 className="text-sm font-semibold text-slate-700">Approval Queue is Clear</h3>
-              <p className="text-xs text-slate-500">All submitted claims have been processed.</p>
-            </div>
-          ) : (
-            <div className="divide-y divide-slate-100">
-              {pendingExpenses.map((exp) => (
-                <div
-                  key={exp.id}
-                  className="p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:bg-slate-50/70 transition-colors"
-                >
-                  <div className="space-y-1.5 max-w-xl">
-                    <div className="flex items-center gap-2.5">
-                      <span className="font-bold text-slate-900 text-sm">{exp.merchant}</span>
-                      <Badge status={exp.status} />
-                      {exp.duplicateWarning?.isDuplicate && (
-                        <span className="text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded font-semibold flex items-center gap-1">
-                          <AlertTriangle className="w-3 h-3" /> Duplicate Alert
+      {/* Table */}
+      <div className="bg-white rounded-xl border border-neutral-200/80 shadow-sm overflow-hidden">
+        {isLoading ? (
+          <div className="p-12 text-center text-sm text-neutral-500">Loading pending queue...</div>
+        ) : pendingExpenses.length === 0 ? (
+          <div className="p-16 text-center">
+            <CheckCircle2 size={36} className="mx-auto text-emerald-500 mb-3" />
+            <p className="text-base font-bold text-neutral-900">All caught up!</p>
+            <p className="text-xs text-neutral-500 mt-1">
+              {search || categoryFilter !== 'ALL'
+                ? 'No claims match your search filters.'
+                : 'There are no expense claims pending your approval at this time.'}
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-neutral-50/75 border-b border-neutral-200 text-xs text-neutral-500 uppercase tracking-wider">
+                <tr>
+                  <th className="px-6 py-3.5">Claim & Submitter</th>
+                  <th className="px-6 py-3.5">Category</th>
+                  <th className="px-6 py-3.5">Forensics Risk</th>
+                  <th className="px-6 py-3.5">Date</th>
+                  <th className="px-6 py-3.5">Amount</th>
+                  <th className="px-6 py-3.5">Tier Target</th>
+                  <th className="px-6 py-3.5 text-right">Quick Decision</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-neutral-200">
+                {pendingExpenses.map((exp) => (
+                  <tr key={exp.id} className="hover:bg-neutral-50/60 transition-colors">
+                    <td className="px-6 py-4">
+                      <Link href={`/expenses/${exp.id}`} className="font-semibold text-neutral-900 hover:text-emerald-600">
+                        {exp.title}
+                      </Link>
+                      <p className="text-xs text-neutral-500">{exp.submitter_name || exp.submitter_email}</p>
+                    </td>
+                    <td className="px-6 py-4 text-xs font-medium text-neutral-600">
+                      <span className="px-2 py-0.5 rounded bg-neutral-100 text-neutral-700">
+                        {categories.find(c => c.code === exp.category)?.name || exp.category}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold border ${
+                        exp.risk_level === 'HIGH'
+                          ? 'bg-red-50 text-red-700 border-red-200'
+                          : exp.risk_level === 'MEDIUM'
+                          ? 'bg-amber-50 text-amber-700 border-amber-200'
+                          : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                      }`}>
+                        {exp.risk_level === 'HIGH' ? (
+                          <ShieldAlert size={12} className="text-red-600" />
+                        ) : (
+                          <ShieldCheck size={12} className="text-emerald-600" />
+                        )}
+                        {exp.risk_score}/100 ({exp.risk_level})
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-xs text-neutral-500">
+                      {formatDate(exp.expense_date)}
+                    </td>
+                    <td className="px-6 py-4 font-semibold text-neutral-900">
+                      {formatCurrency(exp.amount, exp.currency)}
+                    </td>
+                    <td className="px-6 py-4 text-xs">
+                      {exp.status === 'SUBMITTED' ? (
+                        <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 font-semibold border border-blue-200">
+                          Tier 1 (Reviewer)
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded bg-amber-50 text-amber-700 font-semibold border border-amber-200">
+                          Tier 2 (Finance)
                         </span>
                       )}
-                    </div>
-
-                    <p className="text-xs text-slate-600 line-clamp-1">{exp.description}</p>
-
-                    <div className="text-[11px] text-slate-400 flex items-center gap-3">
-                      <span>Submitted by: <strong className="text-slate-700 font-medium">{exp.submitterName || exp.submitterEmail}</strong></span>
-                      <span>•</span>
-                      <span>Category: <strong className="text-slate-700 font-medium">{exp.category}</strong></span>
-                      <span>•</span>
-                      <span>Date: <strong className="text-slate-700 font-medium">{formatDate(exp.expenseDate)}</strong></span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-4">
-                    <div className="text-right">
-                      <div className="text-base font-black text-slate-900">
-                        {formatCurrency(exp.amount, exp.currency)}
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => { setSelectedExpense(exp); setDecision('APPROVED'); }}
+                          className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-medium rounded-lg text-xs transition-colors shadow-sm"
+                        >
+                          Approve
+                        </button>
+                        <button
+                          onClick={() => { setSelectedExpense(exp); setDecision('CHANGES_REQUESTED'); }}
+                          className="px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-white font-medium rounded-lg text-xs transition-colors shadow-sm"
+                        >
+                          Request Info
+                        </button>
+                        <button
+                          onClick={() => { setSelectedExpense(exp); setDecision('REJECTED'); }}
+                          className="px-2.5 py-1 bg-neutral-200 hover:bg-red-50 hover:text-red-600 text-neutral-700 font-medium rounded-lg text-xs transition-colors"
+                        >
+                          Reject
+                        </button>
                       </div>
-                      <Link
-                        href={`/expenses/${exp.id}`}
-                        className="text-[11px] text-primary-600 hover:text-primary-700 font-semibold inline-flex items-center gap-1"
-                      >
-                        Inspect Details <ExternalLink className="w-3 h-3" />
-                      </Link>
-                    </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
 
-                    <div className="flex items-center gap-1.5">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          setSelectedExpense(exp);
-                          setModalType('CHANGES');
-                          setActionReason('');
-                          setError(null);
-                        }}
-                      >
-                        Changes
-                      </Button>
+      {/* Decision Modal */}
+      {selectedExpense && decision && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <h3 className="text-lg font-bold text-neutral-900">
+              Confirm {decision === 'APPROVED' ? 'Approval' : decision === 'REJECTED' ? 'Rejection' : 'Modification Request'}
+            </h3>
+            <p className="text-sm text-neutral-600">
+              Claim: <span className="font-semibold text-neutral-900">{selectedExpense.title}</span> (
+              {formatCurrency(selectedExpense.amount, selectedExpense.currency)})
+            </p>
 
-                      <Button
-                        size="sm"
-                        variant="danger"
-                        onClick={() => {
-                          setSelectedExpense(exp);
-                          setModalType('REJECT');
-                          setActionReason('');
-                          setError(null);
-                        }}
-                      >
-                        Reject
-                      </Button>
-
-                      <Button
-                        size="sm"
-                        variant="success"
-                        onClick={() => {
-                          setSelectedExpense(exp);
-                          setModalType('APPROVE');
-                          setActionReason('');
-                          setError(null);
-                        }}
-                        leftIcon={<CheckCircle2 className="w-4 h-4" />}
-                      >
-                        Approve
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Action Modal */}
-      {selectedExpense && modalType && (
-        <Modal
-          isOpen={!!modalType}
-          onClose={() => {
-            setModalType(null);
-            setSelectedExpense(null);
-          }}
-          title={
-            modalType === 'APPROVE'
-              ? `Approve Claim: ${selectedExpense.merchant}`
-              : modalType === 'REJECT'
-              ? `Reject Claim: ${selectedExpense.merchant}`
-              : `Request Changes: ${selectedExpense.merchant}`
-          }
-          description={`Amount: ${formatCurrency(selectedExpense.amount, selectedExpense.currency)} • Submitter: ${selectedExpense.submitterEmail}`}
-        >
-          <div className="space-y-4">
-            {error && <div className="text-xs text-red-600 bg-red-50 p-2 rounded">{error}</div>}
+            {/* Mandatory Exemption for High Risk Claims */}
+            {decision === 'APPROVED' && selectedExpense.risk_level === 'HIGH' && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-xl space-y-1">
+                <label className="block text-xs font-bold text-red-900 uppercase tracking-wider flex items-center gap-1">
+                  <AlertTriangle size={13} className="text-red-600" />
+                  Audit Exemption Reason (Mandatory for High Risk) *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Approved under Executive Client Hospitality budget"
+                  value={auditExemption}
+                  onChange={(e) => setAuditExemption(e.target.value)}
+                  className="w-full p-2 border border-red-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-red-500/30"
+                />
+              </div>
+            )}
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 uppercase mb-1">
-                {modalType === 'APPROVE'
-                  ? 'Approval Note (Optional)'
-                  : modalType === 'REJECT'
-                  ? 'Rejection Reason *'
-                  : 'Instructions for Employee *'}
+              <label className="block text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-1">
+                Reviewer Comments {decision !== 'APPROVED' ? '(Required)' : '(Optional)'}
               </label>
               <textarea
                 rows={3}
-                required={modalType !== 'APPROVE'}
-                value={actionReason}
-                onChange={(e) => setActionReason(e.target.value)}
-                placeholder={
-                  modalType === 'APPROVE'
-                    ? 'e.g. Approved per budget'
-                    : modalType === 'REJECT'
-                    ? 'e.g. Non-compliant category'
-                    : 'e.g. Please attach itemized tax invoice'
-                }
-                className="w-full rounded-lg border border-slate-300 p-2.5 text-xs focus:ring-2 focus:ring-primary-500/20"
+                required={decision !== 'APPROVED'}
+                value={comments}
+                onChange={(e) => setComments(e.target.value)}
+                placeholder="Enter justification, notes, or specific policy references..."
+                className="w-full p-3 border border-neutral-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
               />
             </div>
 
-            <div className="flex justify-end gap-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setModalType(null);
-                  setSelectedExpense(null);
-                }}
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => { setSelectedExpense(null); setDecision(null); setAuditExemption(''); }}
+                className="px-4 py-2 border border-neutral-200 text-neutral-700 rounded-xl text-xs font-medium hover:bg-neutral-50"
               >
                 Cancel
-              </Button>
-              <Button
-                size="sm"
-                variant={modalType === 'APPROVE' ? 'success' : modalType === 'REJECT' ? 'danger' : 'primary'}
-                onClick={handleActionSubmit}
-                isLoading={isProcessing}
+              </button>
+              <button
+                type="button"
+                disabled={isProcessing || (decision !== 'APPROVED' && !comments.trim()) || (decision === 'APPROVED' && selectedExpense.risk_level === 'HIGH' && !auditExemption.trim())}
+                onClick={handleAction}
+                className={`px-4 py-2 rounded-xl text-xs font-medium text-white shadow-sm transition-colors ${
+                  decision === 'APPROVED' ? 'bg-emerald-600 hover:bg-emerald-500' :
+                  decision === 'REJECTED' ? 'bg-red-600 hover:bg-red-500' : 'bg-amber-600 hover:bg-amber-500'
+                } disabled:opacity-50`}
               >
-                Confirm {modalType}
-              </Button>
+                {isProcessing ? 'Processing...' : 'Confirm Decision'}
+              </button>
             </div>
           </div>
-        </Modal>
+        </div>
       )}
     </div>
   );

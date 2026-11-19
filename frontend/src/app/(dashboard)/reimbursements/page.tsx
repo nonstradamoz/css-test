@@ -3,249 +3,296 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useQuery } from '@tanstack/react-query';
-import { createClient } from '@/lib/supabase';
 import { api } from '@/lib/api';
-import { Reimbursement } from '@/types';
-import { formatCurrency, formatDateTime } from '@/lib/utils';
-import { Badge } from '@/components/ui/Badge';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
-import { Modal } from '@/components/ui/Modal';
-import { CreditCard, RefreshCw, AlertTriangle, CheckCircle2, ShieldCheck, ArrowRight } from 'lucide-react';
+import { Reimbursement, ReimbursementStatus } from '@/types';
+import { formatCurrency, formatDate } from '@/lib/utils';
+import {
+  CreditCard, RefreshCw, AlertTriangle, CheckCircle2,
+  Search, ArrowUpDown, Filter, Wallet, ExternalLink, Clock
+} from 'lucide-react';
 import Link from 'next/link';
 
 export default function ReimbursementsPage() {
-  const { activeOrg, activeRole } = useAuth();
-  const orgId = activeOrg?.id;
+  const { role } = useAuth();
+  const [retryingId, setRetryingId] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const [selectedReimb, setSelectedReimb] = useState<Reimbursement | null>(null);
-  const [isRetryOpen, setIsRetryOpen] = useState(false);
-  const [isRetrying, setIsRetrying] = useState(false);
-  const [retryError, setRetryError] = useState<string | null>(null);
+  const isEmployee = role === 'EMPLOYEE';
+  const isFinanceOrAdmin = role === 'ADMIN' || role === 'FINANCE';
 
-  const { data: reimbursements = [], isLoading, refetch } = useQuery({
-    queryKey: ['reimbursements-list', orgId],
-    queryFn: async () => {
-      const supabase = createClient();
-      const { data, error } = await supabase
-        .from('reimbursements')
-        .select(`
-          *,
-          expenses (
-            submitter_name,
-            submitter_email
-          )
-        `)
-        .eq('organisation_id', orgId)
-        .order('created_at', { ascending: false });
-        
-      if (error || !data) return [];
-      
-      return data.map((d: any) => ({
-        id: d.id,
-        organisationId: d.organisation_id,
-        expenseId: d.expense_id,
-        submittedBy: d.submitted_by,
-        submitterName: d.expenses?.submitter_name,
-        submitterEmail: d.expenses?.submitter_email,
-        amount: d.amount,
-        currency: d.currency,
-        status: d.status,
-        provider: d.provider,
-        providerReference: d.provider_reference,
-        attemptCount: d.attempt_count,
-        maxAttempts: d.max_attempts,
-        lastAttemptAt: d.last_attempt_at,
-        failureReason: d.failure_reason,
-        createdAt: d.created_at,
-        updatedAt: d.updated_at,
-        completedAt: d.completed_at,
-        failedAt: d.failed_at
-      })) as Reimbursement[];
-    },
-    enabled: !!orgId
+  // Search & Filter state
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('ALL');
+  const [sortBy, setSortBy] = useState<string>('created_at');
+  const [sortOrder, setSortOrder] = useState<string>('desc');
+
+  const { data: reimbursements = [], isLoading, isFetching, refetch } = useQuery({
+    queryKey: ['reimbursements-list', statusFilter, search, sortBy, sortOrder],
+    queryFn: () => api.reimbursements.list({
+      status: statusFilter !== 'ALL' ? (statusFilter as ReimbursementStatus) : undefined,
+      search: search || undefined,
+      sort_by: sortBy,
+      sort_order: sortOrder
+    }),
+    refetchInterval: (query) => {
+      const data = query.state.data as Reimbursement[] | undefined;
+      const hasPending = data?.some(r => r.status === 'PROCESSING' || r.status === 'INITIATED');
+      return hasPending ? 3000 : 10000;
+    }
   });
 
-  const handleRetryRefund = async (forcedOutcome?: 'SUCCESS' | 'FAILURE' | 'TIMEOUT') => {
-    if (!orgId || !selectedReimb) return;
-    setIsRetrying(true);
-    setRetryError(null);
+  // Calculate high-level settlement summary
+  const totalCompletedAmount = reimbursements
+    .filter(r => r.status === 'COMPLETED')
+    .reduce((acc, r) => acc + Number(r.amount), 0);
 
+  const totalInFlightAmount = reimbursements
+    .filter(r => r.status === 'PROCESSING' || r.status === 'INITIATED')
+    .reduce((acc, r) => acc + Number(r.amount), 0);
+
+  const completedCount = reimbursements.filter(r => r.status === 'COMPLETED').length;
+
+  const handleRetry = async (id: string) => {
+    setRetryingId(id);
+    setErrorMsg(null);
     try {
-      const idempotencyKey = `retry_${selectedReimb.id}_${Date.now()}`;
-      await api.retryRefund({
-        organisationId: orgId,
-        reimbursementId: selectedReimb.id,
-        idempotencyKey,
-        forcedOutcome
-      });
-
-      setIsRetryOpen(false);
-      setSelectedReimb(null);
-      refetch();
+      await api.reimbursements.retry(id);
+      await refetch();
     } catch (err: any) {
-      setRetryError(err.message || 'Retry failed.');
+      setErrorMsg(err.message || 'Retry failed');
     } finally {
-      setIsRetrying(false);
+      setRetryingId(null);
     }
   };
 
   return (
-    <div className="space-y-6">
+    <div className="p-8 max-w-7xl mx-auto space-y-6">
+      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Reimbursements & Payouts</h1>
-          <p className="text-xs text-slate-500 mt-1">
-            Settlement tracking, payment provider orchestration, and automated failure recovery.
+          <h1 className="text-2xl font-bold text-neutral-900 tracking-tight">
+            {isEmployee ? 'My Reimbursements' : 'Reimbursement Disbursements'}
+          </h1>
+          <p className="text-sm text-neutral-500 mt-1">
+            {isEmployee
+              ? 'Track your approved claim payouts, settled bank disbursements, and transfer statuses.'
+              : 'Real-time bank settlements, idempotency keys, and automated payout retry orchestration.'}
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => refetch()} leftIcon={<RefreshCw className="w-3.5 h-3.5" />}>
-            Refresh
-          </Button>
+        <button
+          onClick={() => refetch()}
+          disabled={isFetching}
+          className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl border border-neutral-300 bg-white hover:bg-neutral-50 text-neutral-700 text-xs font-semibold shadow-sm transition-all disabled:opacity-50"
+        >
+          <RefreshCw size={14} className={isFetching ? 'animate-spin text-emerald-600' : 'text-neutral-500'} />
+          <span>{isFetching ? 'Syncing...' : 'Sync Now'}</span>
+        </button>
+      </div>
+
+      {errorMsg && (
+        <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center gap-2.5 text-sm text-red-600">
+          <AlertTriangle size={18} className="shrink-0" />
+          <span>{errorMsg}</span>
+        </div>
+      )}
+
+      {/* Summary KPI Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="p-5 bg-white border border-neutral-200/80 rounded-2xl shadow-sm space-y-1">
+          <div className="flex items-center justify-between text-neutral-500">
+            <span className="text-xs font-semibold uppercase tracking-wider">Total Reimbursed</span>
+            <Wallet size={16} className="text-emerald-600" />
+          </div>
+          <p className="text-2xl font-bold text-neutral-900">
+            ₹{totalCompletedAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </p>
+          <p className="text-xs text-neutral-500">
+            {completedCount} {completedCount === 1 ? 'claim settled' : 'claims settled'}
+          </p>
+        </div>
+
+        <div className="p-5 bg-white border border-neutral-200/80 rounded-2xl shadow-sm space-y-1">
+          <div className="flex items-center justify-between text-neutral-500">
+            <span className="text-xs font-semibold uppercase tracking-wider">In Flight / Processing</span>
+            <Clock size={16} className="text-amber-500" />
+          </div>
+          <p className="text-2xl font-bold text-neutral-900">
+            ₹{totalInFlightAmount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </p>
+          <p className="text-xs text-neutral-500">Pending bank settlement</p>
+        </div>
+
+        <div className="p-5 bg-white border border-neutral-200/80 rounded-2xl shadow-sm space-y-1">
+          <div className="flex items-center justify-between text-neutral-500">
+            <span className="text-xs font-semibold uppercase tracking-wider">Total Transactions</span>
+            <CreditCard size={16} className="text-neutral-500" />
+          </div>
+          <p className="text-2xl font-bold text-neutral-900">
+            {reimbursements.length}
+          </p>
+          <p className="text-xs text-neutral-500">
+            {isEmployee ? 'Claims submitted by you' : 'Enterprise total'}
+          </p>
         </div>
       </div>
 
-      {/* Reimbursements List */}
-      <Card>
-        <CardContent className="p-0">
-          {isLoading ? (
-            <div className="p-12 text-center text-xs text-slate-400">Loading reimbursements...</div>
-          ) : reimbursements.length === 0 ? (
-            <div className="p-12 text-center space-y-3">
-              <CreditCard className="w-10 h-10 text-slate-300 mx-auto" />
-              <h3 className="text-sm font-semibold text-slate-700">No Reimbursements Found</h3>
-              <p className="text-xs text-slate-500">Approved claims will appear here for payout processing.</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="border-b border-slate-100 bg-slate-50/75 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
-                    <th className="px-6 py-3">Payout ID / Ref</th>
-                    <th className="px-6 py-3">Expense Claim</th>
-                    <th className="px-6 py-3">Recipient</th>
-                    <th className="px-6 py-3">Status</th>
-                    <th className="px-6 py-3">Attempts</th>
-                    <th className="px-6 py-3">Settlement Amount</th>
-                    <th className="px-6 py-3 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 text-xs">
-                  {reimbursements.map((r) => (
-                    <tr key={r.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="px-6 py-4">
-                        <div className="font-mono font-bold text-slate-900">#{r.id.substring(0, 8).toUpperCase()}</div>
-                        {r.providerReference ? (
-                          <div className="text-[10px] text-emerald-600 font-mono mt-0.5">
-                            Ref: {r.providerReference}
-                          </div>
-                        ) : (
-                          <div className="text-[10px] text-slate-400 mt-0.5">{r.provider}</div>
-                        )}
-                      </td>
-                      <td className="px-6 py-4">
-                        <Link
-                          href={`/expenses/${r.expenseId}`}
-                          className="text-primary-600 hover:text-primary-700 font-semibold inline-flex items-center gap-1"
-                        >
-                          View Expense <ArrowRight className="w-3 h-3" />
-                        </Link>
-                      </td>
-                      <td className="px-6 py-4 text-slate-700 font-medium">{r.submittedBy}</td>
-                      <td className="px-6 py-4">
-                        <Badge status={r.status} />
-                        {r.failureReason && (
-                          <p className="text-[10px] text-red-600 font-medium mt-1 max-w-xs truncate">
-                            {r.failureReason}
-                          </p>
-                        )}
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className="font-semibold text-slate-800">{r.attemptCount}</span>
-                        <span className="text-slate-400"> / {r.maxAttempts || 3}</span>
-                      </td>
-                      <td className="px-6 py-4 font-black text-slate-900">
-                        {formatCurrency(r.amount, r.currency)}
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        {r.status === 'FAILED' && (activeRole === 'ADMIN' || activeRole === 'FINANCE') && (
-                          <Button
-                            size="sm"
-                            variant="danger"
-                            onClick={() => {
-                              setSelectedReimb(r);
-                              setRetryError(null);
-                              setIsRetryOpen(true);
-                            }}
-                            leftIcon={<RefreshCw className="w-3.5 h-3.5" />}
-                          >
-                            Retry Payout
-                          </Button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      {/* Filter and Search Bar */}
+      <div className="bg-white rounded-xl border border-neutral-200/80 p-4 shadow-sm flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
+        {/* Search */}
+        <div className="relative flex-1">
+          <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400" />
+          <input
+            type="text"
+            placeholder="Search by Claim Title, Disbursement ID, or Idempotency Key..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 bg-neutral-50 border border-neutral-200 rounded-lg text-sm text-neutral-900 placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 transition-all"
+          />
+        </div>
 
-      {/* Manual Retry Modal */}
-      {selectedReimb && (
-        <Modal
-          isOpen={isRetryOpen}
-          onClose={() => {
-            setIsRetryOpen(false);
-            setSelectedReimb(null);
-          }}
-          title="Retry Failed Reimbursement"
-          description={`Payout ID: #${selectedReimb.id.toUpperCase()} • Amount: ${formatCurrency(selectedReimb.amount, selectedReimb.currency)}`}
-        >
-          <div className="space-y-4">
-            {retryError && <div className="text-xs text-red-600 bg-red-50 p-2 rounded">{retryError}</div>}
+        {/* Status Filter */}
+        <div className="flex items-center gap-2">
+          <Filter size={15} className="text-neutral-400 shrink-0" />
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="py-2 px-3 bg-neutral-50 border border-neutral-200 rounded-lg text-xs font-semibold text-neutral-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+          >
+            <option value="ALL">All Statuses</option>
+            <option value="COMPLETED">Completed</option>
+            <option value="PROCESSING">Processing</option>
+            <option value="INITIATED">Initiated</option>
+            <option value="FAILED">Failed</option>
+          </select>
 
-            <div className="p-3 bg-red-50 rounded-lg text-xs text-red-900 border border-red-200 space-y-1">
-              <span className="font-semibold">Previous Failure Reason:</span>
-              <p>{selectedReimb.failureReason || 'Bank gateway network timeout or card rejection.'}</p>
-            </div>
-
-            <p className="text-xs text-slate-600">
-              For evaluation and demonstration testing, select an outcome to simulate for this retry attempt:
-            </p>
-
-            <div className="grid grid-cols-3 gap-2 pt-2">
-              <Button
-                size="sm"
-                variant="success"
-                onClick={() => handleRetryRefund('SUCCESS')}
-                isLoading={isRetrying}
-              >
-                Retry & Succeed
-              </Button>
-              <Button
-                size="sm"
-                variant="danger"
-                onClick={() => handleRetryRefund('FAILURE')}
-                isLoading={isRetrying}
-              >
-                Retry & Fail
-              </Button>
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => handleRetryRefund('TIMEOUT')}
-                isLoading={isRetrying}
-              >
-                Retry & Timeout
-              </Button>
-            </div>
+          {/* Sort By */}
+          <div className="flex items-center gap-1.5 ml-1">
+            <ArrowUpDown size={15} className="text-neutral-400 shrink-0" />
+            <select
+              value={`${sortBy}-${sortOrder}`}
+              onChange={(e) => {
+                const [sb, so] = e.target.value.split('-');
+                setSortBy(sb);
+                setSortOrder(so);
+              }}
+              className="py-2 px-3 bg-neutral-50 border border-neutral-200 rounded-lg text-xs font-semibold text-neutral-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+            >
+              <option value="created_at-desc">Date (Newest First)</option>
+              <option value="created_at-asc">Date (Oldest First)</option>
+              <option value="amount-desc">Amount (Highest First)</option>
+              <option value="amount-asc">Amount (Lowest First)</option>
+              <option value="status-asc">Status</option>
+            </select>
           </div>
-        </Modal>
-      )}
+        </div>
+      </div>
+
+      {/* Table */}
+      <div className="bg-white rounded-xl border border-neutral-200/80 shadow-sm overflow-hidden">
+        {isLoading ? (
+          <div className="p-12 text-center text-sm text-neutral-500">Loading disbursements...</div>
+        ) : reimbursements.length === 0 ? (
+          <div className="p-16 text-center">
+            <CreditCard size={36} className="mx-auto text-neutral-300 mb-3" />
+            <p className="text-base font-bold text-neutral-900">No disbursements found</p>
+            <p className="text-xs text-neutral-500 mt-1">
+              {search || statusFilter !== 'ALL'
+                ? 'Try adjusting your search criteria or status filter.'
+                : isEmployee
+                  ? 'Your approved expense claims will appear here once disbursed.'
+                  : 'Disbursements will appear here when Finance approves claims for payout.'}
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-neutral-50/75 border-b border-neutral-200 text-xs text-neutral-500 uppercase tracking-wider">
+                <tr>
+                  <th className="px-6 py-3.5">Expense Claim</th>
+                  <th className="px-6 py-3.5">Amount</th>
+                  <th className="px-6 py-3.5">Disbursed Date</th>
+                  <th className="px-6 py-3.5">Status</th>
+                  {!isEmployee && <th className="px-6 py-3.5">Retries</th>}
+                  <th className="px-6 py-3.5 text-right">Reference / Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-neutral-200">
+                {reimbursements.map((r) => (
+                  <tr key={r.id} className="hover:bg-neutral-50/60 transition-colors">
+                    <td className="px-6 py-4">
+                      <Link
+                        href={`/expenses/${r.expense_id}`}
+                        className="font-bold text-neutral-900 hover:text-emerald-600 transition-colors inline-flex items-center gap-1.5"
+                      >
+                        <span>{r.expense_title || `Claim #${r.expense_id.substring(0, 8)}`}</span>
+                        <ExternalLink size={12} className="text-neutral-400" />
+                      </Link>
+                      <p className="text-xs text-neutral-400 font-mono mt-0.5">
+                        ID: {r.id.substring(0, 8)}... · Key: {r.idempotency_key.substring(0, 16)}...
+                      </p>
+                      {!isEmployee && r.submitter_name && (
+                        <p className="text-xs text-neutral-500 mt-0.5">Submitter: {r.submitter_name}</p>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 font-bold text-neutral-900">
+                      {formatCurrency(r.amount, r.currency)}
+                    </td>
+                    <td className="px-6 py-4 text-xs text-neutral-500">
+                      {r.disbursed_at ? formatDate(r.disbursed_at) : (
+                        <span className="text-amber-600 font-medium">In Progress</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
+                        r.status === 'COMPLETED'
+                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                          : r.status === 'FAILED'
+                          ? 'bg-red-50 text-red-700 border border-red-200'
+                          : 'bg-amber-50 text-amber-700 border border-amber-200 animate-pulse'
+                      }`}>
+                        {r.status}
+                      </span>
+                    </td>
+                    {!isEmployee && (
+                      <td className="px-6 py-4 text-xs font-medium text-neutral-600">
+                        {r.retry_count}
+                      </td>
+                    )}
+                    <td className="px-6 py-4 text-right">
+                      {r.status === 'FAILED' && isFinanceOrAdmin && (
+                        <button
+                          disabled={retryingId === r.id}
+                          onClick={() => handleRetry(r.id)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-neutral-900 hover:bg-neutral-800 text-white font-medium rounded-lg text-xs transition-colors shadow-sm"
+                        >
+                          <RefreshCw size={13} className={retryingId === r.id ? 'animate-spin' : ''} />
+                          Retry Payout
+                        </button>
+                      )}
+                      {r.status === 'COMPLETED' && (
+                        <span className="text-xs text-emerald-600 font-semibold inline-flex items-center gap-1">
+                          <CheckCircle2 size={14} /> Settled
+                        </span>
+                      )}
+                      {(r.status === 'PROCESSING' || r.status === 'INITIATED') && (
+                        <span className="text-xs text-amber-600 font-semibold inline-flex items-center gap-1">
+                          <RefreshCw size={13} className="animate-spin" /> In Flight
+                        </span>
+                      )}
+                      {r.status === 'FAILED' && isEmployee && (
+                        <span className="text-xs text-red-600 font-medium">
+                          Failed - Finance Reviewing
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
