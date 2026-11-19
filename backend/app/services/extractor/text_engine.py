@@ -8,6 +8,10 @@ from PIL import Image, ImageEnhance, ImageFilter
 try:
     import pytesseract
     HAS_PYTESSERACT = True
+    for t_path in ["/opt/homebrew/bin/tesseract", "/usr/local/bin/tesseract", "/usr/bin/tesseract"]:
+        if os.path.exists(t_path):
+            pytesseract.pytesseract.tesseract_cmd = t_path
+            break
 except ImportError:
     HAS_PYTESSERACT = False
 

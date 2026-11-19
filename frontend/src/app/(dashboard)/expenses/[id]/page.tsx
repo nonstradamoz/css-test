@@ -498,6 +498,40 @@ export default function ExpenseDetailPage() {
                     )}
                   </td>
                 </tr>
+
+                {/* 7. Mode of Payment */}
+                {extracted.payment_mode && (
+                  <tr>
+                    <td className="py-3 px-3 font-semibold text-neutral-900">Mode of Payment</td>
+                    <td className="py-3 px-3 text-neutral-500 italic">Declared via claim</td>
+                    <td className="py-3 px-3 text-neutral-900 font-semibold">
+                      {extracted.payment_mode}
+                    </td>
+                    <td className="py-3 px-3">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded font-semibold text-[11px]">
+                        <CheckCircle2 size={12} /> Detected Instrument
+                      </span>
+                    </td>
+                  </tr>
+                )}
+
+                {/* 8. Mobile / Contact Number */}
+                {extracted.mobile_number && (
+                  <tr>
+                    <td className="py-3 px-3 font-semibold text-neutral-900">Merchant / Contact Number</td>
+                    <td className="py-3 px-3 text-neutral-500 italic">
+                      {(expense.category_details as any)?.contact_number || 'Self-declared'}
+                    </td>
+                    <td className="py-3 px-3 text-neutral-900 font-mono font-medium">
+                      {extracted.mobile_number}
+                    </td>
+                    <td className="py-3 px-3">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-neutral-100 text-neutral-700 rounded font-medium text-[11px]">
+                        Receipt Contact
+                      </span>
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>

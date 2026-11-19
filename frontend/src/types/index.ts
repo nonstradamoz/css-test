@@ -53,7 +53,14 @@ export type Category = components["schemas"]["CategoryOut"];
 export type CategoryCreate = components["schemas"]["CategoryCreate"];
 export type CategoryUpdate = components["schemas"]["CategoryUpdate"];
 
-export type ReceiptAnalysisResponse = components["schemas"]["ReceiptAnalysisResponse"];
+export type ReceiptAnalysisResponse = components["schemas"]["ReceiptAnalysisResponse"] & {
+  mobile_number?: string | null;
+  payment_mode?: string | null;
+  transaction_id?: string | null;
+  bill_number?: string | null;
+  receipt_number?: string | null;
+  gstin?: string | null;
+};
 export type ExtractedLineItem = components["schemas"]["ExtractedLineItem"];
 export type ForensicsPreviewResponse = components["schemas"]["ForensicsPreviewResponse"];
 export type ForensicFlagItem = components["schemas"]["ForensicFlagItem"];

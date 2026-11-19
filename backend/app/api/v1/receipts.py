@@ -18,15 +18,9 @@ async def analyze_receipt(
 ):
     """
     Receipt extraction inspector.
-    Restricted to auditing personnel (Admin, Reviewer, Finance).
-    Employees cannot view receipt extraction data.
+    Available to all authenticated personnel (Employee, Admin, Reviewer, Finance)
+    to parse receipts and auto-fill expense details.
     """
-    from app.models import UserRole
-    if current_user.role == UserRole.EMPLOYEE:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Receipt extraction details are confidential to auditing and review personnel."
-        )
     content = await file.read()
     res = await AIReceiptScanner.analyze_receipt(
         file_bytes=content,

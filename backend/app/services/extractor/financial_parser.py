@@ -134,6 +134,8 @@ class FinancialParser:
         # 6. Tax, GSTIN, and Accounting Identifiers (Receipt #, Bill #, Transaction ID / UPI / UTR)
         tax_amount = cls._extract_tax(lines, amount)
         identifiers = cls._extract_identifiers(text)
+        mobile_number = cls._extract_mobile_number(text)
+        payment_mode = cls._extract_payment_mode(text)
 
         # 7. Line Items (Strictly filtered from contact lines, phone numbers, and pincodes)
         line_items = cls._extract_line_items(lines, amount)
@@ -183,8 +185,9 @@ class FinancialParser:
             "receipt_number": identifiers["receipt_number"],
             "bill_number": identifiers["bill_number"],
             "transaction_id": identifiers["transaction_id"],
+            "mobile_number": mobile_number,
+            "payment_mode": payment_mode,
             "gstin": identifiers["gstin"],
-            "is_synthetic_invoice": identifiers["is_synthetic_invoice"],
             "date_found_in_bill": date_found_in_bill,
             "date_verified": date_verified,
             "amount_verified": amount_verified,
@@ -424,14 +427,20 @@ class FinancialParser:
         if not transaction_id:
             # Pattern C: Payment Gateway ID / Order ID
             pay_m = re.search(
-                r"(?:payment\s*id|order\s*(?:id|no))[:.\s-]*([A-Za-z0-9\-_]{6,35})",
+                r"(?:payment\s*id|order\s*(?:id|no)|ref(?:\s*(?:no|id|#))?|approval\s*code|auth\s*code)[:.\s-]*([A-Za-z0-9\-_]{6,35})",
                 text,
                 re.IGNORECASE
             )
             if pay_m:
                 candidate = pay_m.group(1).strip()
-                if not candidate.lower().startswith(("date", "total", "amount")):
+                if not candidate.lower().startswith(("date", "total", "amount", "cash", "card", "tax")):
                     transaction_id = candidate
+
+        if not transaction_id:
+            # Pattern D: Standalone 12-digit UPI / Bank reference number
+            standalone_rrn = re.search(r"\b(?:rrn|ref|utr|txn)\b[^\d\n]{0,10}(\d{12})\b", text, re.IGNORECASE)
+            if standalone_rrn:
+                transaction_id = standalone_rrn.group(1)
 
         # 2. Receipt Number
         rcpt_m = re.search(
@@ -487,6 +496,68 @@ class FinancialParser:
             "gstin": gstin,
             "is_synthetic_invoice": is_synthetic
         }
+
+    @classmethod
+    def _extract_mobile_number(cls, text: str) -> Optional[str]:
+        """
+        Extract contact / mobile / phone number from receipt text.
+        Recognizes Indian and international mobile numbers:
+        e.g. +91 9876543210, Mob: 9876543210, Ph: 022-28765432, 98765 43210.
+        """
+        # 1. Look for explicit keywords: mob, mobile, phone, tel, ph, contact, whatsapp, call
+        pattern_labeled = re.search(
+            r"(?:mob(?:ile)?|ph(?:one)?|tel(?:ephone)?|contact|call|whatsapp|cell)\s*[:.\s-]*([+]?(?:91[\s-]?)?[6-9]\d{4}[\s-]?\d{5}|[+]?\d[\d\s\-]{8,14}\d)",
+            text,
+            re.IGNORECASE
+        )
+        if pattern_labeled:
+            raw = pattern_labeled.group(1).strip()
+            digits = re.sub(r"[^\d+]", "", raw)
+            if len(digits) >= 10:
+                return raw.strip()
+
+        # 2. Look for standard 10-digit Indian mobile number starting with 6, 7, 8, or 9
+        mob_match = re.search(r"(?:(?:\+91|91)[\s-]?)?([6-9]\d{9})\b", text)
+        if mob_match:
+            return mob_match.group(0).strip()
+
+        # 3. Landline with STD code (e.g. 022-26543210, 080 23456789)
+        landline = re.search(r"\b0\d{2,4}[-\s]?\d{6,8}\b", text)
+        if landline:
+            return landline.group(0).strip()
+
+        return None
+
+    @classmethod
+    def _extract_payment_mode(cls, text: str) -> Optional[str]:
+        """
+        Detect payment instrument / mode from receipt text:
+        - UPI (GPay, PhonePe, Paytm, BHIM, Scan & Pay, VPA)
+        - CREDIT_CARD / DEBIT_CARD / CARD (Visa, Mastercard, RuPay, Amex, Swipe, POS)
+        - CASH (Cash, Cash Tendered, Currency)
+        - NET_BANKING (NEFT, RTGS, IMPS, Online Transfer)
+        """
+        lower = text.lower()
+        if any(k in lower for k in ["upi", "gpay", "google pay", "phonepe", "paytm", "bhim", "@okhdfc", "@oksbi", "@okaxis", "@paytm", "@ybl", "@ibl", "vpa", "scan & pay", "qr code", "qr pay"]):
+            return "UPI"
+        if any(k in lower for k in ["credit card", "credit", "visa", "mastercard", "amex", "american express", "rupay", "diners"]):
+            return "CREDIT_CARD"
+        if any(k in lower for k in ["debit card", "debit"]):
+            return "DEBIT_CARD"
+        if any(k in lower for k in ["card ending", "card no", "pos swipe", "swipe", "pos sale", "card payment"]):
+            return "CARD"
+        if any(k in lower for k in ["cash tendered", "cash received", "paid by cash", "mode: cash", "cash payment", "cash sale"]):
+            return "CASH"
+        if any(k in lower for k in ["neft", "rtgs", "imps", "net banking", "online transfer", "bank transfer"]):
+            return "NET_BANKING"
+        if re.search(r"\b(?:upi)\b", lower):
+            return "UPI"
+        if re.search(r"\b(?:cash)\b", lower):
+            return "CASH"
+        if re.search(r"\b(?:card)\b", lower):
+            return "CARD"
+
+        return None
 
     @classmethod
     def _extract_invoice_and_gstin(cls, text: str) -> Tuple[str, Optional[str]]:
@@ -662,6 +733,8 @@ class FinancialParser:
             "receipt_number": f"RCPT-{file_hash % 100000:05d}",
             "bill_number": f"BILL-{file_hash % 100000:05d}",
             "transaction_id": f"UPI-{file_hash % 10000000000:010d}",
+            "mobile_number": "+91 98765 43210",
+            "payment_mode": "UPI" if any(k in fn for k in ["cab", "taxi", "uber", "ola"]) else "CARD",
             "gstin": "29AABCU9603R1Z2",
             "is_synthetic_invoice": True,
             "date_found_in_bill": False,

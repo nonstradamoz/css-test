@@ -206,13 +206,15 @@ async def test_role_based_extraction_privacy(client):
         json={"bank_details": {"account_number": "777788889999", "ifsc_code": "HDFC0007777"}}
     )
 
-    # 3. Employee cannot call analyze endpoint directly (403 Forbidden)
+    # 3. Employee can call analyze endpoint directly (200 OK)
     emp_analyze = await client.post(
         "/api/v1/receipts/analyze",
         headers=emp_headers,
         files={"file": ("bill.jpg", b"fake content", "image/jpeg")}
     )
-    assert emp_analyze.status_code == 403
+    assert emp_analyze.status_code == 200
+    assert emp_analyze.json()["merchant_name"] is not None
+    assert emp_analyze.json()["amount"] > 0
 
     # 4. Admin creates expense with extracted metadata
     expense_res = await client.post(
@@ -250,15 +252,22 @@ async def test_role_based_extraction_privacy(client):
             "amount": 450.0,
             "currency": "INR",
             "category": "TRAVEL",
-            "expense_date": "2026-11-19T00:00:00.000Z"
+            "expense_date": "2026-11-19T00:00:00.000Z",
+            "extracted_metadata": {
+                "merchant_name": "City Fast Cab",
+                "transaction_id": "UPI-9876543210",
+                "payment_mode": "UPI",
+                "mobile_number": "+91 9876543210"
+            }
         }
     )
     emp_exp_id = emp_exp_res.json()["id"]
 
-    # 7. Employee retrieves their own expense -> extracted_metadata is None (confidential)
+    # 7. Employee retrieves their own expense -> extracted_metadata is preserved
     emp_get = await client.get(f"/api/v1/expenses/{emp_exp_id}", headers=emp_headers)
     assert emp_get.status_code == 200
-    assert emp_get.json()["extracted_metadata"] is None
+    assert emp_get.json()["extracted_metadata"] is not None
+    assert emp_get.json()["extracted_metadata"]["transaction_id"] == "UPI-9876543210"
 
 
 @pytest.mark.asyncio
@@ -269,6 +278,8 @@ async def test_financial_parser_extracts_receipt_bill_and_transaction_ids():
     Bill No: PVR-BLR-84920
     Receipt #: RCPT-9921
     UPI Ref: 432109876543
+    Payment Mode: UPI (GPay)
+    Mob: +91 9876543210
     GSTIN: 29AABCP1234F1Z9
     Date: 19/11/2026
 
@@ -287,6 +298,9 @@ async def test_financial_parser_extracts_receipt_bill_and_transaction_ids():
     assert parsed["gstin"] == "29AABCP1234F1Z9"
     assert parsed["invoice_number"] == "PVR-BLR-84920"
     assert parsed["amount"] == 661.50
+    assert parsed["mobile_number"] is not None
+    assert "9876543210" in parsed["mobile_number"]
+    assert parsed["payment_mode"] == "UPI"
 
 
 @pytest.mark.asyncio

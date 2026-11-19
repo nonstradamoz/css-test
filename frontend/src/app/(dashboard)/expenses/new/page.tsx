@@ -166,9 +166,35 @@ export default function NewExpensePage() {
     if (scanResult.expense_date) {
       setExpenseDate(scanResult.expense_date);
     }
+
+    // Auto-populate category-specific fields if available
+    const targetCat = scanResult.suggested_category || category;
+    if (targetCat === 'ACCOMMODATION') {
+      if (!hotelName && scanResult.merchant_name) setHotelName(scanResult.merchant_name);
+      if (!hotelContact && (scanResult as any).mobile_number) setHotelContact((scanResult as any).mobile_number);
+    }
+
+    const descParts: string[] = [];
     if (scanResult.line_items && scanResult.line_items.length > 0) {
       const itemSummary = scanResult.line_items.map(i => `${i.description} (₹${i.amount})`).join(', ');
-      setDescription(`Extracted Line Items: ${itemSummary}`);
+      descParts.push(`Extracted Items: ${itemSummary}`);
+    }
+    if (scanResult.transaction_id) {
+      descParts.push(`Txn / Ref ID: ${scanResult.transaction_id}`);
+    }
+    if ((scanResult as any).payment_mode) {
+      descParts.push(`Payment Mode: ${(scanResult as any).payment_mode}`);
+    }
+    if ((scanResult as any).mobile_number) {
+      descParts.push(`Contact / Mobile: ${(scanResult as any).mobile_number}`);
+    }
+    if (scanResult.bill_number || scanResult.receipt_number || scanResult.invoice_number) {
+      const billId = scanResult.bill_number || scanResult.receipt_number || scanResult.invoice_number;
+      descParts.push(`Bill / Invoice #: ${billId}`);
+    }
+
+    if (descParts.length > 0) {
+      setDescription(descParts.join(' | '));
     }
   };
 
@@ -296,11 +322,21 @@ export default function NewExpensePage() {
         on_behalf_of_user_id: isProxyFiling ? onBehalfOfUserId : undefined,
         extracted_metadata: scanResult ? {
           merchant_name: scanResult.merchant_name,
+          amount: scanResult.amount,
+          currency: scanResult.currency,
+          expense_date: scanResult.expense_date,
+          suggested_category: scanResult.suggested_category,
           confidence_score: scanResult.confidence_score,
           is_handwritten: scanResult.is_handwritten,
           handwritten_notes: scanResult.handwritten_notes,
           line_items: scanResult.line_items,
-          invoice_number: scanResult.invoice_number
+          invoice_number: scanResult.invoice_number,
+          receipt_number: scanResult.receipt_number,
+          bill_number: scanResult.bill_number,
+          transaction_id: scanResult.transaction_id,
+          mobile_number: (scanResult as any).mobile_number,
+          payment_mode: (scanResult as any).payment_mode,
+          gstin: scanResult.gstin
         } : undefined
       }, effectiveSubmitNow);
 
@@ -936,12 +972,12 @@ export default function NewExpensePage() {
             </div>
           )}
 
-          {/* Extracted Result Banner (Reviewers & Admins Only, confidential from Employees) */}
-          {role !== 'EMPLOYEE' && scanResult && (
+          {/* Extracted Result Banner (Available to All Users) */}
+          {scanResult && (
             <div className="p-4 bg-emerald-50/50 border border-emerald-200/80 rounded-xl space-y-3">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 size={16} className="text-emerald-600" />
+                <div className="flex flex-wrap items-center gap-2">
+                  <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
                   <span className="text-xs font-bold text-emerald-950">Receipt Extraction Complete:</span>
                   <span className="text-xs font-bold text-neutral-900 px-2 py-0.5 bg-white border border-emerald-200 rounded">
                     {scanResult.merchant_name}
@@ -959,6 +995,34 @@ export default function NewExpensePage() {
                   <Sparkles size={13} />
                   Auto-Fill Claim Form
                 </button>
+              </div>
+
+              {/* Extracted Metadata Badges: Transaction ID, Mode of Payment, Mobile Number */}
+              <div className="flex flex-wrap items-center gap-2 text-xs pt-1">
+                {scanResult.transaction_id && (
+                  <div className="inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-emerald-200 rounded-lg text-emerald-900">
+                    <span className="text-[10px] uppercase font-bold text-emerald-700">Txn / UTR:</span>
+                    <span className="font-mono font-semibold">{scanResult.transaction_id}</span>
+                  </div>
+                )}
+                {(scanResult as any).payment_mode && (
+                  <div className="inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-emerald-200 rounded-lg text-emerald-900">
+                    <span className="text-[10px] uppercase font-bold text-emerald-700">Payment Mode:</span>
+                    <span className="font-semibold">{(scanResult as any).payment_mode}</span>
+                  </div>
+                )}
+                {(scanResult as any).mobile_number && (
+                  <div className="inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-emerald-200 rounded-lg text-emerald-900">
+                    <span className="text-[10px] uppercase font-bold text-emerald-700">Contact / Ph:</span>
+                    <span className="font-semibold">{(scanResult as any).mobile_number}</span>
+                  </div>
+                )}
+                {(scanResult.bill_number || scanResult.receipt_number || scanResult.invoice_number) && (
+                  <div className="inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-emerald-200 rounded-lg text-emerald-900">
+                    <span className="text-[10px] uppercase font-bold text-emerald-700">Doc #:</span>
+                    <span className="font-semibold">{scanResult.bill_number || scanResult.receipt_number || scanResult.invoice_number}</span>
+                  </div>
+                )}
               </div>
 
               {/* Handwritten Alert */}

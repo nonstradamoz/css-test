@@ -207,7 +207,7 @@ async def list_expenses(
                 exp.submitter_bank_details = bd if has_bd else None
             else:
                 exp.submitter_bank_details = None
-        if current_user.role == UserRole.EMPLOYEE:
+        if current_user.role == UserRole.EMPLOYEE and exp.submitted_by != current_user.id:
             exp.extracted_metadata = None
 
     return expenses
@@ -395,9 +395,6 @@ async def create_expense(
         new_values={"title": new_expense.title, "amount": str(new_expense.amount), "status": new_expense.status.value},
         ip_address=request.client.host if request.client else None
     )
-
-    if current_user.role == UserRole.EMPLOYEE and created:
-        created.extracted_metadata = None
 
     return created
 
@@ -633,7 +630,7 @@ async def get_expense(
         else:
             expense.submitter_bank_details = None
 
-    if current_user.role == UserRole.EMPLOYEE:
+    if current_user.role == UserRole.EMPLOYEE and expense.submitted_by != current_user.id:
         expense.extracted_metadata = None
 
     return expense

@@ -243,6 +243,8 @@ class ReceiptAnalysisResponse(BaseModel):
     receipt_number: Optional[str] = None
     bill_number: Optional[str] = None
     transaction_id: Optional[str] = None
+    mobile_number: Optional[str] = None
+    payment_mode: Optional[str] = None
     gstin: Optional[str] = None
     is_synthetic_invoice: Optional[bool] = False
     date_found_in_bill: Optional[bool] = False

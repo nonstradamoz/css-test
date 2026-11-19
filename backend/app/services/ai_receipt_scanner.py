@@ -199,7 +199,10 @@ class AIReceiptScanner:
             "confidence_score": confidence,
             "is_handwritten": is_handwritten,
             "handwritten_notes": notes,
-            "invoice_number": f"INV-{abs(hash(filename)) % 1000000:06d}"
+            "invoice_number": f"INV-{abs(hash(filename)) % 1000000:06d}",
+            "transaction_id": f"TXN-{abs(hash(filename)) % 10000000000:010d}",
+            "mobile_number": "+91 98765 43210",
+            "payment_mode": "UPI" if any(k in fn_lower for k in ["cab", "taxi", "uber", "ola"]) else "CARD"
         }
 
     @classmethod
