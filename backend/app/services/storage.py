@@ -146,5 +146,68 @@ class StorageService:
             ExpiresIn=expires_in
         )
 
+    def extract_key_from_url(self, file_url_or_key: str) -> Optional[str]:
+        """Extract object storage key from a download URL or direct key string"""
+        if not file_url_or_key or not file_url_or_key.strip():
+            return None
+        url_str = file_url_or_key.strip()
+
+        # 1. Check if URL contains query parameter key=
+        if "key=" in url_str:
+            key_part = url_str.split("key=")[-1]
+            key_clean = key_part.split("&")[0]
+            return key_clean.strip()
+
+        # 2. Check if URL contains /receipts/
+        if "/receipts/" in url_str:
+            idx = url_str.find("/receipts/")
+            key = url_str[idx + 1:].split("?")[0]
+            return key.strip()
+
+        # 3. Direct key format (e.g. receipts/xyz.jpg)
+        if url_str.startswith("receipts/"):
+            return url_str.split("?")[0].strip()
+
+        # 4. Fallback URL path extraction
+        from urllib.parse import urlparse
+        parsed = urlparse(url_str)
+        path = parsed.path.lstrip("/")
+        if path:
+            return path
+        return None
+
+    def delete_file(self, file_url_or_key: str) -> bool:
+        """
+        Delete a receipt file from Cloudflare R2 / S3 object storage bucket
+        and local disk storage.
+        """
+        key = self.extract_key_from_url(file_url_or_key)
+        if not key:
+            return False
+
+        deleted_somewhere = False
+
+        # 1. Delete from R2 / S3 bucket if configured
+        if self.is_configured():
+            try:
+                self.s3_client.delete_object(
+                    Bucket=self.bucket,
+                    Key=key
+                )
+                deleted_somewhere = True
+            except Exception as e:
+                print(f"[WARN] Failed to delete object '{key}' from R2 bucket '{self.bucket}': {e}")
+
+        # 2. Delete from local storage (both resolved path and raw name)
+        local_path = self.get_local_file_path(key)
+        if os.path.exists(local_path):
+            try:
+                os.remove(local_path)
+                deleted_somewhere = True
+            except Exception as e:
+                print(f"[WARN] Failed to remove local file '{local_path}': {e}")
+
+        return deleted_somewhere
+
 
 storage_service = StorageService()

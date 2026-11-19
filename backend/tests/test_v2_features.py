@@ -570,3 +570,51 @@ async def test_drafts_privacy_from_admins_and_reviewers(client):
 
     rev_list_after = await client.get("/api/v1/expenses", headers=rev_headers)
     assert any(e["id"] == draft_id for e in rev_list_after.json())
+
+
+@pytest.mark.asyncio
+async def test_expense_deletion_removes_file_from_storage(client):
+    """
+    Upon deleting an expense claim, the uploaded receipt file must be permanently
+    removed from the storage bucket / local file storage.
+    """
+    import os
+    from app.services.storage import storage_service
+
+    # 1. Register and setup employee
+    emp_email = f"emp.storage.{uuid.uuid4().hex[:6]}@company.com"
+    await client.post("/api/v1/auth/register", json={
+        "email": emp_email, "password": "Password123!", "full_name": "Storage Test Employee"
+    })
+    emp_token = (await client.post("/api/v1/auth/login", json={"email": emp_email, "password": "Password123!"})).json()["access_token"]
+    emp_headers = {"Authorization": f"Bearer {emp_token}"}
+
+    # 2. Upload a test receipt file via receipts API
+    test_file_content = b"Mock receipt image data for storage test"
+    files = {"file": ("test_receipt_to_delete.jpg", test_file_content, "image/jpeg")}
+    upload_res = await client.post("/api/v1/receipts/upload", headers=emp_headers, files=files)
+    assert upload_res.status_code == 200
+    receipt_url = upload_res.json()["url"]
+    receipt_key = upload_res.json()["key"]
+
+    # Verify file exists in local storage
+    local_path = storage_service.get_local_file_path(receipt_key)
+    assert os.path.exists(local_path)
+
+    # 3. Create expense with this receipt URL as DRAFT
+    exp_res = await client.post("/api/v1/expenses?submit_now=false", headers=emp_headers, json={
+        "title": "Expense to Delete with File",
+        "amount": 950.0,
+        "category": "MEALS",
+        "expense_date": datetime.now(timezone.utc).isoformat(),
+        "receipt_url": receipt_url
+    })
+    assert exp_res.status_code == 201
+    expense_id = exp_res.json()["id"]
+
+    # 4. Delete the expense
+    del_res = await client.delete(f"/api/v1/expenses/{expense_id}", headers=emp_headers)
+    assert del_res.status_code == 204
+
+    # 5. Verify the file was permanently deleted from storage
+    assert not os.path.exists(local_path)

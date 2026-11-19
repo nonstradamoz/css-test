@@ -872,6 +872,14 @@ async def delete_expense(
                 detail="Action prohibited: Accepted / approved expense claims cannot be deleted by users. Please contact an Administrator."
             )
 
+    # Delete uploaded receipt file from R2 / S3 storage bucket and local disk storage
+    if expense.receipt_url:
+        try:
+            from app.services.storage import storage_service
+            storage_service.delete_file(expense.receipt_url)
+        except Exception as e:
+            print(f"[WARN] Failed to delete receipt file from storage: {e}")
+
     await log_audit_event(
         db=db,
         actor_id=current_user.id,
@@ -882,7 +890,8 @@ async def delete_expense(
             "title": expense.title,
             "amount": str(expense.amount),
             "owner_id": expense.submitted_by,
-            "status": expense.status.value
+            "status": expense.status.value,
+            "receipt_url": expense.receipt_url
         },
         ip_address=request.client.host if request.client else None
     )
