@@ -15,9 +15,18 @@ class Base(DeclarativeBase):
     pass
 
 
+# Format DATABASE_URL for asyncpg if running against Render / Heroku / Supabase
+_raw_db_url = settings.DATABASE_URL
+if _raw_db_url.startswith("postgres://"):
+    _db_url = _raw_db_url.replace("postgres://", "postgresql+asyncpg://", 1)
+elif _raw_db_url.startswith("postgresql://") and not _raw_db_url.startswith("postgresql+asyncpg://"):
+    _db_url = _raw_db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+else:
+    _db_url = _raw_db_url
+
 # Global engine and sessionmaker
 engine: AsyncEngine = create_async_engine(
-    settings.DATABASE_URL,
+    _db_url,
     echo=False,
     future=True,
     pool_pre_ping=True

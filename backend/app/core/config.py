@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     # Initial Admin Seed
     FIRST_SUPERADMIN_EMAIL: str = "admin@crs-corp.com"
     FIRST_SUPERADMIN_PASSWORD: str = "Admin@123456"
+
+    # CORS Allowed Origins (Comma-separated for production deployments)
+    CORS_ORIGINS: Optional[str] = None
     
     model_config = SettingsConfigDict(
         env_file=".env",
