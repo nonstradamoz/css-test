@@ -171,7 +171,11 @@ export default function NewExpensePage() {
 
       router.push(`/expenses/${created.id}`);
     } catch (err: any) {
-      setError(err.message || 'Failed to create expense claim.');
+      if (err.message === 'Failed to fetch' || err.message?.includes('NetworkError')) {
+        setError('Network error (Failed to fetch). Please verify your backend server is running and reachable.');
+      } else {
+        setError(err.message || 'Failed to create expense claim.');
+      }
     } finally {
       setIsSubmitting(false);
     }

@@ -30,18 +30,45 @@ async def analyze_receipt(
     return res
 
 
+@router.post("/upload")
+async def direct_upload_receipt(
+    request: Request,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Direct multipart/form-data upload handler.
+    Stores directly in Cloudflare R2 if configured, or saves to local disk.
+    Guarantees no CORS or localhost:8000 URL mismatch issues.
+    """
+    content = await file.read()
+    content_type = file.content_type or "image/jpeg"
+    res = storage_service.upload_file_bytes(
+        filename=file.filename or "receipt.jpg",
+        content=content,
+        content_type=content_type
+    )
+    if res["url"].startswith("/"):
+        base_url = str(request.base_url).rstrip("/")
+        res["url"] = f"{base_url}{res['url']}"
+    return res
+
+
 @router.post("/presigned-upload", response_model=PresignedUploadResponse)
 async def get_presigned_upload_url(
     data: PresignedUploadRequest,
+    request: Request,
     current_user: User = Depends(get_current_user)
 ):
     """
     Generate pre-signed PUT URL for uploading receipts to Cloudflare R2 (or local fallback).
     """
+    base_url = str(request.base_url).rstrip("/")
     res = storage_service.generate_presigned_upload(
         filename=data.filename,
         content_type=data.content_type,
-        file_size_bytes=data.file_size_bytes
+        file_size_bytes=data.file_size_bytes,
+        base_url=base_url
     )
     return res
 

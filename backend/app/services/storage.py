@@ -37,7 +37,41 @@ class StorageService:
                 self.s3_client = None
 
     def is_configured(self) -> bool:
-        return self.s3_client is not None
+        if not self.s3_client:
+            return False
+        key = (settings.R2_ACCESS_KEY_ID or "").lower()
+        if not key or "your_" in key or "placeholder" in key or "dummy" in key:
+            return False
+        return True
+
+    def upload_file_bytes(self, filename: str, content: bytes, content_type: str = "image/jpeg") -> Dict[str, str]:
+        """Upload file directly to R2 if configured, or save to local disk"""
+        ext = os.path.splitext(filename)[1].lower()
+        key = f"receipts/{uuid.uuid4().hex}{ext}"
+
+        if self.is_configured():
+            try:
+                self.s3_client.put_object(
+                    Bucket=self.bucket,
+                    Key=key,
+                    Body=content,
+                    ContentType=content_type
+                )
+                public_url = (
+                    f"{settings.R2_PUBLIC_DOMAIN}/{key}"
+                    if settings.R2_PUBLIC_DOMAIN
+                    else f"https://{self.bucket}.r2.cloudflarestorage.com/{key}"
+                )
+                return {"url": public_url, "key": key}
+            except Exception as e:
+                print(f"[WARN] Direct R2 upload failed ({e}). Falling back to local storage.")
+
+        # Local storage fallback
+        self.save_local_file(key, content)
+        return {
+            "url": f"/api/v1/receipts/download?key={key}",
+            "key": key
+        }
 
     def save_local_file(self, key: str, content: bytes) -> str:
         """Save raw bytes to local disk when R2 is not configured"""
@@ -58,7 +92,8 @@ class StorageService:
         self,
         filename: str,
         content_type: str,
-        file_size_bytes: int
+        file_size_bytes: int,
+        base_url: Optional[str] = None
     ) -> Dict[str, Any]:
         """Generate secure pre-signed PUT URL for uploading receipts"""
         ext = os.path.splitext(filename)[1].lower()
@@ -66,10 +101,11 @@ class StorageService:
 
         if not self.is_configured():
             # Local development fallback: direct upload to FastAPI endpoint
+            prefix = base_url.rstrip("/") if base_url else ""
             return {
-                "upload_url": f"http://localhost:8000/api/v1/receipts/local-upload?key={key}",
+                "upload_url": f"{prefix}/api/v1/receipts/local-upload?key={key}",
                 "key": key,
-                "public_url": f"http://localhost:8000/api/v1/receipts/download?key={key}",
+                "public_url": f"{prefix}/api/v1/receipts/download?key={key}",
                 "fields": None
             }
 

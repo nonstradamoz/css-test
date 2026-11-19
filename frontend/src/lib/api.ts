@@ -398,6 +398,40 @@ class ApiClient {
     },
 
     uploadFile: async (file: File): Promise<{ url: string; key: string }> => {
+      const backendOrigin = API_BASE.replace('/api/v1', '');
+
+      // 1. Direct multipart upload to backend (reliable across local & Render deployments)
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const token = this.getAccessToken();
+        const headers: Record<string, string> = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const res = await fetch(`${API_BASE}/receipts/upload`, {
+          method: 'POST',
+          headers,
+          body: formData
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          let fileUrl: string = data.url;
+          if (fileUrl) {
+            if (fileUrl.includes('localhost:8000') && !backendOrigin.includes('localhost:8000')) {
+              fileUrl = fileUrl.replace('http://localhost:8000', backendOrigin);
+            } else if (!fileUrl.startsWith('http://') && !fileUrl.startsWith('https://')) {
+              fileUrl = `${backendOrigin}${fileUrl.startsWith('/') ? '' : '/'}${fileUrl}`;
+            }
+          }
+          return { url: fileUrl, key: data.key };
+        }
+      } catch (directErr) {
+        console.warn('Direct backend upload failed, falling back to presigned upload:', directErr);
+      }
+
+      // 2. Presigned PUT fallback
       const presigned = await this.receipts.getPresignedUpload({
         filename: file.name,
         content_type: file.type || 'image/jpeg',
@@ -405,12 +439,13 @@ class ApiClient {
       });
 
       let targetUrl = presigned.upload_url;
-      if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
-        const backendOrigin = API_BASE.replace('/api/v1', '');
+      if (targetUrl.includes('localhost:8000') && !backendOrigin.includes('localhost:8000')) {
+        targetUrl = targetUrl.replace('http://localhost:8000', backendOrigin);
+      } else if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
         targetUrl = `${backendOrigin}${targetUrl.startsWith('/') ? '' : '/'}${targetUrl}`;
       }
 
-      // Direct upload to Cloudflare R2 or local storage fallback via PUT
+      // Direct upload to storage via PUT
       const uploadRes = await fetch(targetUrl, {
         method: 'PUT',
         headers: {
@@ -423,8 +458,15 @@ class ApiClient {
         throw new Error(`Failed to upload receipt file to storage (HTTP ${uploadRes.status}).`);
       }
 
+      let publicUrl = presigned.public_url;
+      if (publicUrl.includes('localhost:8000') && !backendOrigin.includes('localhost:8000')) {
+        publicUrl = publicUrl.replace('http://localhost:8000', backendOrigin);
+      } else if (!publicUrl.startsWith('http://') && !publicUrl.startsWith('https://')) {
+        publicUrl = `${backendOrigin}${publicUrl.startsWith('/') ? '' : '/'}${publicUrl}`;
+      }
+
       return {
-        url: presigned.public_url,
+        url: publicUrl,
         key: presigned.key
       };
     }
