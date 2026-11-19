@@ -72,7 +72,7 @@ export default function ReimbursementsPage() {
           <p className="text-sm text-neutral-500 mt-1">
             {isEmployee
               ? 'Track your approved claim payouts, settled bank disbursements, and transfer statuses.'
-              : 'Real-time bank settlements, idempotency keys, and automated payout retry orchestration.'}
+              : 'Direct bank payouts and verified disbursement tracking.'}
           </p>
         </div>
 
@@ -128,7 +128,7 @@ export default function ReimbursementsPage() {
             {reimbursements.length}
           </p>
           <p className="text-xs text-neutral-500">
-            {isEmployee ? 'Claims submitted by you' : 'Enterprise total'}
+            {isEmployee ? 'Claims submitted by you' : 'Company total'}
           </p>
         </div>
       </div>

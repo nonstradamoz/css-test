@@ -70,7 +70,7 @@ export default function LoginPage() {
             <ShieldCheck size={22} />
           </div>
           <div>
-            <span className="font-bold text-white text-base tracking-tight">CRS Enterprise</span>
+            <span className="font-bold text-white text-base tracking-tight">ClearSpend</span>
             <span className="text-xs text-neutral-500 ml-2">Expense Management</span>
           </div>
         </div>

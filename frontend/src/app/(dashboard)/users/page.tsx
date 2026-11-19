@@ -135,7 +135,7 @@ export default function UsersManagementPage() {
   if (role !== 'ADMIN') {
     return (
       <div className="p-12 text-center text-sm text-neutral-500">
-        Access restricted. Only Administrators can manage enterprise users.
+        Access restricted. Only Administrators can manage system users.
       </div>
     );
   }
@@ -144,7 +144,7 @@ export default function UsersManagementPage() {
     <div className="p-8 max-w-7xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-neutral-900 tracking-tight">Enterprise User Management</h1>
+          <h1 className="text-2xl font-bold text-neutral-900 tracking-tight">User Management</h1>
           <p className="text-sm text-neutral-500 mt-1">
             Provision accounts, assign RBAC permissions, and manage employee bank details.
           </p>

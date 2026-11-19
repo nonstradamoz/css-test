@@ -114,7 +114,7 @@ class SystemSettings(Base):
     __tablename__ = "system_settings"
 
     id = Column(Integer, primary_key=True, default=1)
-    company_name = Column(String(255), default="CRS Enterprise", nullable=False)
+    company_name = Column(String(255), default="ClearSpend", nullable=False)
     default_currency = Column(String(3), default="INR", nullable=False)
     tier2_approval_threshold = Column(Numeric(12, 2), default=25000.00, nullable=False)
     allow_self_approval = Column(Boolean, default=False, nullable=False)
@@ -147,6 +147,7 @@ class Expense(Base):
     risk_level = Column(String(20), default="LOW", nullable=False, index=True)  # LOW, MEDIUM, HIGH
     forensic_flags = Column(JSON, default=list, nullable=False)
     extracted_metadata = Column(JSON, default=dict, nullable=True)
+    category_details = Column(JSON, default=dict, nullable=True)
     audit_exemption_reason = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)

@@ -119,7 +119,14 @@ async def test_admin_date_policy_window_flag_and_escalate(client):
         "amount": 4000.0,
         "category": "TRAVEL",
         "expense_date": "2026-11-05T10:00:00Z",
-        "receipt_url": "https://storage.crs-corp.com/receipts/travel_in.png"
+        "receipt_url": "https://storage.crs-corp.com/receipts/travel_in.png",
+        "category_details": {
+            "travel_mode": "Flight",
+            "start_date": "2026-11-05",
+            "end_date": "2026-11-06",
+            "boarding_point": "DEL",
+            "arrival_point": "BLR"
+        }
     })
     assert in_win_res.status_code == 201
     in_win_data = in_win_res.json()
@@ -133,7 +140,14 @@ async def test_admin_date_policy_window_flag_and_escalate(client):
         "amount": 4000.0,
         "category": "TRAVEL",
         "expense_date": "2026-11-20T10:00:00Z",
-        "receipt_url": "https://storage.crs-corp.com/receipts/travel_out.png"
+        "receipt_url": "https://storage.crs-corp.com/receipts/travel_out.png",
+        "category_details": {
+            "travel_mode": "Flight",
+            "start_date": "2026-11-20",
+            "end_date": "2026-11-21",
+            "boarding_point": "DEL",
+            "arrival_point": "BOM"
+        }
     })
     assert out_win_res.status_code == 201
     out_win_data = out_win_res.json()
@@ -269,13 +283,122 @@ async def test_xlsx_export_formatting_and_hyperlinks(client):
     assert ws.title == "Expense Submissions"
 
     # Check headers
-    header_row = [cell.value for cell in ws[1]]
-    assert "Expense ID" in header_row
-    assert "Receipt Document Link" in header_row
-    assert "Extracted Merchant" in header_row
-    assert "Date Verified In Bill" in header_row
+    first_row = [cell.value for cell in ws[1]]
+    assert "Expense ID" in first_row
+    assert "Receipt Document Link" in first_row
+    assert "Category Specific Details" in first_row
+    assert "Extracted Merchant" in first_row
+    assert "Date Verified In Bill" in first_row
 
     # Check header fill color (Corporate Emerald)
     first_cell = ws.cell(row=1, column=1)
     assert first_cell.fill.start_color.rgb in ("00059669", "059669")
     assert first_cell.font.bold is True
+
+
+@pytest.mark.asyncio
+async def test_category_mandatory_details_filling(client):
+    """Enforces category-specific mandatory details for Hotel, Training, and Travel."""
+    admin_headers = await ensure_admin(client)
+
+    # Setup employee
+    await client.post("/api/v1/auth/register", json={
+        "email": "catdetails.emp@crs-corp.com",
+        "full_name": "Category Details Emp",
+        "password": "Password123!",
+        "role": "EMPLOYEE"
+    })
+    emp_login = await client.post("/api/v1/auth/login", json={
+        "email": "catdetails.emp@crs-corp.com",
+        "password": "Password123!"
+    })
+    emp_headers = {"Authorization": f"Bearer {emp_login.json()['access_token']}"}
+    await client.patch("/api/v1/users/me", headers=emp_headers, json={
+        "bank_details": {"account_number": "112233445566", "ifsc_code": "HDFC0001122"}
+    })
+
+    # 1. Hotel & Lodging without required details fails
+    res_hotel_fail = await client.post("/api/v1/expenses?submit_now=true", headers=emp_headers, json={
+        "title": "Grand Hotel Stay",
+        "amount": 7500.0,
+        "category": "ACCOMMODATION",
+        "expense_date": datetime.now(timezone.utc).isoformat(),
+        "receipt_url": "https://storage.crs-corp.com/receipts/hotel.png"
+    })
+    assert res_hotel_fail.status_code == 400
+    assert "Hotel & Lodging requires the following mandatory details" in res_hotel_fail.json()["detail"]
+
+    # 2. Hotel & Lodging with all mandatory details succeeds
+    res_hotel_ok = await client.post("/api/v1/expenses?submit_now=true", headers=emp_headers, json={
+        "title": "Grand Hotel Stay",
+        "amount": 7500.0,
+        "category": "ACCOMMODATION",
+        "expense_date": datetime.now(timezone.utc).isoformat(),
+        "receipt_url": "https://storage.crs-corp.com/receipts/hotel.png",
+        "category_details": {
+            "hotel_name": "Taj Lands End",
+            "check_in": "2026-11-10 14:00",
+            "check_out": "2026-11-12 11:00",
+            "hotel_location": "Bandra West, Mumbai",
+            "contact_number": "+91 22 6668 1234"
+        }
+    })
+    assert res_hotel_ok.status_code == 201
+    assert res_hotel_ok.json()["category_details"]["hotel_name"] == "Taj Lands End"
+
+    # 3. Training & Certifications without details fails
+    res_train_fail = await client.post("/api/v1/expenses?submit_now=true", headers=emp_headers, json={
+        "title": "AWS Solutions Architect",
+        "amount": 15000.0,
+        "category": "TRAINING",
+        "expense_date": datetime.now(timezone.utc).isoformat(),
+        "receipt_url": "https://storage.crs-corp.com/receipts/aws_exam.png"
+    })
+    assert res_train_fail.status_code == 400
+    assert "Training & Certifications requires the following mandatory details" in res_train_fail.json()["detail"]
+
+    # 4. Training & Certifications with details succeeds
+    res_train_ok = await client.post("/api/v1/expenses?submit_now=true", headers=emp_headers, json={
+        "title": "AWS Solutions Architect",
+        "amount": 15000.0,
+        "category": "TRAINING",
+        "expense_date": datetime.now(timezone.utc).isoformat(),
+        "receipt_url": "https://storage.crs-corp.com/receipts/aws_exam.png",
+        "category_details": {
+            "certification_name": "AWS Certified Solutions Architect - Associate",
+            "institute": "Amazon Web Services",
+            "enrollment_date": "2026-11-01",
+            "certification_type": "Technical Training"
+        }
+    })
+    assert res_train_ok.status_code == 201
+    assert res_train_ok.json()["category_details"]["institute"] == "Amazon Web Services"
+
+    # 5. Travel & Commute without details fails
+    res_travel_fail = await client.post("/api/v1/expenses?submit_now=true", headers=emp_headers, json={
+        "title": "Client Meeting Flight",
+        "amount": 8200.0,
+        "category": "TRAVEL",
+        "expense_date": datetime.now(timezone.utc).isoformat(),
+        "receipt_url": "https://storage.crs-corp.com/receipts/flight.png"
+    })
+    assert res_travel_fail.status_code == 400
+    assert "Travel & Commute requires the following mandatory details" in res_travel_fail.json()["detail"]
+
+    # 6. Travel & Commute with details succeeds
+    res_travel_ok = await client.post("/api/v1/expenses?submit_now=true", headers=emp_headers, json={
+        "title": "Client Meeting Flight",
+        "amount": 8200.0,
+        "category": "TRAVEL",
+        "expense_date": datetime.now(timezone.utc).isoformat(),
+        "receipt_url": "https://storage.crs-corp.com/receipts/flight.png",
+        "category_details": {
+            "travel_mode": "Flight",
+            "start_date": "2026-11-15",
+            "end_date": "2026-11-16",
+            "boarding_point": "DEL",
+            "arrival_point": "BLR"
+        }
+    })
+    assert res_travel_ok.status_code == 201
+    assert res_travel_ok.json()["category_details"]["boarding_point"] == "DEL"

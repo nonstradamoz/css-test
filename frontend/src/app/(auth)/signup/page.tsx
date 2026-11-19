@@ -62,8 +62,8 @@ export default function SignupPage() {
             <ShieldCheck size={28} />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-white tracking-tight">Create CRS Account</h1>
-            <p className="text-xs text-neutral-400">Enterprise Registration</p>
+            <h1 className="text-xl font-bold text-white tracking-tight">Create ClearSpend Account</h1>
+            <p className="text-xs text-neutral-400">Expense & Refund Portal</p>
           </div>
         </div>
 

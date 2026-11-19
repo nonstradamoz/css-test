@@ -13,34 +13,33 @@ const ARCHITECTURE_SECTIONS = [
     id: 'rbac',
     title: 'Role-Based Access Control (RBAC)',
     icon: Users,
-    description: 'Direct four-tier enterprise permission matrix governing actions across the financial lifecycle.',
+    description: 'Direct three-tier permission matrix governing actions across the financial lifecycle.',
     details: [
       { role: 'ADMIN', color: '#8b5cf6', desc: 'Full control over users, settings, thresholds, audit trails, and approvals.' },
-      { role: 'FINANCE', color: '#10b981', desc: 'Authorizes Tier-2 secondary high-value approvals and executes idempotent reimbursements.' },
-      { role: 'REVIEWER', color: '#3b82f6', desc: 'Evaluates standard claims, requests modifications, or rejects non-compliant expenses.' },
-      { role: 'EMPLOYEE', color: '#6b7280', desc: 'Creates claims, uploads receipts to Cloudflare R2, resubmits feedback, and tracks payouts.' }
+      { role: 'REVIEWER', color: '#10b981', desc: 'Authorizes Tier-1 & Tier-2 reviews, requests changes, and executes verified reimbursements.' },
+      { role: 'EMPLOYEE', color: '#6b7280', desc: 'Creates claims, uploads receipts, manages bank profile, and tracks payouts.' }
     ]
   },
   {
     id: 'approval-tiers',
     title: 'Multi-Tiered Financial State Machine',
     icon: Workflow,
-    description: 'Dynamic approval routing governed by global enterprise threshold parameters.',
+    description: 'Dynamic approval routing governed by global company threshold parameters.',
     details: [
       { label: 'Single-Tier Routing (< Threshold)', desc: 'Claims below the company threshold (default ₹25,000) require approval only from a designated Reviewer or Admin before becoming payable.' },
-      { label: 'Two-Tier Escalation (≥ Threshold)', desc: 'High-value claims automatically escalate: Tier-1 Reviewer approval transitions claim to UNDER_REVIEW, requiring mandatory Tier-2 Finance sign-off.' },
+      { label: 'Two-Tier Escalation (≥ Threshold)', desc: 'High-value claims automatically escalate: Tier-1 Reviewer approval transitions claim to UNDER_REVIEW, requiring mandatory Tier-2 sign-off.' },
       { label: 'Change Request Cycle', desc: 'Reviewers can reject or request modifications. Submissions are returned to the employee with actionable audit comments.' }
     ]
   },
   {
     id: 'idempotency',
-    title: 'Idempotency & Concurrency Safety',
+    title: 'Disbursement Safety & Transaction Verification',
     icon: Lock,
-    description: 'Zero duplicate disbursements through distributed locks and unique financial idempotency keys.',
+    description: 'Zero duplicate disbursements through distributed locks and verified transaction tracking.',
     details: [
-      { label: 'Distributed Redis Locks', desc: 'Acquires atomic locks on claim IDs during settlement to prevent simultaneous double payouts under network retries.' },
-      { label: 'Client Idempotency Keys', desc: 'Strict unique constraint on reimbursement transaction keys ensures replay attacks or duplicate submissions return HTTP 409 Conflict.' },
-      { label: 'Exponential Backoff Retries', desc: 'Integrated Celery worker pool automatically retries failed bank disbursements with escalating countdown timers.' }
+      { label: 'Distributed Locks', desc: 'Acquires atomic locks on claim IDs during settlement to prevent simultaneous double payouts under network retries.' },
+      { label: 'Mandatory Transfer Transaction ID', desc: 'Reviewers must supply the bank transfer transaction ID (UTR / IMPS Ref) before reimbursement completes.' },
+      { label: 'Bank Profile Verification', desc: 'Employees must have configured bank details in their profile before claim submission is permitted.' }
     ]
   },
   {
@@ -68,7 +67,7 @@ export default function DocsPage() {
             <ShieldCheck size={22} />
           </div>
           <div>
-            <span className="font-bold text-white text-base tracking-tight">CRS Enterprise</span>
+            <span className="font-bold text-white text-base tracking-tight">ClearSpend</span>
             <span className="text-xs text-neutral-400 ml-2 border-l border-neutral-700 pl-2">System Documentation & Features</span>
           </div>
         </div>
@@ -94,10 +93,10 @@ export default function DocsPage() {
       {/* Hero */}
       <div className="max-w-7xl mx-auto px-6 py-12 text-center space-y-4">
         <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-full text-xs font-semibold">
-          <Cpu size={14} /> Single-Tenant Enterprise Platform
+          <Cpu size={14} /> Expense & Refund Platform
         </div>
         <h1 className="text-3xl md:text-5xl font-extrabold text-white tracking-tight max-w-3xl mx-auto">
-          Centralised Expense & Refund Management System
+          ClearSpend Expense & Refund Management System
         </h1>
         <p className="text-sm md:text-base text-neutral-400 max-w-2xl mx-auto leading-relaxed">
           Self-hosted, high-performance architecture powered by Python FastAPI, PostgreSQL 16, Redis 7, Celery, and Next.js 16.

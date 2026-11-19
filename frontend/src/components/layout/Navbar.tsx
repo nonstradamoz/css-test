@@ -29,7 +29,7 @@ export const Navbar: React.FC = () => {
           {greet()}{name ? `, ${name}` : ''}
         </p>
         <p className="text-xs text-neutral-500 mt-1">
-          CRS Enterprise · {new Date().toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
+          ClearSpend · {new Date().toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
         </p>
       </div>
 

@@ -9,7 +9,7 @@ import { ReceiptAnalysisResponse, ForensicsPreviewResponse } from '@/types';
 import {
   UploadCloud, FileText, CheckCircle2, AlertCircle, ArrowLeft,
   Send, Save, Sparkles, Scan, ShieldAlert, ShieldCheck, PenTool,
-  Clock, AlertTriangle, Layers, Check, X
+  Clock, AlertTriangle, Layers, Check, X, Building, GraduationCap, Plane
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -24,6 +24,27 @@ export default function NewExpensePage() {
   const [category, setCategory] = useState<string>('TRAVEL');
   const [expenseDate, setExpenseDate] = useState(new Date().toISOString().split('T')[0]);
   const [description, setDescription] = useState('');
+
+  // Category-specific mandatory details
+  // 1. Hotel & Lodging (ACCOMMODATION)
+  const [hotelName, setHotelName] = useState('');
+  const [checkIn, setCheckIn] = useState('');
+  const [checkOut, setCheckOut] = useState('');
+  const [hotelLocation, setHotelLocation] = useState('');
+  const [hotelContact, setHotelContact] = useState('');
+
+  // 2. Training & Certifications (TRAINING)
+  const [certName, setCertName] = useState('');
+  const [certInstitute, setCertInstitute] = useState('');
+  const [certEnrollDate, setCertEnrollDate] = useState('');
+  const [certType, setCertType] = useState('Professional Course');
+
+  // 3. Travel & Commute (TRAVEL)
+  const [travelMode, setTravelMode] = useState('Flight');
+  const [travelStartDate, setTravelStartDate] = useState('');
+  const [travelEndDate, setTravelEndDate] = useState('');
+  const [boardingPoint, setBoardingPoint] = useState('');
+  const [arrivalPoint, setArrivalPoint] = useState('');
 
   // File & AI Scanner State
   const [file, setFile] = useState<File | null>(null);
@@ -151,6 +172,45 @@ export default function NewExpensePage() {
       return;
     }
 
+    // Category specifics validation
+    let categoryDetails: Record<string, any> = {};
+    if (category === 'ACCOMMODATION') {
+      if (submitNow && (!hotelName.trim() || !checkIn.trim() || !checkOut.trim() || !hotelLocation.trim())) {
+        setError('Hotel & Lodging claims require: Hotel Name, Check-in Date/Time, Check-out Date/Time, and Hotel Location.');
+        return;
+      }
+      categoryDetails = {
+        hotel_name: hotelName.trim(),
+        check_in: checkIn.trim(),
+        check_out: checkOut.trim(),
+        hotel_location: hotelLocation.trim(),
+        contact_number: hotelContact.trim() || undefined,
+      };
+    } else if (category === 'TRAINING') {
+      if (submitNow && (!certName.trim() || !certInstitute.trim() || !certEnrollDate.trim() || !certType.trim())) {
+        setError('Training & Certifications claims require: Certification Name, Platform / Institute, Enrollment Date, and Certification Type.');
+        return;
+      }
+      categoryDetails = {
+        certification_name: certName.trim(),
+        institute: certInstitute.trim(),
+        enrollment_date: certEnrollDate.trim(),
+        certification_type: certType.trim(),
+      };
+    } else if (category === 'TRAVEL') {
+      if (submitNow && (!travelMode.trim() || !travelStartDate.trim() || !travelEndDate.trim() || !boardingPoint.trim() || !arrivalPoint.trim())) {
+        setError('Travel & Commute claims require: Mode of Travel, Start Date, End Date, Boarding Point, and Arrival Point.');
+        return;
+      }
+      categoryDetails = {
+        travel_mode: travelMode.trim(),
+        start_date: travelStartDate.trim(),
+        end_date: travelEndDate.trim(),
+        boarding_point: boardingPoint.trim(),
+        arrival_point: arrivalPoint.trim(),
+      };
+    }
+
     if (forensics?.is_blocked) {
       setError(forensics.block_reason || 'This claim is blocked by corporate forensics compliance.');
       return;
@@ -184,6 +244,7 @@ export default function NewExpensePage() {
         currency,
         expense_date: new Date(expenseDate).toISOString() as any,
         receipt_url: receiptUrl,
+        category_details: Object.keys(categoryDetails).length > 0 ? categoryDetails : undefined,
         extracted_metadata: scanResult ? {
           merchant_name: scanResult.merchant_name,
           confidence_score: scanResult.confidence_score,
@@ -330,12 +391,259 @@ export default function NewExpensePage() {
           </label>
           <textarea
             rows={3}
-            placeholder="Explain corporate rationale, attendee names, or project milestones..."
+            placeholder="Explain business rationale, project milestones, or notes..."
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             className="w-full px-4 py-2.5 border border-neutral-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
           />
         </div>
+
+        {/* Dynamic Category Specific Details */}
+        {category === 'ACCOMMODATION' && (
+          <div className="bg-emerald-50/30 border border-emerald-200/80 rounded-2xl p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-sm font-bold text-neutral-900">
+                <Building size={18} className="text-emerald-600" />
+                <span>Hotel & Lodging Details *</span>
+              </div>
+              <span className="text-[11px] font-semibold px-2.5 py-0.5 bg-emerald-100 text-emerald-800 rounded-full border border-emerald-200">
+                Mandatory Details
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-600 mb-1.5">
+                  Hotel Name *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Grand Hyatt, Marriott, Ginger"
+                  value={hotelName}
+                  onChange={(e) => setHotelName(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-neutral-300 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-600 mb-1.5">
+                  Hotel Location / Address *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Bandra Kurla Complex, Mumbai"
+                  value={hotelLocation}
+                  onChange={(e) => setHotelLocation(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-neutral-300 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-600 mb-1.5">
+                  Check-in Date & Time *
+                </label>
+                <input
+                  type="datetime-local"
+                  required
+                  value={checkIn}
+                  onChange={(e) => setCheckIn(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-neutral-300 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-600 mb-1.5">
+                  Check-out Date & Time *
+                </label>
+                <input
+                  type="datetime-local"
+                  required
+                  value={checkOut}
+                  onChange={(e) => setCheckOut(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-neutral-300 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-600 mb-1.5">
+                  Hotel Contact Number (If Available)
+                </label>
+                <input
+                  type="tel"
+                  placeholder="e.g. +91 22 6676 1234"
+                  value={hotelContact}
+                  onChange={(e) => setHotelContact(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-neutral-300 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {category === 'TRAINING' && (
+          <div className="bg-emerald-50/30 border border-emerald-200/80 rounded-2xl p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-sm font-bold text-neutral-900">
+                <GraduationCap size={18} className="text-emerald-600" />
+                <span>Training & Certification Details *</span>
+              </div>
+              <span className="text-[11px] font-semibold px-2.5 py-0.5 bg-emerald-100 text-emerald-800 rounded-full border border-emerald-200">
+                Mandatory Details
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-600 mb-1.5">
+                  Certification Name *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. AWS Solutions Architect, PMP, Scikit-learn Mastery"
+                  value={certName}
+                  onChange={(e) => setCertName(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-neutral-300 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-600 mb-1.5">
+                  Platform or Institute *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Coursera, Udemy, Harvard Online, AWS, IIM"
+                  value={certInstitute}
+                  onChange={(e) => setCertInstitute(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-neutral-300 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-600 mb-1.5">
+                  Enrollment Date *
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={certEnrollDate}
+                  onChange={(e) => setCertEnrollDate(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-neutral-300 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-600 mb-1.5">
+                  Type of Certification *
+                </label>
+                <select
+                  value={certType}
+                  onChange={(e) => setCertType(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-neutral-300 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                >
+                  <option value="Professional Course">Professional Course</option>
+                  <option value="Technical Training">Technical Training</option>
+                  <option value="Industry Accreditation">Industry Accreditation</option>
+                  <option value="Executive Education">Executive Education</option>
+                  <option value="Certification Exam">Certification Exam</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {category === 'TRAVEL' && (
+          <div className="bg-emerald-50/30 border border-emerald-200/80 rounded-2xl p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-sm font-bold text-neutral-900">
+                <Plane size={18} className="text-emerald-600" />
+                <span>Travel & Commute Details *</span>
+              </div>
+              <span className="text-[11px] font-semibold px-2.5 py-0.5 bg-emerald-100 text-emerald-800 rounded-full border border-emerald-200">
+                Mandatory Details
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-600 mb-1.5">
+                  Mode of Travel *
+                </label>
+                <select
+                  value={travelMode}
+                  onChange={(e) => setTravelMode(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-neutral-300 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                >
+                  <option value="Flight">Flight</option>
+                  <option value="Train">Train</option>
+                  <option value="Bus">Bus</option>
+                  <option value="Cab / Taxi">Cab / Taxi</option>
+                  <option value="Personal Vehicle">Personal Vehicle</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-600 mb-1.5">
+                  Start Date *
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={travelStartDate}
+                  onChange={(e) => setTravelStartDate(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-neutral-300 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-600 mb-1.5">
+                  End Date *
+                </label>
+                <input
+                  type="date"
+                  required
+                  value={travelEndDate}
+                  onChange={(e) => setTravelEndDate(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-neutral-300 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-600 mb-1.5">
+                  Boarding Point (Origin) *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Mumbai (BOM) / New Delhi"
+                  value={boardingPoint}
+                  onChange={(e) => setBoardingPoint(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-neutral-300 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-600 mb-1.5">
+                  Arrival Point (Destination) *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Bengaluru (BLR) / Hyderabad"
+                  value={arrivalPoint}
+                  onChange={(e) => setArrivalPoint(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-neutral-300 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                />
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* 1. Multimodal AI Receipt Scanner Card */}
         <div className="bg-white border border-neutral-200/80 rounded-2xl p-6 shadow-sm space-y-4 relative overflow-hidden">

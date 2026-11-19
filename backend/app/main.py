@@ -47,6 +47,7 @@ def auto_migrate_schema(sync_conn):
         ],
         "expenses": [
             ("extracted_metadata", "JSON"),
+            ("category_details", "JSON"),
             ("risk_score", "INTEGER DEFAULT 0"),
             ("risk_level", "VARCHAR(20) DEFAULT 'LOW'"),
             ("forensic_flags", "JSON"),
@@ -88,15 +89,18 @@ async def lifespan(app: FastAPI):
         async with db_module.AsyncSessionLocal() as session:
             # 1. SystemSettings
             result = await session.execute(select(SystemSettings).where(SystemSettings.id == 1))
-            if not result.scalars().first():
+            settings_row = result.scalars().first()
+            if not settings_row:
                 default_settings = SystemSettings(
                     id=1,
-                    company_name="Centralised Expense System",
+                    company_name="ClearSpend",
                     default_currency="INR",
                     tier2_approval_threshold=25000.00,
                     allow_self_approval=False
                 )
                 session.add(default_settings)
+            elif settings_row.company_name in ["Centralised Expense System", "CRS Enterprise"]:
+                settings_row.company_name = "ClearSpend"
 
             # 2. Seed initial admin & employee if they don't exist
             admin_res = await session.execute(select(User).where(User.email == settings.FIRST_SUPERADMIN_EMAIL.lower()))
@@ -104,7 +108,7 @@ async def lifespan(app: FastAPI):
                 admin_user = User(
                     email=settings.FIRST_SUPERADMIN_EMAIL.lower(),
                     hashed_password=get_password_hash(settings.FIRST_SUPERADMIN_PASSWORD),
-                    full_name="Enterprise Administrator",
+                    full_name="Administrator",
                     role=UserRole.ADMIN,
                     is_active=True
                 )
@@ -155,9 +159,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title=settings.PROJECT_NAME,
+    title="ClearSpend API",
     version="2.0.0",
-    description="Enterprise Centralised Expense & Refund Management System (CRS) API",
+    description="ClearSpend Expense & Refund Management System API",
     openapi_url="/openapi.json",
     docs_url="/docs",
     redoc_url="/redoc",
@@ -218,5 +222,5 @@ async def health_check():
     return {
         "status": "healthy",
         "version": "2.0.0",
-        "system": "Centralised Expense & Refund System"
+        "system": "ClearSpend"
     }

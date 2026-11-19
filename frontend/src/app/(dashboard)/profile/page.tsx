@@ -106,7 +106,7 @@ function ProfileContent() {
           <div className="space-y-1">
             <h3 className="text-sm font-semibold text-amber-900">Bank Details Required to Submit Expense Claims</h3>
             <p className="text-xs text-amber-800 leading-relaxed">
-              Your expense claim has been safely saved as a <strong>Draft</strong>. Enterprise financial policy requires valid reimbursement bank details (Account Number or UPI ID) on your profile before a claim can be submitted. Please fill out your bank details below and save your profile.
+              Your expense claim has been safely saved as a <strong>Draft</strong>. Corporate policy requires valid reimbursement bank details (Account Number or UPI ID) on your profile before a claim can be submitted. Please fill out your bank details below and save your profile.
             </p>
           </div>
         </div>
@@ -148,7 +148,7 @@ function ProfileContent() {
             </div>
             <div>
               <h2 className="text-base font-bold text-neutral-900">Personal Information</h2>
-              <p className="text-xs text-neutral-500">Your profile details across the CRS enterprise.</p>
+              <p className="text-xs text-neutral-500">Your profile details in ClearSpend.</p>
             </div>
           </div>
 
@@ -182,7 +182,7 @@ function ProfileContent() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-500 mb-1.5">
-                Enterprise Role
+                User Role
               </label>
               <div className="px-4 py-2.5 bg-neutral-100 border border-neutral-200 rounded-xl text-sm text-neutral-700 font-semibold flex items-center justify-between">
                 <span>{user?.role}</span>

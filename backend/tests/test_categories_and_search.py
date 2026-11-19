@@ -22,30 +22,32 @@ async def test_categories_crud_and_search(client, test_db):
     token = login_res.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
-    # 2. Create new category
+    # 2. Attempting to create new category is rejected (hard-coded standard categories enforced)
     new_cat_res = await client.post("/api/v1/categories", headers=headers, json={
         "code": "HARDWARE_DEV",
         "name": "Hardware & Lab Equipment",
         "description": "Lab tools and test boards",
         "is_active": True
     })
-    assert new_cat_res.status_code == 201
-    created_cat = new_cat_res.json()
-    assert created_cat["code"] == "HARDWARE_DEV"
+    assert new_cat_res.status_code == 400
+    assert "disabled" in new_cat_res.json()["detail"].lower()
 
-    # 3. List active categories
+    # 3. List active categories returns standardized hardcoded categories
     cat_res = await client.get("/api/v1/categories", headers=headers)
     assert cat_res.status_code == 200
     categories = cat_res.json()
-    assert any(c["code"] == "HARDWARE_DEV" for c in categories)
+    cat_codes = [c["code"] for c in categories]
+    assert "ACCOMMODATION" in cat_codes
+    assert "TRAINING" in cat_codes
+    assert "TRAVEL" in cat_codes
+    assert "MEALS" in cat_codes
 
-    # 4. Update category
-    patch_res = await client.patch(f"/api/v1/categories/{created_cat['id']}", headers=headers, json={
-        "name": "Hardware, Lab & Robotics",
-        "is_active": True
+    # 4. Attempting to update a category is also rejected
+    first_cat = categories[0]
+    patch_res = await client.patch(f"/api/v1/categories/{first_cat['id']}", headers=headers, json={
+        "name": "Modified Name"
     })
-    assert patch_res.status_code == 200
-    assert patch_res.json()["name"] == "Hardware, Lab & Robotics"
+    assert patch_res.status_code == 400
 
     # 5. Search & Sort expenses
     exp_res = await client.get("/api/v1/expenses?search=Hardware&sort_by=amount&sort_order=desc", headers=headers)

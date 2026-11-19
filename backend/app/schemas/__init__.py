@@ -167,6 +167,7 @@ class ExpenseCreate(BaseModel):
     receipt_url: Optional[str] = None
     receipt_hash: Optional[str] = None
     extracted_metadata: Optional[Dict[str, Any]] = None
+    category_details: Optional[Dict[str, Any]] = None
 
 
 class ExpenseUpdate(BaseModel):
@@ -179,6 +180,7 @@ class ExpenseUpdate(BaseModel):
     receipt_url: Optional[str] = None
     receipt_hash: Optional[str] = None
     extracted_metadata: Optional[Dict[str, Any]] = None
+    category_details: Optional[Dict[str, Any]] = None
 
 
 class ExpenseOut(BaseModel):
@@ -199,6 +201,7 @@ class ExpenseOut(BaseModel):
     risk_level: str = "LOW"
     forensic_flags: List[Dict[str, Any]] = []
     extracted_metadata: Optional[Dict[str, Any]] = None
+    category_details: Optional[Dict[str, Any]] = None
     audit_exemption_reason: Optional[str] = None
     created_at: datetime
     updated_at: datetime

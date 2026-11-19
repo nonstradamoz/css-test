@@ -15,7 +15,9 @@ export type User = components["schemas"]["UserOut"] & {
 export type Role = components["schemas"]["UserRole"];
 export type UserRole = components["schemas"]["UserRole"];
 
-export type Expense = components["schemas"]["ExpenseOut"];
+export type Expense = components["schemas"]["ExpenseOut"] & {
+  category_details?: Record<string, any> | null;
+};
 export type ExpenseStatus = components["schemas"]["ExpenseStatus"];
 export type ExpenseCategory = string;
 
@@ -39,8 +41,12 @@ export type SystemSettings = components["schemas"]["SystemSettingsOut"] & {
 export type AuditLog = components["schemas"]["AuditLogOut"];
 export type PresignedUploadResponse = components["schemas"]["PresignedUploadResponse"];
 
-export type ExpenseCreate = components["schemas"]["ExpenseCreate"];
-export type ExpenseUpdate = components["schemas"]["ExpenseUpdate"];
+export type ExpenseCreate = components["schemas"]["ExpenseCreate"] & {
+  category_details?: Record<string, any> | null;
+};
+export type ExpenseUpdate = components["schemas"]["ExpenseUpdate"] & {
+  category_details?: Record<string, any> | null;
+};
 
 export type Category = components["schemas"]["CategoryOut"];
 export type CategoryCreate = components["schemas"]["CategoryCreate"];

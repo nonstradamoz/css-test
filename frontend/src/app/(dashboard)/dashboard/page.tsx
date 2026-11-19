@@ -111,7 +111,7 @@ export default function DashboardPage() {
         <Stat
           label="Total Approved / Settled"
           value={formatCurrency(totalSpend)}
-          note="Approved & Reimbursed"
+          note="Approved & processed for Reimbursement"
           icon={IndianRupee}
           iconColor="#1a7a4a"
         />

@@ -12,15 +12,78 @@ from app.api.v1.deps import get_current_user, require_role, log_audit_event
 router = APIRouter(prefix="/categories", tags=["Categories"])
 
 
+# Hard-coded standardized enterprise categories
+HARDCODED_CATEGORIES = [
+    {
+        "code": "ACCOMMODATION",
+        "name": "Hotel & Lodging",
+        "description": "Hotel stays, room tariffs, and business trip lodging",
+    },
+    {
+        "code": "TRAINING",
+        "name": "Training & Certifications",
+        "description": "Professional certifications, courses, workshops, and exam vouchers",
+    },
+    {
+        "code": "TRAVEL",
+        "name": "Travel & Commute",
+        "description": "Flights, trains, buses, cabs, mileage, tolls, and official commute",
+    },
+    {
+        "code": "MEALS",
+        "name": "Meals & Entertainment",
+        "description": "Business meals, client hospitality, and authorized team dinners",
+    },
+    {
+        "code": "SUPPLIES",
+        "name": "Office Supplies & Equipment",
+        "description": "Stationery, peripherals, desk accessories, and office consumables",
+    },
+    {
+        "code": "SOFTWARE",
+        "name": "Software & Subscriptions",
+        "description": "Cloud hosting, developer tool licenses, and authorized SaaS subscriptions",
+    },
+    {
+        "code": "OTHER",
+        "name": "Miscellaneous & Other",
+        "description": "Approved business expenses not falling into standard categories",
+    },
+]
+
+
+async def ensure_hardcoded_categories(db: AsyncSession):
+    for cat in HARDCODED_CATEGORIES:
+        res = await db.execute(select(ExpenseCategoryModel).where(ExpenseCategoryModel.code == cat["code"]))
+        existing = res.scalars().first()
+        if not existing:
+            new_cat = ExpenseCategoryModel(
+                code=cat["code"],
+                name=cat["name"],
+                description=cat["description"],
+                is_active=True,
+                is_system=True
+            )
+            db.add(new_cat)
+        else:
+            # Keep name and description aligned with hard-coded standards
+            existing.name = cat["name"]
+            existing.description = cat["description"]
+            existing.is_active = True
+            existing.is_system = True
+    await db.flush()
+
+
 @router.get("", response_model=List[CategoryOut])
 async def list_active_categories(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
-    List all active expense claim categories.
+    List all standard active expense claim categories.
     Available to all authenticated employees for claim submission dropdowns.
     """
+    await ensure_hardcoded_categories(db)
     result = await db.execute(
         select(ExpenseCategoryModel)
         .where(ExpenseCategoryModel.is_active == True)
@@ -35,8 +98,9 @@ async def list_all_categories(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    List all categories including deactivated ones (Admin and Finance only).
+    List all standardized categories (Admin and Finance).
     """
+    await ensure_hardcoded_categories(db)
     result = await db.execute(
         select(ExpenseCategoryModel).order_by(ExpenseCategoryModel.name)
     )
@@ -50,42 +114,11 @@ async def create_category(
     current_user: User = Depends(require_role([UserRole.ADMIN])),
     db: AsyncSession = Depends(get_db)
 ):
-    """
-    Create a new expense claim category (Admin only).
-    """
-    clean_code = data.code.strip().upper().replace(" ", "_")
-    
-    # Check if category code already exists
-    existing = await db.execute(
-        select(ExpenseCategoryModel).where(ExpenseCategoryModel.code == clean_code)
+    """Category editing is disabled in favor of standardized categories."""
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Category modification is disabled. Standard categories (Hotel & Lodging, Training & Certifications, Travel & Commute, etc.) are strictly enforced."
     )
-    if existing.scalars().first():
-        raise HTTPException(
-            status_code=400,
-            detail=f"Category with code '{clean_code}' already exists."
-        )
-
-    new_cat = ExpenseCategoryModel(
-        code=clean_code,
-        name=data.name.strip(),
-        description=data.description.strip() if data.description else None,
-        is_active=data.is_active,
-        is_system=False
-    )
-    db.add(new_cat)
-    await db.flush()
-
-    await log_audit_event(
-        db=db,
-        actor_id=current_user.id,
-        entity_type="CATEGORY",
-        entity_id=new_cat.id,
-        action="CREATE_CATEGORY",
-        new_values={"code": new_cat.code, "name": new_cat.name},
-        ip_address=request.client.host if request.client else None
-    )
-
-    return new_cat
 
 
 @router.patch("/{category_id}", response_model=CategoryOut)
@@ -96,47 +129,11 @@ async def update_category(
     current_user: User = Depends(require_role([UserRole.ADMIN])),
     db: AsyncSession = Depends(get_db)
 ):
-    """
-    Update category display name, description, or active status (Admin only).
-    """
-    result = await db.execute(
-        select(ExpenseCategoryModel).where(ExpenseCategoryModel.id == category_id)
+    """Category editing is disabled in favor of standardized categories."""
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Category modification is disabled. Standard categories (Hotel & Lodging, Training & Certifications, Travel & Commute, etc.) are strictly enforced."
     )
-    category = result.scalars().first()
-    if not category:
-        raise HTTPException(status_code=404, detail="Category not found.")
-
-    old_values = {
-        "name": category.name,
-        "description": category.description,
-        "is_active": category.is_active
-    }
-
-    if data.name is not None:
-        category.name = data.name.strip()
-    if data.description is not None:
-        category.description = data.description.strip() if data.description else None
-    if data.is_active is not None:
-        category.is_active = data.is_active
-
-    await db.flush()
-
-    await log_audit_event(
-        db=db,
-        actor_id=current_user.id,
-        entity_type="CATEGORY",
-        entity_id=category.id,
-        action="UPDATE_CATEGORY",
-        old_values=old_values,
-        new_values={
-            "name": category.name,
-            "description": category.description,
-            "is_active": category.is_active
-        },
-        ip_address=request.client.host if request.client else None
-    )
-
-    return category
 
 
 @router.delete("/{category_id}", status_code=status.HTTP_200_OK)
@@ -146,38 +143,8 @@ async def delete_or_deactivate_category(
     current_user: User = Depends(require_role([UserRole.ADMIN])),
     db: AsyncSession = Depends(get_db)
 ):
-    """
-    Delete or deactivate category.
-    If expenses are linked to this category code, it is safely soft-deactivated to preserve audit integrity.
-    """
-    result = await db.execute(
-        select(ExpenseCategoryModel).where(ExpenseCategoryModel.id == category_id)
+    """Category editing is disabled in favor of standardized categories."""
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Category modification is disabled. Standard categories cannot be deleted."
     )
-    category = result.scalars().first()
-    if not category:
-        raise HTTPException(status_code=404, detail="Category not found.")
-
-    if category.is_system:
-        raise HTTPException(
-            status_code=400,
-            detail="System standard categories cannot be deleted. You may deactivate them instead."
-        )
-
-    # Check if any expenses reference this category code
-    count_linked = await db.scalar(
-        select(func.count(Expense.id)).where(Expense.category == category.code)
-    )
-
-    if count_linked and count_linked > 0:
-        # Soft deactivate
-        category.is_active = False
-        await db.flush()
-        return {
-            "message": f"Category '{category.name}' is referenced by {count_linked} expense claims. It has been deactivated instead of deleted to protect historical records.",
-            "is_active": False
-        }
-    else:
-        # Safe hard delete
-        await db.delete(category)
-        await db.flush()
-        return {"message": f"Category '{category.name}' has been deleted."}

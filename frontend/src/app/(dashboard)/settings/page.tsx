@@ -7,7 +7,7 @@ import { api } from '@/lib/api';
 import { Category } from '@/types';
 import {
   Settings, Save, CheckCircle2, ShieldCheck,
-  AlertTriangle, Tag, Plus, Edit2, Check, X, Power
+  AlertTriangle, Tag, Check
 } from 'lucide-react';
 
 export default function SettingsPage() {
@@ -29,28 +29,14 @@ export default function SettingsPage() {
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Category Management State
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [newCode, setNewCode] = useState('');
-  const [newName, setNewName] = useState('');
-  const [newDesc, setNewDesc] = useState('');
-  const [catActionLoading, setCatActionLoading] = useState(false);
-  const [catError, setCatError] = useState<string | null>(null);
-
-  // Editing Category state
-  const [editingCatId, setEditingCatId] = useState<string | null>(null);
-  const [editName, setEditName] = useState('');
-  const [editDesc, setEditDesc] = useState('');
-
   const { data: currentSettings } = useQuery({
     queryKey: ['system-settings'],
     queryFn: () => api.settings.get()
   });
 
-  const { data: categories = [], refetch: refetchCategories } = useQuery({
+  const { data: categories = [] } = useQuery({
     queryKey: ['categories-all'],
-    queryFn: () => api.categories.listAll(),
-    enabled: role === 'ADMIN'
+    queryFn: () => api.categories.list()
   });
 
   useEffect(() => {
@@ -101,71 +87,10 @@ export default function SettingsPage() {
     }
   };
 
-  const handleCreateCategory = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newCode.trim() || !newName.trim()) return;
-    setCatActionLoading(true);
-    setCatError(null);
-    try {
-      await api.categories.create({
-        code: newCode.trim().toUpperCase().replace(/\s+/g, '_'),
-        name: newName.trim(),
-        description: newDesc.trim() || undefined,
-        is_active: true
-      });
-      setShowAddModal(false);
-      setNewCode('');
-      setNewName('');
-      setNewDesc('');
-      await Promise.all([
-        refetchCategories(),
-        queryClient.invalidateQueries({ queryKey: ['categories-active'] })
-      ]);
-    } catch (err: any) {
-      setCatError(err.message || 'Failed to create category');
-    } finally {
-      setCatActionLoading(false);
-    }
-  };
-
-  const handleToggleActive = async (cat: Category) => {
-    setCatError(null);
-    try {
-      await api.categories.update(cat.id, { is_active: !cat.is_active });
-      await Promise.all([
-        refetchCategories(),
-        queryClient.invalidateQueries({ queryKey: ['categories-active'] })
-      ]);
-    } catch (err: any) {
-      setCatError(err.message || 'Failed to update category status');
-    }
-  };
-
-  const handleSaveEdit = async (catId: string) => {
-    if (!editName.trim()) return;
-    setCatActionLoading(true);
-    setCatError(null);
-    try {
-      await api.categories.update(catId, {
-        name: editName.trim(),
-        description: editDesc.trim() || undefined
-      });
-      setEditingCatId(null);
-      await Promise.all([
-        refetchCategories(),
-        queryClient.invalidateQueries({ queryKey: ['categories-active'] })
-      ]);
-    } catch (err: any) {
-      setCatError(err.message || 'Failed to update category');
-    } finally {
-      setCatActionLoading(false);
-    }
-  };
-
   if (role !== 'ADMIN') {
     return (
       <div className="p-12 text-center text-sm text-neutral-500">
-        Access restricted. Only Administrators can modify enterprise system settings and category governance.
+        Access restricted. Only Administrators can modify system parameters and company settings.
       </div>
     );
   }
@@ -173,9 +98,9 @@ export default function SettingsPage() {
   return (
     <div className="p-8 max-w-4xl mx-auto space-y-8">
       <div>
-        <h1 className="text-2xl font-bold text-neutral-900 tracking-tight">Enterprise Settings & Governance</h1>
+        <h1 className="text-2xl font-bold text-neutral-900 tracking-tight">System Settings & Policies</h1>
         <p className="text-sm text-neutral-500 mt-1">
-          Configure financial rules, multi-tiered approval thresholds, and manage claim submission categories.
+          Configure financial rules, approval thresholds, submission windows, and review predefined claim categories.
         </p>
       </div>
 
@@ -201,7 +126,7 @@ export default function SettingsPage() {
 
         <div>
           <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-500 mb-1.5">
-            Enterprise Name
+            Company Name
           </label>
           <input
             type="text"
@@ -357,7 +282,7 @@ export default function SettingsPage() {
             </span>
           </label>
           <p className="text-xs text-neutral-400 ml-6 mt-0.5">
-            Recommended disabled for enterprise audit and compliance separation of duties.
+            Recommended disabled for audit and compliance separation of duties.
           </p>
         </div>
 
@@ -373,200 +298,69 @@ export default function SettingsPage() {
         </div>
       </form>
 
-      {/* 2. Expense Category Governance */}
+      {/* 2. Standardized Expense Categories */}
       <div className="bg-white border border-neutral-200/80 rounded-2xl p-6 shadow-sm space-y-5">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div>
-            <h2 className="text-base font-bold text-neutral-900 flex items-center gap-2">
-              <Tag size={18} className="text-emerald-600" /> Expense Categories Governance
-            </h2>
-            <p className="text-xs text-neutral-500 mt-0.5">
-              Customize categories available for employee claim submission. System standard categories cannot be deleted but can be deactivated.
-            </p>
-          </div>
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-neutral-900 hover:bg-neutral-800 text-white font-medium rounded-xl text-xs transition-colors shadow-sm self-start sm:self-auto"
-          >
-            <Plus size={15} />
-            Add Category
-          </button>
+        <div>
+          <h2 className="text-base font-bold text-neutral-900 flex items-center gap-2">
+            <Tag size={18} className="text-emerald-600" /> Standardized Expense Categories
+          </h2>
+          <p className="text-xs text-neutral-500 mt-0.5">
+            Predefined company categories enforced across all expense submissions. Category editing is disabled to preserve audit trail consistency.
+          </p>
         </div>
-
-        {catError && (
-          <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-600 flex items-center gap-2">
-            <AlertTriangle size={15} />
-            <span>{catError}</span>
-          </div>
-        )}
 
         {/* Categories List */}
         <div className="divide-y divide-neutral-100 border border-neutral-200 rounded-xl overflow-hidden">
           {categories.map((c) => {
-            const isEditing = editingCatId === c.id;
+            const hasSpecialRules = ['ACCOMMODATION', 'TRAINING', 'TRAVEL'].includes(c.code);
             return (
-              <div key={c.id} className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-3 hover:bg-neutral-50/60 transition-colors">
-                {isEditing ? (
-                  <div className="flex-1 space-y-2">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-xs px-2 py-0.5 bg-neutral-100 rounded text-neutral-700">
-                        {c.code}
+              <div key={c.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-neutral-50/60 transition-colors">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-sm text-neutral-900">{c.name}</span>
+                    <span className="font-mono text-[11px] px-2 py-0.5 bg-neutral-100 text-neutral-600 rounded font-medium">
+                      {c.code}
+                    </span>
+                    <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded">
+                      Standard
+                    </span>
+                    {hasSpecialRules && (
+                      <span className="text-[10px] font-semibold px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded">
+                        Mandatory Details
                       </span>
-                      <input
-                        type="text"
-                        value={editName}
-                        onChange={(e) => setEditName(e.target.value)}
-                        placeholder="Category Display Name"
-                        className="px-3 py-1 text-sm border border-neutral-300 rounded-lg flex-1"
-                      />
-                    </div>
-                    <input
-                      type="text"
-                      value={editDesc}
-                      onChange={(e) => setEditDesc(e.target.value)}
-                      placeholder="Optional policy description"
-                      className="w-full px-3 py-1 text-xs border border-neutral-200 rounded-lg text-neutral-600"
-                    />
-                  </div>
-                ) : (
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold text-sm text-neutral-900">{c.name}</span>
-                      <span className="font-mono text-[11px] px-2 py-0.5 bg-neutral-100 text-neutral-500 rounded">
-                        {c.code}
-                      </span>
-                      {c.is_system && (
-                        <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 bg-neutral-200/60 text-neutral-600 rounded">
-                          System
-                        </span>
-                      )}
-                    </div>
-                    {c.description && (
-                      <p className="text-xs text-neutral-500 mt-0.5">{c.description}</p>
                     )}
                   </div>
-                )}
-
-                <div className="flex items-center gap-2 self-end md:self-auto">
-                  {isEditing ? (
-                    <>
-                      <button
-                        onClick={() => handleSaveEdit(c.id)}
-                        disabled={catActionLoading}
-                        className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
-                        title="Save Changes"
-                      >
-                        <Check size={16} />
-                      </button>
-                      <button
-                        onClick={() => setEditingCatId(null)}
-                        className="p-1.5 text-neutral-400 hover:bg-neutral-100 rounded-lg transition-colors"
-                        title="Cancel"
-                      >
-                        <X size={16} />
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <button
-                        onClick={() => {
-                          setEditingCatId(c.id);
-                          setEditName(c.name);
-                          setEditDesc(c.description || '');
-                        }}
-                        className="p-1.5 text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100 rounded-lg transition-colors"
-                        title="Edit Category Name"
-                      >
-                        <Edit2 size={14} />
-                      </button>
-                      <button
-                        onClick={() => handleToggleActive(c)}
-                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors ${
-                          c.is_active
-                            ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
-                            : 'bg-neutral-100 text-neutral-500 hover:bg-neutral-200 border border-neutral-200'
-                        }`}
-                        title={c.is_active ? 'Click to Deactivate' : 'Click to Activate'}
-                      >
-                        <Power size={11} />
-                        {c.is_active ? 'Active' : 'Disabled'}
-                      </button>
-                    </>
+                  {c.description && (
+                    <p className="text-xs text-neutral-500 mt-1">{c.description}</p>
                   )}
+                  {c.code === 'ACCOMMODATION' && (
+                    <p className="text-[11px] text-neutral-400 mt-1 italic">
+                      Requires: Hotel Name, Check-in, Check-out, Location, and Contact Number.
+                    </p>
+                  )}
+                  {c.code === 'TRAINING' && (
+                    <p className="text-[11px] text-neutral-400 mt-1 italic">
+                      Requires: Certification Name, Platform / Institute, Enrollment Date, and Type.
+                    </p>
+                  )}
+                  {c.code === 'TRAVEL' && (
+                    <p className="text-[11px] text-neutral-400 mt-1 italic">
+                      Requires: Mode of Travel, Start Date, End Date, Boarding Point, and Arrival Point.
+                    </p>
+                  )}
+                </div>
+
+                <div className="self-end sm:self-auto">
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    <Check size={12} />
+                    Active
+                  </span>
                 </div>
               </div>
             );
           })}
         </div>
       </div>
-
-      {/* Add Category Modal */}
-      {showAddModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <form onSubmit={handleCreateCategory} className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
-            <h3 className="text-lg font-bold text-neutral-900">Add New Expense Category</h3>
-
-            <div>
-              <label className="block text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-1">
-                Category Code * (Identifier)
-              </label>
-              <input
-                type="text"
-                required
-                placeholder="e.g. HARDWARE, CLIENT_GIFT"
-                value={newCode}
-                onChange={(e) => setNewCode(e.target.value.toUpperCase())}
-                className="w-full p-2.5 border border-neutral-300 rounded-xl text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              />
-              <p className="text-[11px] text-neutral-400 mt-1">Uppercase letters and underscores only.</p>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-1">
-                Display Name *
-              </label>
-              <input
-                type="text"
-                required
-                placeholder="e.g. Hardware & Peripherals"
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                className="w-full p-2.5 border border-neutral-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-1">
-                Description / Policy Guidance (Optional)
-              </label>
-              <textarea
-                rows={2}
-                placeholder="e.g. Covers keyboards, monitors, development boards under ₹20,000"
-                value={newDesc}
-                onChange={(e) => setNewDesc(e.target.value)}
-                className="w-full p-2.5 border border-neutral-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              />
-            </div>
-
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setShowAddModal(false)}
-                className="px-4 py-2 border border-neutral-200 text-neutral-700 rounded-xl text-xs font-medium hover:bg-neutral-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={catActionLoading}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-medium shadow-sm disabled:opacity-50"
-              >
-                {catActionLoading ? 'Creating...' : 'Create Category'}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
     </div>
   );
 }

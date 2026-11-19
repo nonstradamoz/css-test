@@ -241,9 +241,16 @@ async def test_mandatory_receipt_on_submission(client):
     assert fail_submit.status_code == 400
     assert "Receipt upload is mandatory" in fail_submit.json()["detail"]
 
-    # 4. Attaching receipt and submitting -> SUCCESS (200)
+    # 4. Attaching receipt and travel details and submitting -> SUCCESS (200)
     update_res = await client.patch(f"/api/v1/expenses/{draft_id}", headers=headers, json={
-        "receipt_url": "https://storage.crs-corp.com/receipts/train_ticket.pdf"
+        "receipt_url": "https://storage.crs-corp.com/receipts/train_ticket.pdf",
+        "category_details": {
+            "travel_mode": "Train",
+            "start_date": "2026-11-19",
+            "end_date": "2026-11-20",
+            "boarding_point": "Mumbai",
+            "arrival_point": "Pune"
+        }
     })
     assert update_res.status_code == 200
 

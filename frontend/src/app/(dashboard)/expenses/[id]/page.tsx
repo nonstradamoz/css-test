@@ -214,6 +214,23 @@ export default function ExpenseDetailPage() {
           </p>
         </div>
 
+        {/* Category-Specific Details */}
+        {expense.category_details && Object.keys(expense.category_details).length > 0 && (
+          <div className="p-4 bg-emerald-50/40 rounded-xl border border-emerald-200/80 space-y-2">
+            <p className="text-xs font-semibold text-emerald-800 uppercase tracking-wider">
+              Category Specifics ({expense.category})
+            </p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-1">
+              {Object.entries(expense.category_details).map(([key, val]) => (
+                <div key={key}>
+                  <p className="text-[11px] text-neutral-500 capitalize">{key.replace(/_/g, ' ')}</p>
+                  <p className="text-xs font-medium text-neutral-900 mt-0.5">{String(val)}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Receipt Attachment */}
         {expense.receipt_url && (
           <div className="p-4 bg-neutral-50 rounded-xl border border-neutral-200 flex items-center justify-between">
@@ -621,7 +638,7 @@ export default function ExpenseDetailPage() {
                 className="w-full px-3.5 py-2 bg-white border border-red-300 rounded-lg text-sm text-neutral-900 placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-red-500/30"
               />
               <p className="text-[11px] text-red-700">
-                This claim is flagged as HIGH RISK. Enterprise compliance requires reviewers to document an explicit exemption rationale before approving.
+                This claim is flagged as HIGH RISK. Corporate compliance policy requires reviewers to document an explicit exemption rationale before approving.
               </p>
             </div>
           )}

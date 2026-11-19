@@ -4,8 +4,8 @@ import { AuthProvider } from '@/components/providers/AuthProvider';
 import { QueryProvider } from '@/components/providers/QueryProvider';
 
 export const metadata: Metadata = {
-  title: 'Centralised Expense & Refund Management System',
-  description: 'Enterprise-grade multi-tenant expense lifecycle, approval workflow, and refund management system.'
+  title: 'ClearSpend · Expense & Refund Management',
+  description: 'Modern corporate expense tracking, policy verification, and refund management system.'
 };
 
 export default function RootLayout({

@@ -70,7 +70,7 @@ export const Sidebar: React.FC = () => {
           </div>
           <div>
             <span className="font-bold text-white text-base tracking-tight block">
-              CRS Enterprise
+              ClearSpend
             </span>
             <span className="text-xs text-neutral-400">Refund & Expense</span>
           </div>

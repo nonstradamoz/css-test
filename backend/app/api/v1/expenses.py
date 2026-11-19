@@ -34,6 +34,60 @@ def _normalize_dt(dt: Optional[datetime]) -> Optional[datetime]:
     return dt
 
 
+def validate_category_mandatory_details(category: str, details: Optional[dict]):
+    """
+    Enforce mandatory details filling based on claim category:
+    1. Hotel & Lodging (ACCOMMODATION):
+       - hotel name, check-in date/time, check-out date/time, hotel location, contact number (if available)
+    2. Training & Certifications (TRAINING):
+       - certification name, platform or institute, enrollment date, type of certification
+    3. Travel & Commute (TRAVEL):
+       - mode of travel, start date, end date, boarding point, arrival point
+    """
+    details = details or {}
+    clean_cat = (category or "").strip().upper()
+    if clean_cat == "ACCOMMODATION":
+        required = {
+            "hotel_name": "Hotel Name",
+            "check_in": "Check-in Date & Time",
+            "check_out": "Check-out Date & Time",
+            "hotel_location": "Hotel Location",
+        }
+        missing = [lbl for k, lbl in required.items() if not str(details.get(k) or "").strip()]
+        if missing:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Hotel & Lodging requires the following mandatory details: {', '.join(missing)}."
+            )
+    elif clean_cat == "TRAINING":
+        required = {
+            "certification_name": "Certification Name",
+            "institute": "Platform / Institute",
+            "enrollment_date": "Enrollment Date",
+            "certification_type": "Type of Certification",
+        }
+        missing = [lbl for k, lbl in required.items() if not str(details.get(k) or "").strip()]
+        if missing:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Training & Certifications requires the following mandatory details: {', '.join(missing)}."
+            )
+    elif clean_cat == "TRAVEL":
+        required = {
+            "travel_mode": "Mode of Travel",
+            "start_date": "Start Date",
+            "end_date": "End Date",
+            "boarding_point": "Boarding Point",
+            "arrival_point": "Arrival Point",
+        }
+        missing = [lbl for k, lbl in required.items() if not str(details.get(k) or "").strip()]
+        if missing:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Travel & Commute requires the following mandatory details: {', '.join(missing)}."
+            )
+
+
 @router.post("/forensics-preview", response_model=ForensicsPreviewResponse)
 async def preview_forensics(
     data: ForensicsPreviewRequest,
@@ -256,6 +310,10 @@ async def create_expense(
     if is_dup and submit_now:
         raise HTTPException(status_code=400, detail=f"Cannot submit: {dup_msg}")
 
+    # Mandatory category specifics validation upon submission
+    if submit_now:
+        validate_category_mandatory_details(data.category, data.category_details)
+
     new_expense = Expense(
         submitted_by=current_user.id,
         title=data.title,
@@ -270,6 +328,7 @@ async def create_expense(
         risk_level=forensic_eval["risk_level"],
         forensic_flags=forensic_eval["flags"],
         extracted_metadata=extracted_meta,
+        category_details=data.category_details or {},
         status=ExpenseStatus.DRAFT
     )
 
@@ -400,7 +459,8 @@ async def export_expenses(
         "Extracted GSTIN",
         "Extracted Date",
         "Date Verified In Bill",
-        "Extraction Verified"
+        "Extraction Verified",
+        "Category Specific Details"
     ]
     ws.append(headers)
 
@@ -456,7 +516,8 @@ async def export_expenses(
             meta.get("gstin") or "",
             meta.get("expense_date") or "",
             "YES" if meta.get("date_found_in_bill") else "NO",
-            meta.get("verification_status") or "UNVERIFIED"
+            meta.get("verification_status") or "UNVERIFIED",
+            ", ".join([f"{k}: {v}" for k, v in (exp.category_details or {}).items() if v])
         ]
         ws.append(row_data)
 
@@ -629,6 +690,9 @@ async def submit_expense(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Submission locked: Bank account or UPI details are required to submit an expense claim. Please configure your bank details in Profile Settings before submitting."
             )
+
+    # Mandatory category specifics validation upon submission
+    validate_category_mandatory_details(expense.category, expense.category_details)
 
     # Duplicate check
     is_dup, dup_msg = await DuplicateDetector.check_duplicate(
