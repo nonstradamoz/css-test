@@ -19,6 +19,12 @@ export default function SettingsPage() {
   const [currency, setCurrency] = useState('INR');
   const [threshold, setThreshold] = useState('25000');
   const [allowSelfApproval, setAllowSelfApproval] = useState(false);
+  const [expenseSubmissionsEnabled, setExpenseSubmissionsEnabled] = useState(true);
+  const [multiTierApprovalEnabled, setMultiTierApprovalEnabled] = useState(true);
+  const [enforceDateWindow, setEnforceDateWindow] = useState(false);
+  const [policyAllowedStartDate, setPolicyAllowedStartDate] = useState('');
+  const [policyAllowedEndDate, setPolicyAllowedEndDate] = useState('');
+
   const [isSaving, setIsSaving] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -53,6 +59,19 @@ export default function SettingsPage() {
       setCurrency(currentSettings.default_currency);
       setThreshold(currentSettings.tier2_approval_threshold.toString());
       setAllowSelfApproval(currentSettings.allow_self_approval);
+      setExpenseSubmissionsEnabled(currentSettings.expense_submissions_enabled ?? true);
+      setMultiTierApprovalEnabled(currentSettings.multi_tier_approval_enabled ?? true);
+      setEnforceDateWindow(currentSettings.enforce_date_window ?? false);
+      if (currentSettings.policy_allowed_start_date) {
+        setPolicyAllowedStartDate(currentSettings.policy_allowed_start_date.split('T')[0]);
+      } else {
+        setPolicyAllowedStartDate('');
+      }
+      if (currentSettings.policy_allowed_end_date) {
+        setPolicyAllowedEndDate(currentSettings.policy_allowed_end_date.split('T')[0]);
+      } else {
+        setPolicyAllowedEndDate('');
+      }
     }
   }, [currentSettings]);
 
@@ -66,9 +85,15 @@ export default function SettingsPage() {
         company_name: companyName,
         default_currency: currency,
         tier2_approval_threshold: parseFloat(threshold) as any,
-        allow_self_approval: allowSelfApproval
+        allow_self_approval: allowSelfApproval,
+        expense_submissions_enabled: expenseSubmissionsEnabled,
+        multi_tier_approval_enabled: multiTierApprovalEnabled,
+        enforce_date_window: enforceDateWindow,
+        policy_allowed_start_date: enforceDateWindow && policyAllowedStartDate ? new Date(policyAllowedStartDate).toISOString() : null,
+        policy_allowed_end_date: enforceDateWindow && policyAllowedEndDate ? new Date(policyAllowedEndDate).toISOString() : null
       });
       setSavedSuccess(true);
+      await queryClient.invalidateQueries({ queryKey: ['system-settings'] });
     } catch (err: any) {
       setErrorMsg(err.message || 'Failed to update system settings');
     } finally {
@@ -217,6 +242,106 @@ export default function SettingsPage() {
               Claims at or above this amount automatically trigger mandatory secondary Finance review.
             </p>
           </div>
+        </div>
+
+        {/* Expense Submissions Master Toggle */}
+        <div className="pt-4 border-t border-neutral-100">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <span className="text-sm font-bold text-neutral-900 block">Expense Submissions Master Switch</span>
+              <p className="text-xs text-neutral-500 mt-0.5">
+                Control whether employees across the organization are allowed to submit expense claims.
+              </p>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer shrink-0">
+              <input
+                type="checkbox"
+                checked={expenseSubmissionsEnabled}
+                onChange={(e) => setExpenseSubmissionsEnabled(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-neutral-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+            </label>
+          </div>
+          <span className={`inline-block mt-2 px-2.5 py-0.5 rounded text-xs font-semibold ${
+            expenseSubmissionsEnabled ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'
+          }`}>
+            {expenseSubmissionsEnabled ? 'Submissions Open (Accepting Claims)' : 'Submissions Paused (Claims Locked)'}
+          </span>
+        </div>
+
+        {/* Multi-Tier Verification Toggle */}
+        <div className="pt-4 border-t border-neutral-100">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <span className="text-sm font-bold text-neutral-900 block">Multi-Tier Approval Hierarchy</span>
+              <p className="text-xs text-neutral-500 mt-0.5">
+                When enabled, high-value and escalated claims require secondary (Tier-2) sign-off. When disabled, all claims finalize upon Tier-1 review.
+              </p>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer shrink-0">
+              <input
+                type="checkbox"
+                checked={multiTierApprovalEnabled}
+                onChange={(e) => setMultiTierApprovalEnabled(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-neutral-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+            </label>
+          </div>
+          <span className={`inline-block mt-2 px-2.5 py-0.5 rounded text-xs font-semibold ${
+            multiTierApprovalEnabled ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-neutral-100 text-neutral-600 border border-neutral-200'
+          }`}>
+            {multiTierApprovalEnabled ? 'Multi-Tier Active (Tier 1 & Tier 2 for high risk)' : 'Multi-Tier Disabled (Single-tier approval for all claims)'}
+          </span>
+        </div>
+
+        {/* Authorized Expense Date Policy Window */}
+        <div className="pt-4 border-t border-neutral-100 space-y-3">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <span className="text-sm font-bold text-neutral-900 block">Authorized Expense Date Window</span>
+              <p className="text-xs text-neutral-500 mt-0.5">
+                Set a specific date window for allowable expenses (e.g. conference dates or billing cycles). Claims outside this window will be flagged and escalated for mandatory review.
+              </p>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer shrink-0">
+              <input
+                type="checkbox"
+                checked={enforceDateWindow}
+                onChange={(e) => setEnforceDateWindow(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-neutral-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+            </label>
+          </div>
+
+          {enforceDateWindow && (
+            <div className="p-4 bg-neutral-50 border border-neutral-200 rounded-xl grid grid-cols-1 md:grid-cols-2 gap-4 animate-in fade-in duration-200">
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-500 mb-1">
+                  Policy Start Date
+                </label>
+                <input
+                  type="date"
+                  value={policyAllowedStartDate}
+                  onChange={(e) => setPolicyAllowedStartDate(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-neutral-300 rounded-lg text-sm focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-500 mb-1">
+                  Policy End Date
+                </label>
+                <input
+                  type="date"
+                  value={policyAllowedEndDate}
+                  onChange={(e) => setPolicyAllowedEndDate(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-neutral-300 rounded-lg text-sm focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="pt-2">

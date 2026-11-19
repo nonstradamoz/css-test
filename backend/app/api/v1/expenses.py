@@ -1,9 +1,13 @@
 import csv
 import io
+import os
 from datetime import datetime, timezone
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
+import openpyxl
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
 from sqlalchemy import select, and_, or_, desc, asc
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,6 +24,14 @@ from app.services.state_machine import ExpenseStateMachine, StateMachineError
 from app.api.v1.deps import get_current_user, require_role, log_audit_event
 
 router = APIRouter(prefix="/expenses", tags=["Expenses"])
+
+
+def _normalize_dt(dt: Optional[datetime]) -> Optional[datetime]:
+    if dt is None:
+        return None
+    if dt.tzinfo is not None and dt.tzinfo.utcoffset(dt) is not None:
+        return dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt
 
 
 @router.post("/forensics-preview", response_model=ForensicsPreviewResponse)
@@ -150,6 +162,15 @@ async def create_expense(
     Create a new expense claim.
     Can be created as DRAFT or directly SUBMITTED.
     """
+    settings_obj = await get_or_create_system_settings(db)
+
+    # Master switch check: Are expense submissions enabled company-wide?
+    if submit_now and not settings_obj.expense_submissions_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Expense submissions are temporarily paused by corporate administration. Please check back later."
+        )
+
     # Mandatory receipt check upon submission
     if submit_now and not data.receipt_url:
         raise HTTPException(
@@ -197,6 +218,32 @@ async def create_expense(
     if forensic_eval["is_blocked"]:
         raise HTTPException(status_code=400, detail=forensic_eval["block_reason"])
 
+    # Date policy window evaluation: flag expenses outside allowed dates & escalate to Tier 2
+    if settings_obj.enforce_date_window:
+        exp_dt = data.expense_date
+        exp_dt_norm = _normalize_dt(exp_dt)
+        policy_start_norm = _normalize_dt(settings_obj.policy_allowed_start_date)
+        policy_end_norm = _normalize_dt(settings_obj.policy_allowed_end_date)
+        is_outside = False
+        if policy_start_norm and exp_dt_norm and exp_dt_norm < policy_start_norm:
+            is_outside = True
+        if policy_end_norm and exp_dt_norm and exp_dt_norm > policy_end_norm:
+            is_outside = True
+        if is_outside:
+            start_str = settings_obj.policy_allowed_start_date.strftime("%Y-%m-%d") if settings_obj.policy_allowed_start_date else "beginning"
+            end_str = settings_obj.policy_allowed_end_date.strftime("%Y-%m-%d") if settings_obj.policy_allowed_end_date else "indefinite"
+            forensic_eval["flags"].append({
+                "code": "OUT_OF_POLICY_DATE_WINDOW",
+                "label": "Out-of-Window Date Policy",
+                "description": f"Expense date {exp_dt.strftime('%Y-%m-%d')} falls outside the authorized company policy window ({start_str} to {end_str}). Set up for mandatory review."
+            })
+            forensic_eval["risk_score"] = min(100, forensic_eval["risk_score"] + 35)
+            if forensic_eval["risk_score"] >= 70:
+                forensic_eval["risk_level"] = "HIGH"
+            elif forensic_eval["risk_score"] >= 35 and forensic_eval["risk_level"] == "LOW":
+                forensic_eval["risk_level"] = "MEDIUM"
+            forensic_eval["will_escalate_tier2"] = True
+
     # Duplicate detection check
     is_dup, dup_msg = await DuplicateDetector.check_duplicate(
         db=db,
@@ -208,8 +255,6 @@ async def create_expense(
     )
     if is_dup and submit_now:
         raise HTTPException(status_code=400, detail=f"Cannot submit: {dup_msg}")
-
-    settings_obj = await get_or_create_system_settings(db)
 
     new_expense = Expense(
         submitted_by=current_user.id,
@@ -231,10 +276,11 @@ async def create_expense(
     if submit_now:
         ExpenseStateMachine.transition_to_submitted(
             new_expense,
-            threshold=settings_obj.tier2_approval_threshold
+            threshold=settings_obj.tier2_approval_threshold,
+            multi_tier_enabled=settings_obj.multi_tier_approval_enabled
         )
-        # If forensics flagged smurfing or high risk, escalate to Tier 2
-        if forensic_eval["will_escalate_tier2"]:
+        # If forensics flagged smurfing, policy violations, or out-of-window date, escalate to Tier 2 (if multi-tier enabled)
+        if forensic_eval["will_escalate_tier2"] and settings_obj.multi_tier_approval_enabled:
             new_expense.approval_tier_required = 2
 
     db.add(new_expense)
@@ -286,8 +332,8 @@ async def export_expenses(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Extract and export expense submissions into a structured CSV report.
-    Includes sorting, filters, extracted facts, and uploaded document links.
+    Extract and export expense submissions into a structured Microsoft Excel (.xlsx) report.
+    Includes sorting, filters, verified extraction facts, and active document hyperlinks.
     Accessible to Admin and Reviewer personnel.
     """
     query = select(Expense).options(
@@ -327,11 +373,11 @@ async def export_expenses(
     result = await db.execute(query)
     expenses = result.scalars().all()
 
-    output = io.StringIO()
-    writer = csv.writer(output)
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Expense Submissions"
 
-    # CSV Header Row
-    writer.writerow([
+    headers = [
         "Expense ID",
         "Submission Timestamp",
         "Expense Date",
@@ -355,10 +401,28 @@ async def export_expenses(
         "Extracted Date",
         "Date Verified In Bill",
         "Extraction Verified"
-    ])
+    ]
+    ws.append(headers)
+
+    # Style header row (Corporate Emerald #059669)
+    header_fill = PatternFill(start_color="059669", end_color="059669", fill_type="solid")
+    header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+    thin_border = Border(
+        left=Side(style="thin", color="D1D5DB"),
+        right=Side(style="thin", color="D1D5DB"),
+        top=Side(style="thin", color="D1D5DB"),
+        bottom=Side(style="thin", color="D1D5DB")
+    )
+
+    for col_idx in range(1, len(headers) + 1):
+        cell = ws.cell(row=1, column=col_idx)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        cell.border = thin_border
 
     base_url = str(request.base_url).rstrip("/")
-    for exp in expenses:
+    for row_idx, exp in enumerate(expenses, start=2):
         meta = exp.extracted_metadata or {}
         sub_name = exp.submitter.full_name if exp.submitter else "Unknown"
         sub_email = exp.submitter.email if exp.submitter else "Unknown"
@@ -369,7 +433,7 @@ async def export_expenses(
             else:
                 doc_link = f"{base_url}{exp.receipt_url if exp.receipt_url.startswith('/') else '/' + exp.receipt_url}"
 
-        writer.writerow([
+        row_data = [
             exp.id,
             exp.created_at.strftime("%Y-%m-%d %H:%M:%S") if exp.created_at else "",
             exp.expense_date.strftime("%Y-%m-%d") if exp.expense_date else "",
@@ -377,12 +441,12 @@ async def export_expenses(
             sub_email,
             exp.title,
             exp.category,
-            str(exp.amount),
+            float(exp.amount),
             exp.currency,
             exp.status.value,
-            str(exp.approval_tier_required),
-            str(exp.current_approval_tier),
-            str(exp.risk_score),
+            exp.approval_tier_required,
+            exp.current_approval_tier,
+            exp.risk_score,
             exp.risk_level,
             doc_link,
             meta.get("merchant_name") or "",
@@ -393,13 +457,43 @@ async def export_expenses(
             meta.get("expense_date") or "",
             "YES" if meta.get("date_found_in_bill") else "NO",
             meta.get("verification_status") or "UNVERIFIED"
-        ])
+        ]
+        ws.append(row_data)
 
+        # Apply hyperlink to the receipt column (Column 15)
+        receipt_cell = ws.cell(row=row_idx, column=15)
+        if doc_link:
+            receipt_cell.hyperlink = doc_link
+            receipt_cell.value = "View Document"
+            receipt_cell.font = Font(color="2563EB", underline="single")
+
+        # Styling & alignment for row cells
+        for col_idx in range(1, len(headers) + 1):
+            c = ws.cell(row=row_idx, column=col_idx)
+            c.border = thin_border
+            if col_idx in (8, 11, 12, 13):
+                c.alignment = Alignment(horizontal="right")
+            elif col_idx in (1, 2, 3, 9, 10, 14, 15, 21, 22, 23):
+                c.alignment = Alignment(horizontal="center")
+
+    # Auto-adjust column widths
+    for col in ws.columns:
+        max_len = 0
+        col_letter = get_column_letter(col[0].column)
+        for cell in col:
+            val_str = str(cell.value or "")
+            if len(val_str) > max_len:
+                max_len = len(val_str)
+        ws.column_dimensions[col_letter].width = max(max_len + 3, 12)
+
+    output = io.BytesIO()
+    wb.save(output)
     output.seek(0)
-    filename = f"expenses_export_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.csv"
+
+    filename = f"expenses_export_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.xlsx"
     return StreamingResponse(
-        iter([output.getvalue()]),
-        media_type="text/csv",
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
 
@@ -510,6 +604,15 @@ async def submit_expense(
     if current_user.role == UserRole.EMPLOYEE and expense.submitted_by != current_user.id:
         raise HTTPException(status_code=403, detail="Unauthorized to submit this claim.")
 
+    settings_obj = await get_or_create_system_settings(db)
+
+    # Master switch check: Are expense submissions enabled company-wide?
+    if not settings_obj.expense_submissions_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Expense submissions are temporarily paused by corporate administration. Please check back later."
+        )
+
     # Mandatory receipt check
     if not expense.receipt_url:
         raise HTTPException(
@@ -556,18 +659,43 @@ async def submit_expense(
     if forensic_eval["is_blocked"]:
         raise HTTPException(status_code=400, detail=forensic_eval["block_reason"])
 
+    # Date policy window evaluation: flag expenses outside allowed dates & escalate to Tier 2
+    if settings_obj.enforce_date_window:
+        exp_dt = expense.expense_date
+        exp_dt_norm = _normalize_dt(exp_dt)
+        policy_start_norm = _normalize_dt(settings_obj.policy_allowed_start_date)
+        policy_end_norm = _normalize_dt(settings_obj.policy_allowed_end_date)
+        is_outside = False
+        if policy_start_norm and exp_dt_norm and exp_dt_norm < policy_start_norm:
+            is_outside = True
+        if policy_end_norm and exp_dt_norm and exp_dt_norm > policy_end_norm:
+            is_outside = True
+        if is_outside:
+            start_str = settings_obj.policy_allowed_start_date.strftime("%Y-%m-%d") if settings_obj.policy_allowed_start_date else "beginning"
+            end_str = settings_obj.policy_allowed_end_date.strftime("%Y-%m-%d") if settings_obj.policy_allowed_end_date else "indefinite"
+            forensic_eval["flags"].append({
+                "code": "OUT_OF_POLICY_DATE_WINDOW",
+                "label": "Out-of-Window Date Policy",
+                "description": f"Expense date {exp_dt.strftime('%Y-%m-%d')} falls outside the authorized company policy window ({start_str} to {end_str}). Set up for mandatory review."
+            })
+            forensic_eval["risk_score"] = min(100, forensic_eval["risk_score"] + 35)
+            if forensic_eval["risk_score"] >= 70:
+                forensic_eval["risk_level"] = "HIGH"
+            elif forensic_eval["risk_score"] >= 35 and forensic_eval["risk_level"] == "LOW":
+                forensic_eval["risk_level"] = "MEDIUM"
+            forensic_eval["will_escalate_tier2"] = True
+
     expense.risk_score = forensic_eval["risk_score"]
     expense.risk_level = forensic_eval["risk_level"]
     expense.forensic_flags = forensic_eval["flags"]
 
-    settings_obj = await get_or_create_system_settings(db)
-
     try:
         ExpenseStateMachine.transition_to_submitted(
             expense,
-            threshold=settings_obj.tier2_approval_threshold
+            threshold=settings_obj.tier2_approval_threshold,
+            multi_tier_enabled=settings_obj.multi_tier_approval_enabled
         )
-        if forensic_eval["will_escalate_tier2"]:
+        if forensic_eval["will_escalate_tier2"] and settings_obj.multi_tier_approval_enabled:
             expense.approval_tier_required = 2
     except StateMachineError as e:
         raise HTTPException(status_code=e.status_code, detail=e.message)

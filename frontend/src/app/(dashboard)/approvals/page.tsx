@@ -41,7 +41,8 @@ export default function ApprovalsQueuePage() {
       category: categoryFilter !== 'ALL' ? categoryFilter : undefined,
       sort_by: sortBy,
       sort_order: sortOrder
-    })
+    }),
+    refetchInterval: 3000
   });
 
   const handleAction = async () => {

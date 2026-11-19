@@ -35,15 +35,19 @@ class ExpenseStateMachine:
     }
 
     @staticmethod
-    def transition_to_submitted(expense: Expense, threshold: Decimal) -> None:
+    def transition_to_submitted(
+        expense: Expense,
+        threshold: Decimal,
+        multi_tier_enabled: bool = True
+    ) -> None:
         """Validate and transition an expense from DRAFT/CHANGES_REQUESTED to SUBMITTED"""
         if expense.status not in (ExpenseStatus.DRAFT, ExpenseStatus.CHANGES_REQUESTED):
             raise StateMachineError(
                 f"Cannot submit expense from status '{expense.status}'. Only DRAFT or CHANGES_REQUESTED can be submitted."
             )
         
-        # Determine required approval tiers based on enterprise threshold
-        if expense.amount >= threshold:
+        # Determine required approval tiers based on multi-tier setting & enterprise threshold
+        if multi_tier_enabled and expense.amount >= threshold:
             expense.approval_tier_required = 2
         else:
             expense.approval_tier_required = 1

@@ -18,7 +18,7 @@ export default function ReimbursementsPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const isEmployee = role === 'EMPLOYEE';
-  const isFinanceOrAdmin = role === 'ADMIN' || role === 'FINANCE';
+  const isFinanceOrAdmin = role === 'ADMIN' || role === 'REVIEWER' || role === 'FINANCE';
 
   // Search & Filter state
   const [search, setSearch] = useState('');
@@ -34,11 +34,7 @@ export default function ReimbursementsPage() {
       sort_by: sortBy,
       sort_order: sortOrder
     }),
-    refetchInterval: (query) => {
-      const data = query.state.data as Reimbursement[] | undefined;
-      const hasPending = data?.some(r => r.status === 'PROCESSING' || r.status === 'INITIATED');
-      return hasPending ? 3000 : 10000;
-    }
+    refetchInterval: 3000
   });
 
   // Calculate high-level settlement summary
@@ -231,6 +227,11 @@ export default function ReimbursementsPage() {
                       <p className="text-xs text-neutral-400 font-mono mt-0.5">
                         ID: {r.id.substring(0, 8)}... · Key: {r.idempotency_key.substring(0, 16)}...
                       </p>
+                      {r.transaction_id && (
+                        <p className="text-[11px] text-emerald-700 font-mono mt-0.5 font-semibold">
+                          Txn / UTR: {r.transaction_id}
+                        </p>
+                      )}
                       {!isEmployee && r.submitter_name && (
                         <p className="text-xs text-neutral-500 mt-0.5">Submitter: {r.submitter_name}</p>
                       )}

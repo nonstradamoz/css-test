@@ -32,10 +32,10 @@ export default function ExpensesPage() {
 
   const canExport = role === 'ADMIN' || role === 'REVIEWER' || role === 'FINANCE';
 
-  const handleExportCsv = async () => {
+  const handleExportXlsx = async () => {
     setIsExporting(true);
     try {
-      const blob = await api.expenses.exportCsv({
+      const blob = await api.expenses.exportXlsx({
         status: selectedStatus !== 'ALL' ? (selectedStatus as ExpenseStatus) : undefined,
         category: selectedCategory !== 'ALL' ? selectedCategory : undefined,
         search: searchQuery || undefined,
@@ -45,13 +45,13 @@ export default function ExpensesPage() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `expenses_export_${new Date().toISOString().slice(0, 10)}.csv`;
+      a.download = `expenses_export_${new Date().toISOString().slice(0, 10)}.xlsx`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
     } catch (err: any) {
-      alert(err.message || 'Failed to export expenses');
+      alert(err.message || 'Failed to export expenses report');
     } finally {
       setIsExporting(false);
     }
@@ -71,7 +71,8 @@ export default function ExpensesPage() {
       search: searchQuery || undefined,
       sort_by: sortBy,
       sort_order: sortOrder
-    })
+    }),
+    refetchInterval: 3000
   });
 
   return (
@@ -89,13 +90,13 @@ export default function ExpensesPage() {
         <div className="flex items-center gap-2.5 self-start sm:self-auto">
           {canExport && (
             <button
-              onClick={handleExportCsv}
+              onClick={handleExportXlsx}
               disabled={isExporting}
               className="inline-flex items-center gap-2 px-3.5 py-2 bg-white hover:bg-neutral-50 text-neutral-700 border border-neutral-300 rounded-lg text-sm font-medium transition-colors shadow-sm disabled:opacity-50"
-              title="Extract and download sorted expense submissions with document links as CSV"
+              title="Extract and download sorted expense submissions with document links as Excel (.xlsx)"
             >
               <Download size={15} />
-              {isExporting ? 'Extracting...' : 'Extract / Export CSV'}
+              {isExporting ? 'Generating Excel...' : 'Export Excel (.xlsx)'}
             </button>
           )}
           <Link

@@ -25,10 +25,17 @@ export type ApprovalDecision = components["schemas"]["ApprovalDecision"];
 export type Reimbursement = components["schemas"]["ReimbursementOut"] & {
   expense_title?: string | null;
   submitter_name?: string | null;
+  transaction_id?: string | null;
 };
 export type ReimbursementStatus = components["schemas"]["ReimbursementStatus"];
 
-export type SystemSettings = components["schemas"]["SystemSettingsOut"];
+export type SystemSettings = components["schemas"]["SystemSettingsOut"] & {
+  expense_submissions_enabled?: boolean;
+  multi_tier_approval_enabled?: boolean;
+  enforce_date_window?: boolean;
+  policy_allowed_start_date?: string | null;
+  policy_allowed_end_date?: string | null;
+};
 export type AuditLog = components["schemas"]["AuditLogOut"];
 export type PresignedUploadResponse = components["schemas"]["PresignedUploadResponse"];
 

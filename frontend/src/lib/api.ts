@@ -250,7 +250,34 @@ class ApiClient {
       return `${API_BASE}/expenses/export${qs ? `?${qs}` : ''}`;
     },
 
+    exportXlsxUrl: (params?: {
+      status?: ExpenseStatus;
+      category?: string;
+      search?: string;
+      sort_by?: string;
+      sort_order?: string;
+    }): string => {
+      const query = new URLSearchParams();
+      if (params?.status) query.set('status', params.status);
+      if (params?.category) query.set('category', params.category);
+      if (params?.search) query.set('search', params.search);
+      if (params?.sort_by) query.set('sort_by', params.sort_by);
+      if (params?.sort_order) query.set('sort_order', params.sort_order);
+      const qs = query.toString();
+      return `${API_BASE}/expenses/export${qs ? `?${qs}` : ''}`;
+    },
+
     exportCsv: async (params?: {
+      status?: ExpenseStatus;
+      category?: string;
+      search?: string;
+      sort_by?: string;
+      sort_order?: string;
+    }): Promise<Blob> => {
+      return this.expenses.exportXlsx(params);
+    },
+
+    exportXlsx: async (params?: {
       status?: ExpenseStatus;
       category?: string;
       search?: string;
@@ -272,7 +299,7 @@ class ApiClient {
         }
       });
       if (!res.ok) {
-        let msg = 'Failed to export expenses';
+        let msg = 'Failed to export expenses report';
         try {
           const err = await res.json();
           msg = err.detail || msg;
@@ -328,10 +355,14 @@ class ApiClient {
       return this.request<Reimbursement[]>(`/reimbursements${qs ? `?${qs}` : ''}`);
     },
 
-    create: async (expenseId: string, idempotencyKey: string): Promise<Reimbursement> => {
+    create: async (expenseId: string, idempotencyKey: string, transactionId?: string): Promise<Reimbursement> => {
       return this.request<Reimbursement>('/reimbursements', {
         method: 'POST',
-        body: JSON.stringify({ expense_id: expenseId, idempotency_key: idempotencyKey })
+        body: JSON.stringify({
+          expense_id: expenseId,
+          idempotency_key: idempotencyKey,
+          transaction_id: transactionId || undefined
+        })
       });
     },
 

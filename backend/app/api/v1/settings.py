@@ -42,7 +42,10 @@ async def update_settings(
     old_values = {
         "company_name": settings_obj.company_name,
         "tier2_approval_threshold": str(settings_obj.tier2_approval_threshold),
-        "allow_self_approval": settings_obj.allow_self_approval
+        "allow_self_approval": settings_obj.allow_self_approval,
+        "expense_submissions_enabled": settings_obj.expense_submissions_enabled,
+        "multi_tier_approval_enabled": settings_obj.multi_tier_approval_enabled,
+        "enforce_date_window": settings_obj.enforce_date_window
     }
 
     update_dict = data.model_dump(exclude_unset=True)

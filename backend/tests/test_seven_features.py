@@ -87,15 +87,20 @@ async def test_feature2_admin_reviewer_export_csv_with_links(client):
     })
     admin_headers = {"Authorization": f"Bearer {admin_login.json()['access_token']}"}
 
-    # 2. Export CSV as admin
+    # 2. Export Excel (.xlsx) as admin
     exp_res = await client.get("/api/v1/expenses/export?sort_by=created_at&sort_order=desc", headers=admin_headers)
     assert exp_res.status_code == 200
-    assert "text/csv" in exp_res.headers["content-type"]
-    csv_content = exp_res.text
-    assert "Expense ID" in csv_content
-    assert "Receipt Document Link" in csv_content
-    assert "Extracted Merchant" in csv_content
-    assert "Date Verified In Bill" in csv_content
+    assert "openxmlformats" in exp_res.headers["content-type"]
+    import io
+    import openpyxl
+    wb = openpyxl.load_workbook(io.BytesIO(exp_res.content))
+    ws = wb.active
+    assert ws.title == "Expense Submissions"
+    row1 = [cell.value for cell in ws[1]]
+    assert "Expense ID" in row1
+    assert "Receipt Document Link" in row1
+    assert "Extracted Merchant" in row1
+    assert "Date Verified In Bill" in row1
 
     # 3. Employee forbidden from export (403)
     await client.post("/api/v1/auth/register", json={

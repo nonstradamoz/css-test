@@ -25,6 +25,8 @@ export default function ExpenseDetailPage() {
 
   const [comments, setComments] = useState('');
   const [auditExemption, setAuditExemption] = useState('');
+  const [showPayoutModal, setShowPayoutModal] = useState(false);
+  const [transferTxnId, setTransferTxnId] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -64,11 +66,17 @@ export default function ExpenseDetailPage() {
   };
 
   const handleDisbursement = async () => {
+    if (!transferTxnId.trim()) {
+      setErrorMsg('A valid Transfer Transaction ID / Reference (e.g. UTR / IMPS / UPI ID) is required to record the payout.');
+      return;
+    }
     setIsProcessing(true);
     setErrorMsg(null);
     try {
       const idempotencyKey = `payout-${expenseId}-${Date.now()}`;
-      await api.reimbursements.create(expenseId, idempotencyKey);
+      await api.reimbursements.create(expenseId, idempotencyKey, transferTxnId.trim());
+      setShowPayoutModal(false);
+      setTransferTxnId('');
       await Promise.all([
         refetch(),
         queryClient.invalidateQueries({ queryKey: ['reimbursements-list'] }),
@@ -118,8 +126,8 @@ export default function ExpenseDetailPage() {
 
   const isOwner = user?.id === expense.submitted_by;
   const canReviewTier1 = ['ADMIN', 'REVIEWER'].includes(role || '') && expense.status === 'SUBMITTED';
-  const canReviewTier2 = ['ADMIN', 'FINANCE'].includes(role || '') && expense.status === 'UNDER_REVIEW';
-  const canDisburse = ['ADMIN', 'FINANCE'].includes(role || '') && expense.status === 'APPROVED';
+  const canReviewTier2 = ['ADMIN', 'REVIEWER', 'FINANCE'].includes(role || '') && expense.status === 'UNDER_REVIEW';
+  const canDisburse = ['ADMIN', 'REVIEWER', 'FINANCE'].includes(role || '') && expense.status === 'APPROVED';
 
   // Cross-verification & audit metrics for reviewing personnel
   const isAuditor = ['ADMIN', 'REVIEWER', 'FINANCE'].includes(role || '');
@@ -681,7 +689,7 @@ export default function ExpenseDetailPage() {
 
             <button
               disabled={isProcessing || !hasBankDetails}
-              onClick={handleDisbursement}
+              onClick={() => setShowPayoutModal(true)}
               title={!hasBankDetails ? 'Employee must provide bank details in profile first' : undefined}
               className={`px-5 py-2.5 rounded-xl text-sm font-medium transition-colors shadow-sm inline-flex items-center gap-2 shrink-0 ${
                 hasBankDetails
@@ -690,9 +698,7 @@ export default function ExpenseDetailPage() {
               }`}
             >
               <CreditCard size={16} />
-              {isProcessing
-                ? 'Processing Payout...'
-                : !hasBankDetails
+              {!hasBankDetails
                 ? 'Payout Locked (No Bank Details)'
                 : 'Disburse Payout'}
             </button>
@@ -706,6 +712,97 @@ export default function ExpenseDetailPage() {
               </span>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Reimbursement Confirmation Modal with Transaction ID */}
+      {showPayoutModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between pb-3 border-b border-neutral-100">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-emerald-50 text-emerald-600 rounded-xl">
+                  <CreditCard size={20} />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-neutral-900">Confirm Reimbursement Disbursement</h3>
+                  <p className="text-xs text-neutral-500">Record payout transfer and financial transaction ID</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowPayoutModal(false)}
+                className="p-1.5 text-neutral-400 hover:text-neutral-700 rounded-lg hover:bg-neutral-100 transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Beneficiary Details Card */}
+            <div className="bg-neutral-50 border border-neutral-200/80 rounded-xl p-4 space-y-2 text-xs">
+              <div className="flex justify-between items-center pb-2 border-b border-neutral-200">
+                <span className="text-neutral-500 font-medium">Reimbursement Amount</span>
+                <span className="text-base font-bold text-neutral-900">
+                  {formatCurrency(Number(expense.amount), expense.currency)}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                <div>
+                  <span className="text-neutral-400 block">Beneficiary Name</span>
+                  <span className="font-semibold text-neutral-800">{bankDetails?.account_holder_name || expense.submitter_name || 'Employee'}</span>
+                </div>
+                <div>
+                  <span className="text-neutral-400 block">Bank Name</span>
+                  <span className="font-semibold text-neutral-800">{bankDetails?.bank_name || 'N/A'}</span>
+                </div>
+                <div>
+                  <span className="text-neutral-400 block">Account Number</span>
+                  <span className="font-mono font-semibold text-neutral-800">{bankDetails?.account_number ? `••••${bankDetails.account_number.slice(-4)}` : 'N/A'}</span>
+                </div>
+                <div>
+                  <span className="text-neutral-400 block">IFSC / UPI ID</span>
+                  <span className="font-mono font-semibold text-neutral-800">{bankDetails?.upi_id || bankDetails?.ifsc_code || 'N/A'}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Transaction ID Input */}
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-600 mb-1.5">
+                Bank Transfer Transaction ID / UTR / Reference ID *
+              </label>
+              <input
+                type="text"
+                required
+                value={transferTxnId}
+                onChange={(e) => setTransferTxnId(e.target.value)}
+                placeholder="e.g. UTR-98401928374 or UPI-3091823746"
+                className="w-full px-3.5 py-2.5 border border-neutral-300 rounded-xl text-sm font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+              />
+              <p className="text-[11px] text-neutral-400 mt-1">
+                Enter the official transaction reference number from your corporate banking portal / payment processor.
+              </p>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-neutral-100">
+              <button
+                type="button"
+                onClick={() => setShowPayoutModal(false)}
+                className="px-4 py-2 text-xs font-semibold text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 rounded-xl transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isProcessing || !transferTxnId.trim()}
+                onClick={handleDisbursement}
+                className="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition-colors shadow-sm disabled:opacity-50"
+              >
+                <CreditCard size={14} />
+                {isProcessing ? 'Recording Transfer...' : 'Confirm & Disburse'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

@@ -1,5 +1,6 @@
 from typing import List, Optional
 from fastapi import Depends, HTTPException, Security, status, Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
 from sqlalchemy import select
@@ -70,8 +71,8 @@ async def log_audit_event(
         entity_type=entity_type,
         entity_id=entity_id,
         action=action,
-        old_values=old_values,
-        new_values=new_values,
+        old_values=jsonable_encoder(old_values) if old_values is not None else None,
+        new_values=jsonable_encoder(new_values) if new_values is not None else None,
         ip_address=ip_address
     )
     db.add(log_entry)

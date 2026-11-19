@@ -162,6 +162,7 @@ async def create_reimbursement(
             currency=expense.currency,
             status=ReimbursementStatus.PROCESSING,
             idempotency_key=data.idempotency_key,
+            transaction_id=data.transaction_id.strip() if data.transaction_id else None,
             retry_count=0
         )
         db.add(reimbursement)

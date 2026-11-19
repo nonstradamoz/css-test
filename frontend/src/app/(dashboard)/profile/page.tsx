@@ -330,7 +330,7 @@ function ProfileContent() {
             <div>
               <span className="font-semibold text-neutral-700 block text-sm">Bank Details Not Required</span>
               <span>
-                As an enterprise <strong>{user?.role}</strong>, you do not receive expense reimbursements. Bank details are only enabled for Employee accounts.
+                As an  <strong>{user?.role}</strong>, you do not receive expense reimbursements. Bank details are only enabled for Employee accounts.
               </span>
             </div>
             <span className="px-2.5 py-1 bg-neutral-200 text-neutral-600 font-semibold rounded-lg shrink-0">

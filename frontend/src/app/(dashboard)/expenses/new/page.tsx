@@ -36,6 +36,12 @@ export default function NewExpensePage() {
   const [forensics, setForensics] = useState<ForensicsPreviewResponse | null>(null);
   const [isPreviewingForensics, setIsPreviewingForensics] = useState(false);
 
+  // Load system settings
+  const { data: systemSettings } = useQuery({
+    queryKey: ['system-settings'],
+    queryFn: () => api.settings.get()
+  });
+
   // Load active dynamic categories
   const { data: categories = [] } = useQuery({
     queryKey: ['categories-active'],
@@ -57,11 +63,8 @@ export default function NewExpensePage() {
     setError(null);
     setScanResult(null);
 
-    // If employee: do NOT scan or expose extracted receipt data to client
-    if (role === 'EMPLOYEE') {
-      return;
-    }
-
+    // Run extraction in background for all roles
+    // Employees will NOT see the extraction result in the form, but it will be attached to metadata for Admins/Reviewers
     setIsScanning(true);
     try {
       const result = await api.receipts.analyze(selectedFile);
@@ -223,6 +226,18 @@ export default function NewExpensePage() {
           </p>
         </div>
       </div>
+
+      {systemSettings?.expense_submissions_enabled === false && (
+        <div className="p-4 bg-amber-500/15 border border-amber-500/30 rounded-xl flex items-start gap-3 text-amber-900 shadow-sm animate-in fade-in duration-200">
+          <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <h3 className="text-sm font-semibold text-amber-900">Expense Submissions Temporarily Paused</h3>
+            <p className="text-xs text-amber-800 leading-relaxed">
+              Company-wide expense submissions have been paused by corporate administration. You may save your claim as a <strong>Draft</strong> for submission once the window reopens.
+            </p>
+          </div>
+        </div>
+      )}
 
       {error && (
         <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center gap-2.5 text-sm text-red-600">
@@ -509,12 +524,12 @@ export default function NewExpensePage() {
 
           <button
             type="button"
-            disabled={isSubmitting || forensics?.is_blocked}
+            disabled={isSubmitting || forensics?.is_blocked || systemSettings?.expense_submissions_enabled === false}
             onClick={() => handleSaveOrSubmit(true)}
             className="inline-flex items-center gap-2 px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-medium rounded-xl text-sm transition-colors shadow-sm disabled:opacity-50"
           >
             <Send size={16} />
-            {isSubmitting ? 'Submitting...' : 'Submit Claim'}
+            {isSubmitting ? 'Submitting...' : systemSettings?.expense_submissions_enabled === false ? 'Submissions Paused' : 'Submit Claim'}
           </button>
         </div>
       </div>

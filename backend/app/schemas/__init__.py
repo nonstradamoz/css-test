@@ -86,6 +86,11 @@ class SystemSettingsOut(BaseModel):
     default_currency: str
     tier2_approval_threshold: Decimal
     allow_self_approval: bool
+    expense_submissions_enabled: bool = True
+    multi_tier_approval_enabled: bool = True
+    enforce_date_window: bool = False
+    policy_allowed_start_date: Optional[datetime] = None
+    policy_allowed_end_date: Optional[datetime] = None
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
@@ -96,6 +101,11 @@ class SystemSettingsUpdate(BaseModel):
     default_currency: Optional[str] = None
     tier2_approval_threshold: Optional[Decimal] = None
     allow_self_approval: Optional[bool] = None
+    expense_submissions_enabled: Optional[bool] = None
+    multi_tier_approval_enabled: Optional[bool] = None
+    enforce_date_window: Optional[bool] = None
+    policy_allowed_start_date: Optional[datetime] = None
+    policy_allowed_end_date: Optional[datetime] = None
 
 
 # ==================== Approval Schemas ====================
@@ -123,6 +133,7 @@ class ExpenseApprovalOut(BaseModel):
 class ReimbursementCreate(BaseModel):
     expense_id: str
     idempotency_key: str = Field(..., min_length=16, description="Client-generated unique UUID to prevent double payouts")
+    transaction_id: Optional[str] = Field(None, min_length=3, max_length=128, description="Transfer Transaction ID / UTR / Reference ID")
 
 
 class ReimbursementOut(BaseModel):
@@ -133,6 +144,7 @@ class ReimbursementOut(BaseModel):
     currency: str
     status: ReimbursementStatus
     idempotency_key: str
+    transaction_id: Optional[str] = None
     retry_count: int
     provider_response: Optional[Dict[str, Any]] = None
     disbursed_at: Optional[datetime] = None
