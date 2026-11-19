@@ -10,17 +10,6 @@ import { Badge } from '@/components/ui/Badge';
 import { PlusCircle, Search, Filter, Receipt, ArrowUpDown, Tag, Download, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 
-const STATUS_FILTERS: { label: string; value: string }[] = [
-  { label: 'All', value: 'ALL' },
-  { label: 'Drafts', value: 'DRAFT' },
-  { label: 'Submitted (Tier 1)', value: 'SUBMITTED' },
-  { label: 'Under Review (Tier 2)', value: 'UNDER_REVIEW' },
-  { label: 'Changes Requested', value: 'CHANGES_REQUESTED' },
-  { label: 'Approved', value: 'APPROVED' },
-  { label: 'Reimbursed', value: 'REIMBURSED' },
-  { label: 'Rejected', value: 'REJECTED' }
-];
-
 export default function ExpensesPage() {
   const { role, user } = useAuth();
   const [selectedStatus, setSelectedStatus] = useState<string>('ALL');
@@ -31,6 +20,17 @@ export default function ExpensesPage() {
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [deletingExpense, setDeletingExpense] = useState<Expense | null>(null);
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
+
+  const statusFilters = [
+    { label: 'All', value: 'ALL' },
+    { label: role === 'EMPLOYEE' ? 'Drafts' : 'My Drafts', value: 'DRAFT' },
+    { label: 'Submitted (Tier 1)', value: 'SUBMITTED' },
+    { label: 'Under Review (Tier 2)', value: 'UNDER_REVIEW' },
+    { label: 'Changes Requested', value: 'CHANGES_REQUESTED' },
+    { label: 'Approved', value: 'APPROVED' },
+    { label: 'Reimbursed', value: 'REIMBURSED' },
+    { label: 'Rejected', value: 'REJECTED' }
+  ];
 
   // Load active dynamic categories
   const { data: categories = [] } = useQuery({
@@ -191,7 +191,7 @@ export default function ExpensesPage() {
         {/* Status Chips */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pt-1 border-t border-neutral-100">
           <Filter size={13} className="text-neutral-400 shrink-0 mr-1" />
-          {STATUS_FILTERS.map((f) => (
+          {statusFilters.map((f) => (
             <button
               key={f.value}
               onClick={() => setSelectedStatus(f.value)}
@@ -205,6 +205,13 @@ export default function ExpensesPage() {
             </button>
           ))}
         </div>
+
+        {selectedStatus === 'DRAFT' && (
+          <div className="text-xs text-neutral-500 bg-neutral-50 px-3 py-1.5 rounded-lg border border-neutral-200/60 flex items-center gap-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+            <span>Draft expense claims are private and visible only to the user who created them.</span>
+          </div>
+        )}
       </div>
 
       {/* Table / Responsive Card View */}

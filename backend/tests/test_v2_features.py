@@ -1,4 +1,5 @@
 import io
+import uuid
 import pytest
 import openpyxl
 from datetime import datetime, timezone, timedelta
@@ -478,3 +479,94 @@ async def test_behalf_of_submission_and_flexible_deletion(client):
     # 6. Admin can delete the accepted claim -> SUCCEEDS (204)
     admin_del = await client.delete(f"/api/v1/expenses/{c2_id}", headers=admin_headers)
     assert admin_del.status_code == 204
+
+
+@pytest.mark.asyncio
+async def test_drafts_privacy_from_admins_and_reviewers(client):
+    """
+    Ensure drafts are strictly private to the user who created them:
+    - Never visible in list_expenses or export_expenses to Admins, Reviewers, or Finance.
+    - Direct access by ID returns 403 Forbidden for non-owners.
+    - Only becomes visible to reviewing personnel once formally SUBMITTED.
+    """
+    # 1. Login Admin, Reviewer, and Employee
+    admin_headers = await ensure_admin(client)
+
+    await client.post("/api/v1/auth/register", json={
+        "email": "v2.reviewer.draft@crs-corp.com",
+        "full_name": "V2 Reviewer Draft",
+        "password": "Password123!",
+        "role": "REVIEWER"
+    })
+    rev_login = await client.post("/api/v1/auth/login", json={
+        "email": "v2.reviewer.draft@crs-corp.com",
+        "password": "Password123!"
+    })
+    rev_token = rev_login.json()["access_token"]
+    rev_headers = {"Authorization": f"Bearer {rev_token}"}
+
+    emp_email = f"emp.draft.{uuid.uuid4().hex[:6]}@company.com"
+    await client.post("/api/v1/auth/register", json={
+        "email": emp_email, "password": "Password123!", "full_name": "Private Draft Employee"
+    })
+    emp_token = (await client.post("/api/v1/auth/login", json={"email": emp_email, "password": "Password123!"})).json()["access_token"]
+    emp_headers = {"Authorization": f"Bearer {emp_token}"}
+
+    # 2. Employee creates a DRAFT claim
+    draft_res = await client.post("/api/v1/expenses?submit_now=false", headers=emp_headers, json={
+        "title": "Confidential Preliminary Draft",
+        "amount": 4200.0,
+        "category": "SUPPLIES",
+        "expense_date": datetime.now(timezone.utc).isoformat(),
+        "receipt_url": "https://storage.crs-corp.com/receipts/supplies.png"
+    })
+    assert draft_res.status_code == 201
+    draft_id = draft_res.json()["id"]
+
+    # 3. Employee CAN see their own draft in list & detail
+    emp_list = await client.get("/api/v1/expenses", headers=emp_headers)
+    assert any(e["id"] == draft_id for e in emp_list.json())
+
+    emp_detail = await client.get(f"/api/v1/expenses/{draft_id}", headers=emp_headers)
+    assert emp_detail.status_code == 200
+
+    # 4. Admin CANNOT see the employee's draft in /expenses (all or status=DRAFT)
+    admin_list = await client.get("/api/v1/expenses", headers=admin_headers)
+    assert not any(e["id"] == draft_id for e in admin_list.json())
+
+    admin_drafts = await client.get("/api/v1/expenses?status=DRAFT", headers=admin_headers)
+    assert not any(e["id"] == draft_id for e in admin_drafts.json())
+
+    # 5. Reviewer CANNOT see the employee's draft in /expenses
+    rev_list = await client.get("/api/v1/expenses", headers=rev_headers)
+    assert not any(e["id"] == draft_id for e in rev_list.json())
+
+    rev_drafts = await client.get("/api/v1/expenses?status=DRAFT", headers=rev_headers)
+    assert not any(e["id"] == draft_id for e in rev_drafts.json())
+
+    # 6. Admin and Reviewer CANNOT retrieve detail of employee's draft -> 403 Forbidden
+    admin_detail = await client.get(f"/api/v1/expenses/{draft_id}", headers=admin_headers)
+    assert admin_detail.status_code == 403
+    assert "private" in admin_detail.json()["detail"].lower()
+
+    rev_detail = await client.get(f"/api/v1/expenses/{draft_id}", headers=rev_headers)
+    assert rev_detail.status_code == 403
+
+    # 7. Admin CANNOT delete employee's draft -> 403 Forbidden
+    admin_del = await client.delete(f"/api/v1/expenses/{draft_id}", headers=admin_headers)
+    assert admin_del.status_code == 403
+
+    # 8. Employee submits bank details & submits the draft -> moves to SUBMITTED
+    await client.patch("/api/v1/users/me", headers=emp_headers, json={
+        "bank_details": {"account_number": "112233445566", "ifsc_code": "SBIN0001122"}
+    })
+    sub_res = await client.post(f"/api/v1/expenses/{draft_id}/submit", headers=emp_headers)
+    assert sub_res.status_code == 200
+    assert sub_res.json()["status"] == "SUBMITTED"
+
+    # 9. NOW Admin & Reviewer CAN see the submitted expense
+    admin_list_after = await client.get("/api/v1/expenses", headers=admin_headers)
+    assert any(e["id"] == draft_id for e in admin_list_after.json())
+
+    rev_list_after = await client.get("/api/v1/expenses", headers=rev_headers)
+    assert any(e["id"] == draft_id for e in rev_list_after.json())

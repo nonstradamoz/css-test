@@ -149,6 +149,15 @@ async def list_expenses(
     # RBAC filtering
     if current_user.role == UserRole.EMPLOYEE:
         query = query.where(Expense.submitted_by == current_user.id)
+    else:
+        # Non-employees (ADMIN, REVIEWER, FINANCE):
+        # Drafts are strictly private to the user who created them (never visible to other admins or reviewers)
+        query = query.where(
+            or_(
+                Expense.status != ExpenseStatus.DRAFT,
+                Expense.submitted_by == current_user.id
+            )
+        )
 
     if status_filter:
         query = query.where(Expense.status == status_filter)
@@ -413,6 +422,14 @@ async def export_expenses(
         selectinload(Expense.submitter)
     )
 
+    # Drafts are private to the creator: never export another user's drafts
+    query = query.where(
+        or_(
+            Expense.status != ExpenseStatus.DRAFT,
+            Expense.submitted_by == current_user.id
+        )
+    )
+
     if status_filter:
         query = query.where(Expense.status == status_filter)
 
@@ -598,6 +615,13 @@ async def get_expense(
     if current_user.role == UserRole.EMPLOYEE and expense.submitted_by != current_user.id:
         raise HTTPException(status_code=403, detail="Unauthorized to view this expense claim.")
 
+    # Drafts are strictly private to the user who created them (never visible to other admins or reviewers)
+    if expense.status == ExpenseStatus.DRAFT and expense.submitted_by != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Draft expense claims are private to the user and cannot be viewed by admins or reviewers."
+        )
+
     if expense.submitter:
         expense.submitter_name = expense.submitter.full_name
         expense.submitter_email = expense.submitter.email
@@ -632,6 +656,13 @@ async def update_expense(
 
     if current_user.role == UserRole.EMPLOYEE and expense.submitted_by != current_user.id:
         raise HTTPException(status_code=403, detail="Unauthorized to modify this claim.")
+
+    # Drafts are private to the creator
+    if expense.status == ExpenseStatus.DRAFT and expense.submitted_by != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Draft expense claims are private to the user and cannot be modified by admins or reviewers."
+        )
 
     if expense.status not in (ExpenseStatus.DRAFT, ExpenseStatus.CHANGES_REQUESTED):
         raise HTTPException(
@@ -676,8 +707,11 @@ async def submit_expense(
     if not expense:
         raise HTTPException(status_code=404, detail="Expense claim not found.")
 
-    if current_user.role == UserRole.EMPLOYEE and expense.submitted_by != current_user.id:
-        raise HTTPException(status_code=403, detail="Unauthorized to submit this claim.")
+    if expense.submitted_by != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Draft expense claims are private to the creator. Only the owner can submit this claim for approval."
+        )
 
     settings_obj = await get_or_create_system_settings(db)
 
@@ -813,6 +847,13 @@ async def delete_expense(
 
     if not expense:
         raise HTTPException(status_code=404, detail="Expense claim not found.")
+
+    # Drafts are strictly private to the user who created them
+    if expense.status == ExpenseStatus.DRAFT and expense.submitted_by != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Draft expense claims are private to the creator and cannot be viewed or deleted by other users."
+        )
 
     is_admin = current_user.role == UserRole.ADMIN
 

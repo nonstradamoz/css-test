@@ -281,6 +281,9 @@ export default function NewExpensePage() {
 
       if (willSaveAsDraftDueToMissingBank) {
         router.push(`/profile?prompt_bank=true&redirect_expense_id=${created.id}`);
+      } else if (isProxyFiling && !effectiveSubmitNow) {
+        // Drafts are strictly private to the designated employee
+        router.push('/expenses');
       } else {
         router.push(`/expenses/${created.id}`);
       }
