@@ -10,6 +10,7 @@ interface AuthContextType {
   role: Role | null;
   loading: boolean;
   login: (credentials: { email: string; password: string }) => Promise<void>;
+  googleLogin: (payload: { id_token?: string; credential?: string; email?: string; full_name?: string }) => Promise<void>;
   register: (payload: { email: string; password: string; full_name: string }) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
@@ -20,6 +21,7 @@ const AuthContext = createContext<AuthContextType>({
   role: null,
   loading: true,
   login: async () => {},
+  googleLogin: async () => {},
   register: async () => {},
   logout: async () => {},
   refreshUser: async () => {}
@@ -62,6 +64,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const googleLogin = async (payload: { id_token?: string; credential?: string; email?: string; full_name?: string }) => {
+    setLoading(true);
+    try {
+      const res = await api.auth.googleLogin(payload);
+      setUser(res.user);
+      router.push('/dashboard');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const register = async (payload: { email: string; password: string; full_name: string }) => {
     setLoading(true);
     try {
@@ -93,6 +106,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         role,
         loading,
         login,
+        googleLogin,
         register,
         logout,
         refreshUser

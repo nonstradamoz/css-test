@@ -89,7 +89,7 @@ async def list_reimbursements(
 async def create_reimbursement(
     data: ReimbursementCreate,
     request: Request,
-    current_user: User = Depends(require_role([UserRole.ADMIN, UserRole.FINANCE])),
+    current_user: User = Depends(require_role([UserRole.ADMIN, UserRole.REVIEWER, UserRole.FINANCE])),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -212,7 +212,7 @@ async def create_reimbursement(
 async def retry_reimbursement(
     reimbursement_id: str,
     request: Request,
-    current_user: User = Depends(require_role([UserRole.ADMIN, UserRole.FINANCE])),
+    current_user: User = Depends(require_role([UserRole.ADMIN, UserRole.REVIEWER, UserRole.FINANCE])),
     db: AsyncSession = Depends(get_db)
 ):
     """Retry a failed reimbursement payout"""

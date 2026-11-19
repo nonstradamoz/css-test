@@ -88,7 +88,7 @@ class ExpenseStateMachine:
         if decision == ApprovalDecision.APPROVED:
             # Tier 1 Approval
             if expense.current_approval_tier == 0:
-                if reviewer_role not in (UserRole.ADMIN, UserRole.REVIEWER):
+                if reviewer_role not in (UserRole.ADMIN, UserRole.REVIEWER, UserRole.FINANCE):
                     raise StateMachineError(
                         "Tier-1 approval must be performed by a REVIEWER or ADMIN.",
                         403
@@ -100,19 +100,19 @@ class ExpenseStateMachine:
                     expense.current_approval_tier = 1
                     return ExpenseStatus.APPROVED, 1
                 else:
-                    # Two-tier required: advance to UNDER_REVIEW for Finance
+                    # Two-tier required: advance to UNDER_REVIEW for Finance / Secondary Review
                     expense.status = ExpenseStatus.UNDER_REVIEW
                     expense.current_approval_tier = 1
                     return ExpenseStatus.UNDER_REVIEW, 1
 
-            # Tier 2 Approval (Finance sign-off for high-value claims)
+            # Tier 2 Approval (Finance / Secondary Reviewer sign-off for high-value claims)
             elif expense.current_approval_tier == 1:
                 if expense.approval_tier_required < 2:
                     raise StateMachineError("Tier-2 approval is not required for this expense.", 400)
                 
-                if reviewer_role not in (UserRole.ADMIN, UserRole.FINANCE):
+                if reviewer_role not in (UserRole.ADMIN, UserRole.REVIEWER, UserRole.FINANCE):
                     raise StateMachineError(
-                        "Tier-2 secondary approval requires FINANCE or ADMIN role.",
+                        "Tier-2 secondary approval requires REVIEWER, FINANCE, or ADMIN role.",
                         403
                     )
                 

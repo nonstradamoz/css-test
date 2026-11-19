@@ -1,16 +1,21 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { api } from '@/lib/api';
 import { BankDetails } from '@/types';
 import {
   User, Building2, CreditCard, ShieldCheck, CheckCircle2,
-  AlertCircle, Save, Lock, Eye, EyeOff, Hash, QrCode
+  AlertCircle, Save, Lock, Eye, EyeOff, Hash, QrCode, ArrowRight
 } from 'lucide-react';
 
-export default function ProfilePage() {
+function ProfileContent() {
   const { user, refreshUser } = useAuth();
+  const searchParams = useSearchParams();
+  const promptBank = searchParams.get('prompt_bank') === 'true';
+  const redirectExpenseId = searchParams.get('redirect_expense_id');
 
   // Personal Info Form
   const [fullName, setFullName] = useState(user?.full_name || '');
@@ -94,10 +99,36 @@ export default function ProfilePage() {
         </p>
       </div>
 
+      {/* Missing Bank Details Warning Banner */}
+      {promptBank && (
+        <div className="p-4 bg-amber-500/15 border border-amber-500/30 rounded-xl flex items-start gap-3 text-amber-900 shadow-sm animate-in fade-in duration-300">
+          <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <h3 className="text-sm font-semibold text-amber-900">Bank Details Required to Submit Expense Claims</h3>
+            <p className="text-xs text-amber-800 leading-relaxed">
+              Your expense claim has been safely saved as a <strong>Draft</strong>. Enterprise financial policy requires valid reimbursement bank details (Account Number or UPI ID) on your profile before a claim can be submitted. Please fill out your bank details below and save your profile.
+            </p>
+          </div>
+        </div>
+      )}
+
       {successMsg && (
-        <div className="p-4 bg-emerald-500/10 border border-emerald-500/25 rounded-xl flex items-center gap-2.5 text-sm text-emerald-700">
-          <CheckCircle2 size={18} className="shrink-0" />
-          <span>{successMsg}</span>
+        <div className="p-4 bg-emerald-500/10 border border-emerald-500/25 rounded-xl space-y-2 text-sm text-emerald-700">
+          <div className="flex items-center gap-2.5">
+            <CheckCircle2 size={18} className="shrink-0" />
+            <span>{successMsg}</span>
+          </div>
+          {redirectExpenseId && (
+            <div className="pt-2">
+              <Link
+                href={`/expenses/${redirectExpenseId}`}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg transition-colors shadow-sm"
+              >
+                <span>Return to Claim & Submit Now</span>
+                <ArrowRight size={14} />
+              </Link>
+            </div>
+          )}
         </div>
       )}
 
@@ -320,5 +351,13 @@ export default function ProfilePage() {
         </div>
       </form>
     </div>
+  );
+}
+
+export default function ProfilePage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-neutral-500 text-sm">Loading profile...</div>}>
+      <ProfileContent />
+    </Suspense>
   );
 }

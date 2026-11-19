@@ -98,6 +98,10 @@ export default function ExpenseDetailPage() {
         queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] })
       ]);
     } catch (err: any) {
+      if (err.message?.toLowerCase().includes('bank details')) {
+        router.push(`/profile?prompt_bank=true&redirect_expense_id=${expenseId}`);
+        return;
+      }
       setErrorMsg(err.message || 'Failed to submit claim');
     } finally {
       setIsProcessing(false);

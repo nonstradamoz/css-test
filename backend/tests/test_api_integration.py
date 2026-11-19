@@ -48,7 +48,7 @@ async def test_full_lifecycle_api(client):
     emp_token = emp_login.json()["access_token"]
     emp_headers = {"Authorization": f"Bearer {emp_token}"}
 
-    # 6. Employee creates and submits an expense claim (amount = 4500 < threshold 25000 -> single tier)
+    # 5b. Employee attempts to submit an expense without bank details -> MUST BE BLOCKED (400)
     exp_payload = {
         "title": "Client Lunch Meeting",
         "description": "Lunch with prospective enterprise client",
@@ -58,40 +58,34 @@ async def test_full_lifecycle_api(client):
         "expense_date": "2026-11-18T12:00:00Z",
         "receipt_url": "https://storage.crs-corp.com/receipts/lunch_test.png"
     }
-    create_res = await client.post(
+    blocked_create = await client.post(
         "/api/v1/expenses?submit_now=true",
         json=exp_payload,
         headers=emp_headers
     )
-    assert create_res.status_code == 201
-    exp_data = create_res.json()
-    assert exp_data["status"] == "SUBMITTED"
-    assert exp_data["approval_tier_required"] == 1
-    expense_id = exp_data["id"]
+    assert blocked_create.status_code == 400
+    assert "Bank account or UPI details are required" in blocked_create.json()["detail"]
 
-    # 7. Admin reviews and approves claim
-    approval_res = await client.post(
-        f"/api/v1/approvals/{expense_id}/review",
-        json={"decision": "APPROVED", "comments": "Valid client entertainment receipt."},
-        headers=admin_headers
+    # 5c. Employee creates expense as DRAFT (saving for future submission) -> SUCCEEDS (201)
+    draft_create = await client.post(
+        "/api/v1/expenses?submit_now=false",
+        json=exp_payload,
+        headers=emp_headers
     )
-    assert approval_res.status_code == 200
-    assert approval_res.json()["status"] == "APPROVED"
+    assert draft_create.status_code == 201
+    draft_data = draft_create.json()
+    assert draft_data["status"] == "DRAFT"
+    expense_id = draft_data["id"]
 
-    # 7a. Admin tries to disburse payout BEFORE employee provides bank details -> MUST BE BLOCKED (400)
-    reimb_payload = {
-        "expense_id": expense_id,
-        "idempotency_key": "idemp-key-unique-test-12345678"
-    }
-    blocked_reimb = await client.post(
-        "/api/v1/reimbursements",
-        json=reimb_payload,
-        headers=admin_headers
+    # 5d. Submitting draft directly without bank details -> MUST BE BLOCKED (400)
+    blocked_submit = await client.post(
+        f"/api/v1/expenses/{expense_id}/submit",
+        headers=emp_headers
     )
-    assert blocked_reimb.status_code == 400
-    assert "bank account or UPI details" in blocked_reimb.json()["detail"]
+    assert blocked_submit.status_code == 400
+    assert "Bank account or UPI details are required" in blocked_submit.json()["detail"]
 
-    # 7b. Employee updates profile with bank account details
+    # 5e. Employee updates profile with bank account details -> SUCCEEDS (200)
     patch_bank = await client.patch(
         "/api/v1/users/me",
         headers=emp_headers,
@@ -107,7 +101,30 @@ async def test_full_lifecycle_api(client):
     )
     assert patch_bank.status_code == 200
 
+    # 6. Now employee submits the saved draft -> SUCCEEDS (200, status SUBMITTED)
+    submit_res = await client.post(
+        f"/api/v1/expenses/{expense_id}/submit",
+        headers=emp_headers
+    )
+    assert submit_res.status_code == 200
+    exp_data = submit_res.json()
+    assert exp_data["status"] == "SUBMITTED"
+    assert exp_data["approval_tier_required"] == 1
+
+    # 7. Admin reviews and approves claim
+    approval_res = await client.post(
+        f"/api/v1/approvals/{expense_id}/review",
+        json={"decision": "APPROVED", "comments": "Valid client entertainment receipt."},
+        headers=admin_headers
+    )
+    assert approval_res.status_code == 200
+    assert approval_res.json()["status"] == "APPROVED"
+
     # 8. Admin triggers reimbursement with idempotency key -> MUST SUCCEED (201)
+    reimb_payload = {
+        "expense_id": expense_id,
+        "idempotency_key": "idemp-key-unique-test-12345678"
+    }
     reimb_res = await client.post(
         "/api/v1/reimbursements",
         json=reimb_payload,

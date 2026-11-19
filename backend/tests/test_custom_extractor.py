@@ -200,6 +200,11 @@ async def test_role_based_extraction_privacy(client):
     })
     emp_token = emp_login.json()["access_token"]
     emp_headers = {"Authorization": f"Bearer {emp_token}"}
+    await client.patch(
+        "/api/v1/users/me",
+        headers=emp_headers,
+        json={"bank_details": {"account_number": "777788889999", "ifsc_code": "HDFC0007777"}}
+    )
 
     # 3. Employee cannot call analyze endpoint directly (403 Forbidden)
     emp_analyze = await client.post(
@@ -312,6 +317,11 @@ async def test_forensics_blocks_duplicate_transaction_id_and_recycled_bills(clie
     })
     emp_token = emp_login.json()["access_token"]
     emp_headers = {"Authorization": f"Bearer {emp_token}"}
+    await client.patch(
+        "/api/v1/users/me",
+        headers=emp_headers,
+        json={"bank_details": {"account_number": "777788889999", "ifsc_code": "HDFC0007777"}}
+    )
 
     # 2. Admin submits an active claim with transaction_id and bill_number
     res1 = await client.post(

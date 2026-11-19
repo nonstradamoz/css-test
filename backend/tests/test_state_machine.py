@@ -66,18 +66,18 @@ def test_multi_tier_approval_flow():
     assert tier1 == 1
     assert exp.current_approval_tier == 1
 
-    # Tier 2 attempt by unauthorized reviewer must fail
+    # Tier 2 attempt by unauthorized role (EMPLOYEE) must fail
     with pytest.raises(StateMachineError):
         ExpenseStateMachine.evaluate_approval(
             exp,
-            reviewer_role=UserRole.REVIEWER,
+            reviewer_role=UserRole.EMPLOYEE,
             decision=ApprovalDecision.APPROVED
         )
 
-    # Tier 2 approval by Finance succeeds
+    # Tier 2 approval by Reviewer / Finance succeeds
     status2, tier2 = ExpenseStateMachine.evaluate_approval(
         exp,
-        reviewer_role=UserRole.FINANCE,
+        reviewer_role=UserRole.REVIEWER,
         decision=ApprovalDecision.APPROVED
     )
     assert status2 == ExpenseStatus.APPROVED

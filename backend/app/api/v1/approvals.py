@@ -44,21 +44,7 @@ async def list_pending_approvals(
         selectinload(Expense.reimbursement)
     )
 
-    if current_user.role == UserRole.REVIEWER:
-        query = query.where(
-            and_(
-                Expense.status == ExpenseStatus.SUBMITTED,
-                Expense.current_approval_tier == 0
-            )
-        )
-    elif current_user.role == UserRole.FINANCE:
-        query = query.where(
-            and_(
-                Expense.status == ExpenseStatus.UNDER_REVIEW,
-                Expense.current_approval_tier == 1
-            )
-        )
-    elif current_user.role == UserRole.ADMIN:
+    if current_user.role in (UserRole.REVIEWER, UserRole.FINANCE, UserRole.ADMIN):
         query = query.where(
             Expense.status.in_([ExpenseStatus.SUBMITTED, ExpenseStatus.UNDER_REVIEW])
         )

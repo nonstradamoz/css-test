@@ -1,6 +1,9 @@
+import csv
+import io
 from datetime import datetime, timezone
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select, and_, or_, desc, asc
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,7 +17,7 @@ from app.schemas import (
 from app.services.duplicate_detector import DuplicateDetector
 from app.services.forensics_engine import ForensicsEngine
 from app.services.state_machine import ExpenseStateMachine, StateMachineError
-from app.api.v1.deps import get_current_user, log_audit_event
+from app.api.v1.deps import get_current_user, require_role, log_audit_event
 
 router = APIRouter(prefix="/expenses", tags=["Expenses"])
 
@@ -125,7 +128,7 @@ async def list_expenses(
             bd = exp.submitter.bank_details or {}
             has_bd = bool((bd.get("account_number") and (bd.get("ifsc_code") or bd.get("bank_name"))) or bd.get("upi_id"))
             exp.submitter_has_bank_details = has_bd
-            if current_user.role in (UserRole.ADMIN, UserRole.FINANCE):
+            if current_user.role in (UserRole.ADMIN, UserRole.REVIEWER, UserRole.FINANCE):
                 exp.submitter_bank_details = bd if has_bd else None
             else:
                 exp.submitter_bank_details = None
@@ -153,6 +156,16 @@ async def create_expense(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Receipt upload is mandatory to submit an expense claim."
         )
+
+    # Mandatory bank details check upon submission for employees
+    if submit_now and current_user.role == UserRole.EMPLOYEE:
+        bd = current_user.bank_details or {}
+        has_bd = bool((bd.get("account_number") and (bd.get("ifsc_code") or bd.get("bank_name"))) or bd.get("upi_id"))
+        if not has_bd:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Submission locked: Bank account or UPI details are required to submit an expense claim. Please configure your bank details in Profile Settings before submitting."
+            )
 
     # Auto-extract from receipt if not provided
     extracted_meta = data.extracted_metadata or {}
@@ -190,7 +203,8 @@ async def create_expense(
         submitted_by=current_user.id,
         amount=data.amount,
         expense_date=data.expense_date,
-        receipt_hash=data.receipt_hash
+        receipt_hash=data.receipt_hash,
+        title=data.title
     )
     if is_dup and submit_now:
         raise HTTPException(status_code=400, detail=f"Cannot submit: {dup_msg}")
@@ -239,7 +253,7 @@ async def create_expense(
         bd = created.submitter.bank_details or {}
         has_bd = bool((bd.get("account_number") and (bd.get("ifsc_code") or bd.get("bank_name"))) or bd.get("upi_id"))
         created.submitter_has_bank_details = has_bd
-        if current_user.role in (UserRole.ADMIN, UserRole.FINANCE):
+        if current_user.role in (UserRole.ADMIN, UserRole.REVIEWER, UserRole.FINANCE):
             created.submitter_bank_details = bd if has_bd else None
         else:
             created.submitter_bank_details = None
@@ -258,6 +272,136 @@ async def create_expense(
         created.extracted_metadata = None
 
     return created
+
+
+@router.get("/export")
+async def export_expenses(
+    request: Request,
+    status_filter: Optional[ExpenseStatus] = Query(None, alias="status"),
+    category: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
+    sort_by: Optional[str] = Query("created_at"),
+    sort_order: Optional[str] = Query("desc"),
+    current_user: User = Depends(require_role([UserRole.ADMIN, UserRole.REVIEWER, UserRole.FINANCE])),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Extract and export expense submissions into a structured CSV report.
+    Includes sorting, filters, extracted facts, and uploaded document links.
+    Accessible to Admin and Reviewer personnel.
+    """
+    query = select(Expense).options(
+        selectinload(Expense.submitter)
+    )
+
+    if status_filter:
+        query = query.where(Expense.status == status_filter)
+
+    if category:
+        query = query.where(Expense.category == category)
+
+    if search and search.strip():
+        search_fmt = f"%{search.strip()}%"
+        query = query.where(
+            or_(
+                Expense.id.ilike(search_fmt),
+                Expense.title.ilike(search_fmt),
+                Expense.description.ilike(search_fmt),
+                Expense.category.ilike(search_fmt)
+            )
+        )
+
+    sort_col_map = {
+        "created_at": Expense.created_at,
+        "amount": Expense.amount,
+        "title": Expense.title,
+        "expense_date": Expense.expense_date,
+        "status": Expense.status,
+    }
+    sort_col = sort_col_map.get(sort_by or "created_at", Expense.created_at)
+    if sort_order == "asc":
+        query = query.order_by(asc(sort_col))
+    else:
+        query = query.order_by(desc(sort_col))
+
+    result = await db.execute(query)
+    expenses = result.scalars().all()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    # CSV Header Row
+    writer.writerow([
+        "Expense ID",
+        "Submission Timestamp",
+        "Expense Date",
+        "Submitter Name",
+        "Submitter Email",
+        "Title",
+        "Category",
+        "Amount",
+        "Currency",
+        "Status",
+        "Approval Tier Required",
+        "Current Approval Tier",
+        "Risk Score",
+        "Risk Level",
+        "Receipt Document Link",
+        "Extracted Merchant",
+        "Extracted Bill No",
+        "Extracted Receipt No",
+        "Extracted Transaction ID",
+        "Extracted GSTIN",
+        "Extracted Date",
+        "Date Verified In Bill",
+        "Extraction Verified"
+    ])
+
+    base_url = str(request.base_url).rstrip("/")
+    for exp in expenses:
+        meta = exp.extracted_metadata or {}
+        sub_name = exp.submitter.full_name if exp.submitter else "Unknown"
+        sub_email = exp.submitter.email if exp.submitter else "Unknown"
+        doc_link = ""
+        if exp.receipt_url:
+            if exp.receipt_url.startswith("http"):
+                doc_link = exp.receipt_url
+            else:
+                doc_link = f"{base_url}{exp.receipt_url if exp.receipt_url.startswith('/') else '/' + exp.receipt_url}"
+
+        writer.writerow([
+            exp.id,
+            exp.created_at.strftime("%Y-%m-%d %H:%M:%S") if exp.created_at else "",
+            exp.expense_date.strftime("%Y-%m-%d") if exp.expense_date else "",
+            sub_name,
+            sub_email,
+            exp.title,
+            exp.category,
+            str(exp.amount),
+            exp.currency,
+            exp.status.value,
+            str(exp.approval_tier_required),
+            str(exp.current_approval_tier),
+            str(exp.risk_score),
+            exp.risk_level,
+            doc_link,
+            meta.get("merchant_name") or "",
+            meta.get("bill_number") or "",
+            meta.get("receipt_number") or "",
+            meta.get("transaction_id") or "",
+            meta.get("gstin") or "",
+            meta.get("expense_date") or "",
+            "YES" if meta.get("date_found_in_bill") else "NO",
+            meta.get("verification_status") or "UNVERIFIED"
+        ])
+
+    output.seek(0)
+    filename = f"expenses_export_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.csv"
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
 
 
 @router.get("/{expense_id}", response_model=ExpenseOut)
@@ -291,7 +435,7 @@ async def get_expense(
         bd = expense.submitter.bank_details or {}
         has_bd = bool((bd.get("account_number") and (bd.get("ifsc_code") or bd.get("bank_name"))) or bd.get("upi_id"))
         expense.submitter_has_bank_details = has_bd
-        if current_user.role in (UserRole.ADMIN, UserRole.FINANCE):
+        if current_user.role in (UserRole.ADMIN, UserRole.REVIEWER, UserRole.FINANCE):
             expense.submitter_bank_details = bd if has_bd else None
         else:
             expense.submitter_bank_details = None
@@ -373,6 +517,16 @@ async def submit_expense(
             detail="Receipt upload is mandatory to submit an expense claim."
         )
 
+    # Mandatory bank details check on submission for employees
+    if current_user.role == UserRole.EMPLOYEE:
+        bd = current_user.bank_details or {}
+        has_bd = bool((bd.get("account_number") and (bd.get("ifsc_code") or bd.get("bank_name"))) or bd.get("upi_id"))
+        if not has_bd:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Submission locked: Bank account or UPI details are required to submit an expense claim. Please configure your bank details in Profile Settings before submitting."
+            )
+
     # Duplicate check
     is_dup, dup_msg = await DuplicateDetector.check_duplicate(
         db=db,
@@ -380,6 +534,7 @@ async def submit_expense(
         amount=expense.amount,
         expense_date=expense.expense_date,
         receipt_hash=expense.receipt_hash,
+        title=expense.title,
         exclude_expense_id=expense.id
     )
     if is_dup:

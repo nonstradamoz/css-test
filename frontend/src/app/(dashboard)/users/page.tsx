@@ -11,7 +11,11 @@ import {
   CreditCard, Building2, Hash, QrCode, Save, ShieldCheck
 } from 'lucide-react';
 
-const ROLES: Role[] = ['ADMIN', 'FINANCE', 'REVIEWER', 'EMPLOYEE'];
+const ROLES: { value: Role; label: string }[] = [
+  { value: 'ADMIN', label: 'Admin (Administrator)' },
+  { value: 'EMPLOYEE', label: 'Employee (Submitter)' },
+  { value: 'REVIEWER', label: 'Reviewer (Reviewer & Financier)' }
+];
 
 export default function UsersManagementPage() {
   const { role, user: currentUser } = useAuth();
@@ -195,8 +199,8 @@ export default function UsersManagementPage() {
                           className="px-2.5 py-1 border border-neutral-300 rounded-lg text-xs font-semibold bg-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
                         >
                           {ROLES.map((r) => (
-                            <option key={r} value={r}>
-                              {r}
+                            <option key={r.value} value={r.value}>
+                              {r.label}
                             </option>
                           ))}
                         </select>
@@ -441,7 +445,7 @@ export default function UsersManagementPage() {
                   className="w-full px-3 py-2 border border-neutral-300 rounded-xl text-sm bg-white"
                 >
                   {ROLES.map((r) => (
-                    <option key={r} value={r}>{r}</option>
+                    <option key={r.value} value={r.value}>{r.label}</option>
                   ))}
                 </select>
               </div>

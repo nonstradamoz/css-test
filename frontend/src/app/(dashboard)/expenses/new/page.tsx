@@ -153,6 +153,13 @@ export default function NewExpensePage() {
       return;
     }
 
+    const hasBankDetails =
+      Boolean((user?.bank_details?.account_number && user.bank_details.account_number.trim().length > 0) ||
+      (user?.bank_details?.upi_id && user.bank_details.upi_id.trim().length > 0));
+
+    const willSaveAsDraftDueToMissingBank = submitNow && user?.role === 'EMPLOYEE' && !hasBankDetails;
+    const effectiveSubmitNow = submitNow && !willSaveAsDraftDueToMissingBank;
+
     setIsSubmitting(true);
     setError(null);
 
@@ -182,9 +189,13 @@ export default function NewExpensePage() {
           line_items: scanResult.line_items,
           invoice_number: scanResult.invoice_number
         } : undefined
-      }, submitNow);
+      }, effectiveSubmitNow);
 
-      router.push(`/expenses/${created.id}`);
+      if (willSaveAsDraftDueToMissingBank) {
+        router.push(`/profile?prompt_bank=true&redirect_expense_id=${created.id}`);
+      } else {
+        router.push(`/expenses/${created.id}`);
+      }
     } catch (err: any) {
       if (err.message === 'Failed to fetch' || err.message?.includes('NetworkError')) {
         setError('Network error (Failed to fetch). Please verify your backend server is running and reachable.');

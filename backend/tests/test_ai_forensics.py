@@ -96,6 +96,9 @@ async def test_cross_employee_collusion_blocking(client):
     })
     l1 = await client.post("/api/v1/auth/login", json={"email": "emp1.collusion@crs-corp.com", "password": "Password123!"})
     t1 = l1.json()["access_token"]
+    await client.patch("/api/v1/users/me", headers={"Authorization": f"Bearer {t1}"}, json={
+        "bank_details": {"account_number": "111122223333", "ifsc_code": "HDFC0001111"}
+    })
 
     shared_hash = "sha256_receipt_unique_duplicate_test_hash"
 
@@ -119,6 +122,9 @@ async def test_cross_employee_collusion_blocking(client):
     })
     l2 = await client.post("/api/v1/auth/login", json={"email": "emp2.collusion@crs-corp.com", "password": "Password123!"})
     t2 = l2.json()["access_token"]
+    await client.patch("/api/v1/users/me", headers={"Authorization": f"Bearer {t2}"}, json={
+        "bank_details": {"account_number": "444455556666", "ifsc_code": "ICIC0002222"}
+    })
 
     # Employee 2 tries to submit the EXACT SAME receipt hash -> MUST BE BLOCKED
     c2 = await client.post("/api/v1/expenses?submit_now=true", headers={"Authorization": f"Bearer {t2}"}, json={
@@ -155,6 +161,9 @@ async def test_high_risk_approval_audit_exemption(client):
     })
     l_emp = await client.post("/api/v1/auth/login", json={"email": "emp.audit@crs-corp.com", "password": "Password123!"})
     t_emp = l_emp.json()["access_token"]
+    await client.patch("/api/v1/users/me", headers={"Authorization": f"Bearer {t_emp}"}, json={
+        "bank_details": {"account_number": "999988887777", "ifsc_code": "SBIN0003333"}
+    })
 
     # Submit high-risk claim (Sunday weekend + high amount + prohibited line item)
     # 2026-11-15 was a Sunday

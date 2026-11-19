@@ -7,7 +7,7 @@ import { api } from '@/lib/api';
 import { Expense, ExpenseStatus } from '@/types';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { Badge } from '@/components/ui/Badge';
-import { PlusCircle, Search, Filter, Receipt, ArrowUpDown, Tag } from 'lucide-react';
+import { PlusCircle, Search, Filter, Receipt, ArrowUpDown, Tag, Download } from 'lucide-react';
 import Link from 'next/link';
 
 const STATUS_FILTERS: { label: string; value: string }[] = [
@@ -28,6 +28,34 @@ export default function ExpensesPage() {
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [sortBy, setSortBy] = useState<string>('created_at');
   const [sortOrder, setSortOrder] = useState<string>('desc');
+  const [isExporting, setIsExporting] = useState<boolean>(false);
+
+  const canExport = role === 'ADMIN' || role === 'REVIEWER' || role === 'FINANCE';
+
+  const handleExportCsv = async () => {
+    setIsExporting(true);
+    try {
+      const blob = await api.expenses.exportCsv({
+        status: selectedStatus !== 'ALL' ? (selectedStatus as ExpenseStatus) : undefined,
+        category: selectedCategory !== 'ALL' ? selectedCategory : undefined,
+        search: searchQuery || undefined,
+        sort_by: sortBy,
+        sort_order: sortOrder
+      });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `expenses_export_${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err: any) {
+      alert(err.message || 'Failed to export expenses');
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   // Load active dynamic categories
   const { data: categories = [] } = useQuery({
@@ -58,13 +86,26 @@ export default function ExpensesPage() {
             {role === 'EMPLOYEE' ? 'Track and manage your expense claims.' : 'Company-wide expense claims and approval status.'}
           </p>
         </div>
-        <Link
-          href="/expenses/new"
-          className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-500 transition-colors shadow-sm self-start sm:self-auto"
-        >
-          <PlusCircle size={16} />
-          Submit Claim
-        </Link>
+        <div className="flex items-center gap-2.5 self-start sm:self-auto">
+          {canExport && (
+            <button
+              onClick={handleExportCsv}
+              disabled={isExporting}
+              className="inline-flex items-center gap-2 px-3.5 py-2 bg-white hover:bg-neutral-50 text-neutral-700 border border-neutral-300 rounded-lg text-sm font-medium transition-colors shadow-sm disabled:opacity-50"
+              title="Extract and download sorted expense submissions with document links as CSV"
+            >
+              <Download size={15} />
+              {isExporting ? 'Extracting...' : 'Extract / Export CSV'}
+            </button>
+          )}
+          <Link
+            href="/expenses/new"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-500 transition-colors shadow-sm"
+          >
+            <PlusCircle size={16} />
+            Submit Claim
+          </Link>
+        </div>
       </div>
 
       {/* Filters and Search Bar */}

@@ -139,6 +139,19 @@ class ApiClient {
       }, false);
     },
 
+    googleLogin: async (payload: { id_token?: string; credential?: string; email?: string; full_name?: string }) => {
+      const data = await this.request<{
+        access_token: string;
+        refresh_token: string;
+        user: User;
+      }>('/auth/google', {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      }, false);
+      this.setTokens(data.access_token, data.refresh_token);
+      return data;
+    },
+
     logout: async () => {
       const refreshToken = this.getRefreshToken();
       try {
@@ -218,6 +231,55 @@ class ApiClient {
       return this.request<void>(`/expenses/${id}`, {
         method: 'DELETE'
       });
+    },
+
+    exportCsvUrl: (params?: {
+      status?: ExpenseStatus;
+      category?: string;
+      search?: string;
+      sort_by?: string;
+      sort_order?: string;
+    }): string => {
+      const query = new URLSearchParams();
+      if (params?.status) query.set('status', params.status);
+      if (params?.category) query.set('category', params.category);
+      if (params?.search) query.set('search', params.search);
+      if (params?.sort_by) query.set('sort_by', params.sort_by);
+      if (params?.sort_order) query.set('sort_order', params.sort_order);
+      const qs = query.toString();
+      return `${API_BASE}/expenses/export${qs ? `?${qs}` : ''}`;
+    },
+
+    exportCsv: async (params?: {
+      status?: ExpenseStatus;
+      category?: string;
+      search?: string;
+      sort_by?: string;
+      sort_order?: string;
+    }): Promise<Blob> => {
+      const query = new URLSearchParams();
+      if (params?.status) query.set('status', params.status);
+      if (params?.category) query.set('category', params.category);
+      if (params?.search) query.set('search', params.search);
+      if (params?.sort_by) query.set('sort_by', params.sort_by);
+      if (params?.sort_order) query.set('sort_order', params.sort_order);
+      const qs = query.toString();
+
+      const token = this.getAccessToken();
+      const res = await fetch(`${API_BASE}/expenses/export${qs ? `?${qs}` : ''}`, {
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        }
+      });
+      if (!res.ok) {
+        let msg = 'Failed to export expenses';
+        try {
+          const err = await res.json();
+          msg = err.detail || msg;
+        } catch (_) {}
+        throw new Error(msg);
+      }
+      return res.blob();
     }
   };
 

@@ -72,6 +72,13 @@ class RefreshTokenRequest(BaseModel):
     refresh_token: str
 
 
+class GoogleAuthRequest(BaseModel):
+    id_token: Optional[str] = None
+    credential: Optional[str] = None
+    email: Optional[EmailStr] = None
+    full_name: Optional[str] = None
+
+
 # ==================== System Settings ====================
 
 class SystemSettingsOut(BaseModel):
@@ -219,6 +226,11 @@ class ReceiptAnalysisResponse(BaseModel):
     transaction_id: Optional[str] = None
     gstin: Optional[str] = None
     is_synthetic_invoice: Optional[bool] = False
+    date_found_in_bill: Optional[bool] = False
+    date_verified: Optional[bool] = False
+    amount_verified: Optional[bool] = False
+    identifiers_verified: Optional[bool] = False
+    verification_status: Optional[str] = "UNVERIFIED"
 
 
 class ForensicsPreviewRequest(BaseModel):
