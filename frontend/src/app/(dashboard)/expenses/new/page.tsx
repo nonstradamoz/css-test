@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useQuery } from '@tanstack/react-query';
@@ -9,7 +9,8 @@ import { ReceiptAnalysisResponse, ForensicsPreviewResponse } from '@/types';
 import {
   UploadCloud, FileText, CheckCircle2, AlertCircle, ArrowLeft,
   Send, Save, Sparkles, Scan, ShieldAlert, ShieldCheck, PenTool,
-  Clock, AlertTriangle, Layers, Check, X, Building, GraduationCap, Plane
+  Clock, AlertTriangle, Layers, Check, X, Building, GraduationCap, Plane,
+  Search, ChevronDown, UserCheck
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -19,6 +20,9 @@ export default function NewExpensePage() {
 
   const canSubmitOnBehalf = role === 'ADMIN' || role === 'REVIEWER';
   const [onBehalfOfUserId, setOnBehalfOfUserId] = useState<string>('');
+  const [proxySearchQuery, setProxySearchQuery] = useState<string>('');
+  const [isProxyDropdownOpen, setIsProxyDropdownOpen] = useState<boolean>(false);
+  const proxyDropdownRef = useRef<HTMLDivElement>(null);
 
   // Form Fields
   const [title, setTitle] = useState('');
@@ -83,6 +87,27 @@ export default function NewExpensePage() {
   const effectiveTargetUser = onBehalfOfUserId
     ? userList.find(u => u.id === onBehalfOfUserId)
     : user;
+
+  const filteredProxyEmployees = proxyEmployees.filter(emp => {
+    if (!proxySearchQuery.trim()) return true;
+    const q = proxySearchQuery.toLowerCase();
+    return (
+      emp.full_name?.toLowerCase().includes(q) ||
+      emp.email?.toLowerCase().includes(q) ||
+      emp.role?.toLowerCase().includes(q)
+    );
+  });
+
+  // Close proxy dropdown on outside click
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (proxyDropdownRef.current && !proxyDropdownRef.current.contains(event.target as Node)) {
+        setIsProxyDropdownOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const targetHasBankDetails = Boolean(
     (effectiveTargetUser?.bank_details?.account_number && effectiveTargetUser.bank_details.account_number.trim().length > 0) ||
@@ -337,9 +362,9 @@ export default function NewExpensePage() {
 
       {/* 2. Main Claim Submission Form */}
       <div className="bg-white border border-neutral-200/80 rounded-2xl p-6 shadow-sm space-y-5">
-        {/* Admin / Reviewer Proxy Submission Option */}
+        {/* Admin / Reviewer Searchable Proxy Submission Option */}
         {canSubmitOnBehalf && (
-          <div className="p-4 bg-emerald-50/70 border border-emerald-200/80 rounded-xl space-y-2">
+          <div className="p-4 bg-emerald-50/70 border border-emerald-200/80 rounded-2xl space-y-3 relative" ref={proxyDropdownRef}>
             <div className="flex items-center justify-between">
               <label className="block text-xs font-bold uppercase tracking-wider text-emerald-900">
                 Submit on Behalf of Employee (Proxy Filing)
@@ -348,27 +373,163 @@ export default function NewExpensePage() {
                 Admin / Reviewer Privileged
               </span>
             </div>
-            <select
-              value={onBehalfOfUserId}
-              onChange={(e) => setOnBehalfOfUserId(e.target.value)}
-              className="w-full px-3.5 py-2.5 bg-white border border-emerald-300 rounded-lg text-sm text-neutral-800 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
-            >
-              <option value="">Myself ({user?.full_name || user?.email} - Current User)</option>
-              {proxyEmployees.map((emp) => (
-                <option key={emp.id} value={emp.id}>
-                  {emp.full_name} ({emp.email}) — {emp.role}
-                </option>
-              ))}
-            </select>
+
+            {/* Selected User Display / Dropdown Trigger */}
+            <div className="relative">
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => setIsProxyDropdownOpen(prev => !prev)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setIsProxyDropdownOpen(prev => !prev);
+                  }
+                }}
+                className="w-full flex items-center justify-between px-3.5 py-2.5 bg-white border border-emerald-300 rounded-xl text-left text-sm transition-all hover:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 cursor-pointer shadow-sm"
+              >
+                <div className="flex items-center gap-3 truncate">
+                  <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center text-xs shrink-0">
+                    {effectiveTargetUser?.full_name ? effectiveTargetUser.full_name.substring(0, 2).toUpperCase() : 'ME'}
+                  </div>
+                  <div className="truncate">
+                    <p className="text-sm font-semibold text-neutral-900 truncate">
+                      {onBehalfOfUserId
+                        ? effectiveTargetUser?.full_name || 'Selected Employee'
+                        : `Myself (${user?.full_name || user?.email} — Current User)`}
+                    </p>
+                    <p className="text-xs text-neutral-500 truncate">
+                      {effectiveTargetUser?.email} · Role: {effectiveTargetUser?.role}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  {onBehalfOfUserId && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setOnBehalfOfUserId('');
+                        setProxySearchQuery('');
+                      }}
+                      className="p-1 text-neutral-400 hover:text-red-500 hover:bg-neutral-100 rounded-lg transition-colors"
+                      title="Clear proxy selection (reset to myself)"
+                    >
+                      <X size={15} />
+                    </button>
+                  )}
+                  <ChevronDown size={16} className={`text-neutral-400 transition-transform ${isProxyDropdownOpen ? 'rotate-180' : ''}`} />
+                </div>
+              </div>
+
+              {/* Searchable Dropdown Popover */}
+              {isProxyDropdownOpen && (
+                <div className="absolute left-0 right-0 top-full mt-1.5 z-50 bg-white border border-neutral-200 rounded-xl shadow-2xl p-2 space-y-2 animate-in fade-in duration-150">
+                  {/* Search Input */}
+                  <div className="relative">
+                    <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
+                    <input
+                      type="text"
+                      autoFocus
+                      placeholder="Search employee by name, email, or role..."
+                      value={proxySearchQuery}
+                      onChange={(e) => setProxySearchQuery(e.target.value)}
+                      onClick={(e) => e.stopPropagation()}
+                      className="w-full pl-9 pr-3 py-2 bg-neutral-50 border border-neutral-200 rounded-lg text-xs text-neutral-900 placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                    />
+                  </div>
+
+                  {/* List of matching employees */}
+                  <div className="max-h-60 overflow-y-auto divide-y divide-neutral-100">
+                    {/* Default Option: Myself */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOnBehalfOfUserId('');
+                        setIsProxyDropdownOpen(false);
+                      }}
+                      className={`w-full p-2.5 rounded-lg flex items-center justify-between text-left transition-colors ${
+                        !onBehalfOfUserId ? 'bg-emerald-50 text-emerald-900 font-semibold' : 'hover:bg-neutral-50 text-neutral-800'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5 truncate">
+                        <div className="w-7 h-7 rounded-full bg-neutral-200 text-neutral-700 font-bold flex items-center justify-center text-xs shrink-0">
+                          ME
+                        </div>
+                        <div className="truncate">
+                          <p className="text-xs font-semibold">Myself (Current User)</p>
+                          <p className="text-[11px] text-neutral-500 truncate">{user?.email}</p>
+                        </div>
+                      </div>
+                      {!onBehalfOfUserId && <Check size={16} className="text-emerald-600 shrink-0" />}
+                    </button>
+
+                    {/* Filtered Proxy Employees */}
+                    {filteredProxyEmployees.length === 0 ? (
+                      <div className="p-4 text-center text-xs text-neutral-400">
+                        No employees found matching &quot;{proxySearchQuery}&quot;
+                      </div>
+                    ) : (
+                      filteredProxyEmployees.map((emp) => {
+                        const isSelected = onBehalfOfUserId === emp.id;
+                        const empHasBank = Boolean(
+                          (emp.bank_details?.account_number && emp.bank_details.account_number.trim().length > 0) ||
+                          (emp.bank_details?.upi_id && emp.bank_details.upi_id.trim().length > 0)
+                        );
+                        return (
+                          <button
+                            key={emp.id}
+                            type="button"
+                            onClick={() => {
+                              setOnBehalfOfUserId(emp.id);
+                              setIsProxyDropdownOpen(false);
+                            }}
+                            className={`w-full p-2.5 rounded-lg flex items-center justify-between text-left transition-colors ${
+                              isSelected ? 'bg-emerald-50 text-emerald-900 font-semibold' : 'hover:bg-neutral-50 text-neutral-800'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5 truncate">
+                              <div className="w-7 h-7 rounded-full bg-emerald-100 text-emerald-700 font-bold flex items-center justify-center text-xs shrink-0">
+                                {emp.full_name ? emp.full_name.substring(0, 2).toUpperCase() : 'U'}
+                              </div>
+                              <div className="truncate">
+                                <p className="text-xs font-semibold truncate">{emp.full_name}</p>
+                                <p className="text-[11px] text-neutral-500 truncate">{emp.email} · {emp.role}</p>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0 ml-2">
+                              {empHasBank ? (
+                                <span className="text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded font-medium">
+                                  Bank Active
+                                </span>
+                              ) : (
+                                <span className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded font-medium">
+                                  No Bank
+                                </span>
+                              )}
+                              {isSelected && <Check size={16} className="text-emerald-600" />}
+                            </div>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Status Information Box */}
             {onBehalfOfUserId && (
-              <p className="text-xs text-emerald-800">
-                This claim will be attributed to <strong>{effectiveTargetUser?.full_name || effectiveTargetUser?.email}</strong>.
+              <div className="text-xs text-emerald-800 pt-1">
+                Filing claim on behalf of <strong>{effectiveTargetUser?.full_name || effectiveTargetUser?.email}</strong>.
                 {targetHasBankDetails ? (
                   <span className="text-emerald-700 font-semibold ml-1.5">✓ Bank details verified for disbursement.</span>
                 ) : (
-                  <span className="text-amber-800 font-semibold ml-1.5">⚠️ No bank details registered. Can only be saved as DRAFT until bank details are added.</span>
+                  <span className="text-amber-800 font-semibold ml-1.5">⚠️ No bank details registered in profile. Can only be saved as DRAFT until bank details are added.</span>
                 )}
-              </p>
+              </div>
             )}
           </div>
         )}
