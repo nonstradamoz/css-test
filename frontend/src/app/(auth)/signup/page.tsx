@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton';
-import { AlertCircle, Eye, EyeOff, ShieldCheck } from 'lucide-react';
+import { AlertCircle, Eye, EyeOff, ShieldCheck, User as UserIcon, Mail, Lock, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 
 export default function SignupPage() {
@@ -36,112 +36,146 @@ export default function SignupPage() {
   };
 
   return (
-    <div className="min-h-screen bg-neutral-950 flex items-center justify-center p-6 text-neutral-100">
-      <div className="w-full max-w-md bg-neutral-900 border border-neutral-800 rounded-2xl p-8 shadow-2xl">
-        <div className="flex items-center gap-3 mb-6">
-          <div className="p-3 bg-emerald-500/10 text-emerald-400 rounded-xl">
-            <ShieldCheck size={28} />
+    <div className="min-h-screen bg-neutral-950 bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(16,185,129,0.15),rgba(255,255,255,0))] flex flex-col justify-between p-6 text-neutral-100 selection:bg-emerald-500 selection:text-white">
+      {/* Top Brand Header */}
+      <header className="max-w-md mx-auto w-full flex items-center justify-center pt-6 pb-2">
+        <Link href="/" className="flex items-center gap-2.5 group transition-transform active:scale-95">
+          <div className="p-2.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-2xl shadow-inner group-hover:bg-emerald-500/20 transition-all">
+            <ShieldCheck size={24} className="stroke-[2.2]" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-white tracking-tight">Create ClearSpend Account</h1>
-            <p className="text-xs text-neutral-400">Expense & Refund Portal</p>
-          </div>
-        </div>
-
-        {error && (
-          <div className="mb-5 p-3.5 bg-red-500/10 border border-red-500/30 rounded-xl flex items-center gap-2.5 text-sm text-red-400">
-            <AlertCircle size={18} className="shrink-0" />
-            <span>{error}</span>
-          </div>
-        )}
-
-        {/* 1. Primary Action: Register / Sign up with Google */}
-        <div className="space-y-3">
-          <GoogleSignInButton mode="signup" onError={setError} />
-        </div>
-
-        {/* Divider */}
-        <div className="relative my-4">
-          <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-neutral-800" />
-          </div>
-          <div className="relative flex justify-center text-[11px] uppercase">
-            <span className="bg-neutral-900 px-3 text-neutral-500 font-semibold tracking-wider">
-              Or register with email
+            <span className="font-extrabold text-white text-lg tracking-tight">ClearSpend</span>
+            <span className="text-[11px] text-emerald-400/80 font-medium ml-2 px-1.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
+              Registration
             </span>
           </div>
-        </div>
+        </Link>
+      </header>
 
-        {/* 2. Secondary Option: Email Registration Form */}
-        <form onSubmit={handleRegister} className="space-y-4">
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-400 mb-1.5">
-              Full Name
-            </label>
-            <input
-              type="text"
-              required
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              placeholder="e.g. Jane Smith"
-              className="w-full px-4 py-2.5 bg-neutral-800/80 border border-neutral-700 rounded-xl text-white placeholder-neutral-500 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500 transition-all"
-            />
+      {/* Main Registration Card */}
+      <main className="flex-1 flex items-center justify-center py-6">
+        <div className="w-full max-w-md bg-neutral-900/90 backdrop-blur-xl border border-neutral-800/80 rounded-2xl p-7 sm:p-8 shadow-2xl ring-1 ring-white/5 space-y-6">
+          <div className="text-center sm:text-left">
+            <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">Create your account</h1>
+            <p className="text-xs text-neutral-400 mt-1">Get started with your company expense and claim portal.</p>
           </div>
 
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-400 mb-1.5">
-              Work Email
-            </label>
-            <input
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="name@company.com"
-              className="w-full px-4 py-2.5 bg-neutral-800/80 border border-neutral-700 rounded-xl text-white placeholder-neutral-500 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500 transition-all"
-            />
+          {error && (
+            <div className="p-3.5 bg-red-500/10 border border-red-500/30 rounded-xl flex items-center gap-2.5 text-xs text-red-400 animate-in fade-in">
+              <AlertCircle size={16} className="shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          {/* 1. Primary Action: Sign up with Google */}
+          <div className="space-y-1">
+            <GoogleSignInButton mode="signup" onError={setError} />
           </div>
 
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-400 mb-1.5">
-              Password (min. 8 characters)
-            </label>
-            <div className="relative">
-              <input
-                type={showPwd ? 'text' : 'password'}
-                required
-                minLength={8}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••••••"
-                className="w-full px-4 py-2.5 bg-neutral-800/80 border border-neutral-700 rounded-xl text-white placeholder-neutral-500 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500 transition-all pr-11"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPwd(!showPwd)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-white"
-              >
-                {showPwd ? <EyeOff size={18} /> : <Eye size={18} />}
-              </button>
+          {/* Divider */}
+          <div className="relative my-4">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-neutral-800" />
+            </div>
+            <div className="relative flex justify-center text-[11px] uppercase">
+              <span className="bg-neutral-900 px-3 text-neutral-400 font-semibold tracking-wider">
+                or register with email
+              </span>
             </div>
           </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-3 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-white font-medium rounded-xl text-sm disabled:opacity-50 transition-all mt-2"
-          >
-            {loading ? 'Creating Account...' : 'Register with Email'}
-          </button>
-        </form>
+          {/* 2. Secondary Option: Email Registration Form */}
+          <form onSubmit={handleRegister} className="space-y-4">
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-400 mb-1.5">
+                Full Name
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  required
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  placeholder="e.g. Jane Smith"
+                  className="w-full pl-10 pr-4 py-2.5 bg-neutral-800/80 border border-neutral-700/80 rounded-xl text-white placeholder-neutral-500 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500 transition-all"
+                />
+                <UserIcon size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none" />
+              </div>
+            </div>
 
-        <div className="mt-6 pt-5 border-t border-neutral-800 text-center text-xs text-neutral-400">
-          Already registered?{' '}
-          <Link href="/login" className="text-emerald-400 hover:underline font-semibold">
-            Sign In
-          </Link>
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-400 mb-1.5">
+                Work Email
+              </label>
+              <div className="relative">
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="name@company.com"
+                  className="w-full pl-10 pr-4 py-2.5 bg-neutral-800/80 border border-neutral-700/80 rounded-xl text-white placeholder-neutral-500 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500 transition-all"
+                />
+                <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none" />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-400 mb-1.5">
+                Password (min. 8 characters)
+              </label>
+              <div className="relative">
+                <input
+                  type={showPwd ? 'text' : 'password'}
+                  required
+                  minLength={8}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••••••"
+                  className="w-full pl-10 pr-11 py-2.5 bg-neutral-800/80 border border-neutral-700/80 rounded-xl text-white placeholder-neutral-500 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500 transition-all"
+                />
+                <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none" />
+                <button
+                  type="button"
+                  onClick={() => setShowPwd(!showPwd)}
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-white transition-colors"
+                  aria-label={showPwd ? 'Hide password' : 'Show password'}
+                >
+                  {showPwd ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-semibold rounded-xl text-sm shadow-lg shadow-emerald-900/30 disabled:opacity-50 transition-all flex items-center justify-center gap-2 mt-2"
+            >
+              {loading ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" />
+                  <span>Creating Account...</span>
+                </>
+              ) : (
+                <span>Register Workspace Account</span>
+              )}
+            </button>
+          </form>
+
+          {/* Footer Link */}
+          <div className="pt-4 border-t border-neutral-800 text-center text-xs text-neutral-400">
+            Already have an account?{' '}
+            <Link href="/login" className="text-emerald-400 hover:text-emerald-300 hover:underline font-semibold transition-colors">
+              Sign In
+            </Link>
+          </div>
         </div>
-      </div>
+      </main>
+
+      {/* Page Footer */}
+      <footer className="py-4 text-center text-xs text-neutral-400">
+        © {new Date().getFullYear()} ClearSpend · Enterprise Expense & Refund Manager
+      </footer>
     </div>
   );
 }
