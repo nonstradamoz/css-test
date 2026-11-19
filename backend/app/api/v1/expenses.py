@@ -122,6 +122,13 @@ async def list_expenses(
         if exp.submitter:
             exp.submitter_name = exp.submitter.full_name
             exp.submitter_email = exp.submitter.email
+            bd = exp.submitter.bank_details or {}
+            has_bd = bool((bd.get("account_number") and (bd.get("ifsc_code") or bd.get("bank_name"))) or bd.get("upi_id"))
+            exp.submitter_has_bank_details = has_bd
+            if current_user.role in (UserRole.ADMIN, UserRole.FINANCE):
+                exp.submitter_bank_details = bd if has_bd else None
+            else:
+                exp.submitter_bank_details = None
         if current_user.role == UserRole.EMPLOYEE:
             exp.extracted_metadata = None
 
@@ -229,6 +236,13 @@ async def create_expense(
     if created and created.submitter:
         created.submitter_name = created.submitter.full_name
         created.submitter_email = created.submitter.email
+        bd = created.submitter.bank_details or {}
+        has_bd = bool((bd.get("account_number") and (bd.get("ifsc_code") or bd.get("bank_name"))) or bd.get("upi_id"))
+        created.submitter_has_bank_details = has_bd
+        if current_user.role in (UserRole.ADMIN, UserRole.FINANCE):
+            created.submitter_bank_details = bd if has_bd else None
+        else:
+            created.submitter_bank_details = None
 
     await log_audit_event(
         db=db,
@@ -274,6 +288,13 @@ async def get_expense(
     if expense.submitter:
         expense.submitter_name = expense.submitter.full_name
         expense.submitter_email = expense.submitter.email
+        bd = expense.submitter.bank_details or {}
+        has_bd = bool((bd.get("account_number") and (bd.get("ifsc_code") or bd.get("bank_name"))) or bd.get("upi_id"))
+        expense.submitter_has_bank_details = has_bd
+        if current_user.role in (UserRole.ADMIN, UserRole.FINANCE):
+            expense.submitter_bank_details = bd if has_bd else None
+        else:
+            expense.submitter_bank_details = None
 
     if current_user.role == UserRole.EMPLOYEE:
         expense.extracted_metadata = None

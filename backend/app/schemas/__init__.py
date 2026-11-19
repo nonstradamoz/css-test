@@ -185,6 +185,8 @@ class ExpenseOut(BaseModel):
     updated_at: datetime
     submitter_name: Optional[str] = None
     submitter_email: Optional[str] = None
+    submitter_has_bank_details: bool = False
+    submitter_bank_details: Optional[Dict[str, Any]] = None
     approvals: List[ExpenseApprovalOut] = []
     reimbursement: Optional[ReimbursementOut] = None
 

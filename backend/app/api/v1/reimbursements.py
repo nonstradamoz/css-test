@@ -115,9 +115,11 @@ async def create_reimbursement(
                 detail="Duplicate transaction detected: Idempotency key has already been processed."
             )
 
-        # Fetch expense
+        # Fetch expense with submitter
         exp_res = await db.execute(
-            select(Expense).where(Expense.id == data.expense_id)
+            select(Expense)
+            .options(selectinload(Expense.submitter))
+            .where(Expense.id == data.expense_id)
         )
         expense = exp_res.scalars().first()
         if not expense:
@@ -127,6 +129,23 @@ async def create_reimbursement(
             raise HTTPException(
                 status_code=400,
                 detail=f"Cannot disburse payout: Expense must be in APPROVED status (currently '{expense.status}')."
+            )
+
+        # Enforce that employee has configured bank details in their profile
+        submitter = expense.submitter
+        bd = submitter.bank_details if submitter and isinstance(submitter.bank_details, dict) else {}
+        has_bank_details = bool(
+            (bd.get("account_number") and (bd.get("ifsc_code") or bd.get("bank_name"))) or
+            bd.get("upi_id")
+        )
+        if not has_bank_details:
+            emp_name = submitter.full_name if submitter else "The employee"
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Cannot disburse payout: {emp_name} has not provided bank account or UPI details in their profile. "
+                    "The employee must update their profile bank details before disbursement can be initiated."
+                )
             )
 
         # Check if already has reimbursement
@@ -206,6 +225,23 @@ async def retry_reimbursement(
 
     if reimb.status == ReimbursementStatus.COMPLETED:
         raise HTTPException(status_code=400, detail="Reimbursement has already completed successfully.")
+
+    # Check if employee has valid bank details before retry
+    exp_res = await db.execute(
+        select(Expense).options(selectinload(Expense.submitter)).where(Expense.id == reimb.expense_id)
+    )
+    expense_obj = exp_res.scalars().first()
+    if expense_obj and expense_obj.submitter:
+        bd = expense_obj.submitter.bank_details if isinstance(expense_obj.submitter.bank_details, dict) else {}
+        has_bank_details = bool(
+            (bd.get("account_number") and (bd.get("ifsc_code") or bd.get("bank_name"))) or
+            bd.get("upi_id")
+        )
+        if not has_bank_details:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Cannot retry payout: {expense_obj.submitter.full_name} does not have valid bank account or UPI details in their profile."
+            )
 
     reimb.retry_count += 1
     reimb.status = ReimbursementStatus.PROCESSING

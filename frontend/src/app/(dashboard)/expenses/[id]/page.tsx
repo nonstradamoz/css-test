@@ -136,6 +136,9 @@ export default function ExpenseDetailPage() {
   const isCategoryMatch = !extracted?.suggested_category || expense.category.toUpperCase() === extracted.suggested_category.toUpperCase();
   const flaggedItems = extracted?.line_items?.filter((item: any) => item.flagged) || [];
 
+  const hasBankDetails = Boolean((expense as any).submitter_has_bank_details);
+  const bankDetails = (expense as any).submitter_bank_details;
+
   return (
     <div className="p-8 max-w-4xl mx-auto space-y-6">
       {/* Header */}
@@ -646,21 +649,59 @@ export default function ExpenseDetailPage() {
         </div>
       )}
 
-      {/* Finance Disbursement Action */}
+      {/* Finance Disbursement Action (Locked unless employee has configured bank details) */}
       {canDisburse && (
-        <div className="bg-white border border-emerald-200 rounded-2xl p-6 shadow-sm flex items-center justify-between">
-          <div>
-            <h2 className="text-sm font-bold text-neutral-900">Approved for Disbursement</h2>
-            <p className="text-xs text-neutral-500 mt-0.5">Trigger idempotent bank transfer / refund settlement.</p>
+        <div className={`bg-white border rounded-2xl p-6 shadow-sm space-y-4 ${
+          hasBankDetails ? 'border-emerald-200' : 'border-amber-200 bg-amber-50/20'
+        }`}>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-bold text-neutral-900">Approved for Disbursement</h2>
+                {hasBankDetails ? (
+                  <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center gap-1">
+                    <CheckCircle2 size={12} /> Bank Profile Configured
+                  </span>
+                ) : (
+                  <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200 flex items-center gap-1">
+                    <AlertTriangle size={12} /> Bank Profile Missing
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-neutral-500">
+                {hasBankDetails
+                  ? `Beneficiary: ${bankDetails?.account_holder_name || expense.submitter_name || 'Employee'}${bankDetails?.bank_name ? ` • ${bankDetails.bank_name}` : ''}${bankDetails?.account_number ? ` (A/C: ••••${bankDetails.account_number.slice(-4)})` : ''}${bankDetails?.upi_id ? ` • UPI: ${bankDetails.upi_id}` : ''}`
+                  : `Disbursement is locked because ${expense.submitter_name || 'the employee'} has not added bank details or UPI ID in their profile.`}
+              </p>
+            </div>
+
+            <button
+              disabled={isProcessing || !hasBankDetails}
+              onClick={handleDisbursement}
+              title={!hasBankDetails ? 'Employee must provide bank details in profile first' : undefined}
+              className={`px-5 py-2.5 rounded-xl text-sm font-medium transition-colors shadow-sm inline-flex items-center gap-2 shrink-0 ${
+                hasBankDetails
+                  ? 'bg-neutral-900 hover:bg-neutral-800 text-white cursor-pointer'
+                  : 'bg-neutral-200 text-neutral-400 cursor-not-allowed border border-neutral-300'
+              }`}
+            >
+              <CreditCard size={16} />
+              {isProcessing
+                ? 'Processing Payout...'
+                : !hasBankDetails
+                ? 'Payout Locked (No Bank Details)'
+                : 'Disburse Payout'}
+            </button>
           </div>
-          <button
-            disabled={isProcessing}
-            onClick={handleDisbursement}
-            className="px-5 py-2.5 bg-neutral-900 hover:bg-neutral-800 text-white font-medium rounded-xl text-sm transition-colors shadow-sm inline-flex items-center gap-2"
-          >
-            <CreditCard size={16} />
-            {isProcessing ? 'Processing Payout...' : 'Disburse Payout'}
-          </button>
+
+          {!hasBankDetails && (
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 flex items-center gap-2">
+              <AlertTriangle size={16} className="text-amber-600 shrink-0" />
+              <span>
+                <strong>Action Required:</strong> The employee ({expense.submitter_name || 'Submitter'}) has not configured a bank account or UPI ID. Ask the employee to open <em>Profile Settings</em> and enter their reimbursement bank details so payout can proceed.
+              </span>
+            </div>
+          )}
         </div>
       )}
 

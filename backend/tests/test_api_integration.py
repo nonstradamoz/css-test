@@ -78,11 +78,36 @@ async def test_full_lifecycle_api(client):
     assert approval_res.status_code == 200
     assert approval_res.json()["status"] == "APPROVED"
 
-    # 8. Admin triggers reimbursement with idempotency key
+    # 7a. Admin tries to disburse payout BEFORE employee provides bank details -> MUST BE BLOCKED (400)
     reimb_payload = {
         "expense_id": expense_id,
         "idempotency_key": "idemp-key-unique-test-12345678"
     }
+    blocked_reimb = await client.post(
+        "/api/v1/reimbursements",
+        json=reimb_payload,
+        headers=admin_headers
+    )
+    assert blocked_reimb.status_code == 400
+    assert "bank account or UPI details" in blocked_reimb.json()["detail"]
+
+    # 7b. Employee updates profile with bank account details
+    patch_bank = await client.patch(
+        "/api/v1/users/me",
+        headers=emp_headers,
+        json={
+            "bank_details": {
+                "account_holder_name": "John Doe",
+                "bank_name": "HDFC Bank",
+                "account_number": "50100234567890",
+                "ifsc_code": "HDFC0001234",
+                "upi_id": "johndoe@okhdfcbank"
+            }
+        }
+    )
+    assert patch_bank.status_code == 200
+
+    # 8. Admin triggers reimbursement with idempotency key -> MUST SUCCEED (201)
     reimb_res = await client.post(
         "/api/v1/reimbursements",
         json=reimb_payload,
