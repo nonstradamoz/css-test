@@ -139,7 +139,19 @@ class ApiClient {
       }, false);
     },
 
-    googleLogin: async (payload: { id_token?: string; credential?: string; email?: string; full_name?: string }) => {
+    getGoogleConfig: async () => {
+      return this.request<{ client_id: string; is_configured: boolean }>('/auth/google/config', {}, false);
+    },
+
+    googleLogin: async (payload: {
+      id_token?: string;
+      credential?: string;
+      access_token?: string;
+      code?: string;
+      redirect_uri?: string;
+      email?: string;
+      full_name?: string;
+    }) => {
       const data = await this.request<{
         access_token: string;
         refresh_token: string;

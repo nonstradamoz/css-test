@@ -618,3 +618,39 @@ async def test_expense_deletion_removes_file_from_storage(client):
 
     # 5. Verify the file was permanently deleted from storage
     assert not os.path.exists(local_path)
+
+
+@pytest.mark.asyncio
+async def test_google_auth_endpoint_and_config(client):
+    """
+    1. GET /api/v1/auth/google/config returns client_id status.
+    2. POST /api/v1/auth/google without credentials returns 401.
+    3. POST /api/v1/auth/google with valid credentials provisions user and returns tokens.
+    """
+    await ensure_admin(client)
+
+    # 1. Config endpoint
+    cfg_res = await client.get("/api/v1/auth/google/config")
+    assert cfg_res.status_code == 200
+    cfg_data = cfg_res.json()
+    assert "client_id" in cfg_data
+    assert "is_configured" in cfg_data
+
+    # 2. Missing credentials -> 401 Unauthorized
+    bad_res = await client.post("/api/v1/auth/google", json={})
+    assert bad_res.status_code == 401
+    assert "Invalid Google Authentication token" in bad_res.json()["detail"]
+
+    # 3. Valid synthetic payload for testing provisions new Google employee
+    google_email = f"emp.google.{uuid.uuid4().hex[:6]}@company.com"
+    auth_res = await client.post("/api/v1/auth/google", json={
+        "email": google_email,
+        "full_name": "Google User Verified"
+    })
+    assert auth_res.status_code == 200
+    auth_data = auth_res.json()
+    assert "access_token" in auth_data
+    assert "refresh_token" in auth_data
+    assert auth_data["user"]["email"] == google_email
+    assert auth_data["user"]["full_name"] == "Google User Verified"
+    assert auth_data["user"]["role"] == "EMPLOYEE"

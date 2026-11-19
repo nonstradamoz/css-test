@@ -55,6 +55,24 @@ export default function SignupPage() {
           </div>
         )}
 
+        {/* 1. Primary Action: Register / Sign up with Google */}
+        <div className="space-y-3">
+          <GoogleSignInButton mode="signup" onError={setError} />
+        </div>
+
+        {/* Divider */}
+        <div className="relative my-4">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-neutral-800" />
+          </div>
+          <div className="relative flex justify-center text-[11px] uppercase">
+            <span className="bg-neutral-900 px-3 text-neutral-500 font-semibold tracking-wider">
+              Or register with email
+            </span>
+          </div>
+        </div>
+
+        {/* 2. Secondary Option: Email Registration Form */}
         <form onSubmit={handleRegister} className="space-y-4">
           <div>
             <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-400 mb-1.5">
@@ -111,26 +129,11 @@ export default function SignupPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-medium rounded-xl text-sm shadow-lg shadow-emerald-900/30 disabled:opacity-50 transition-all mt-2"
+            className="w-full py-3 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-white font-medium rounded-xl text-sm disabled:opacity-50 transition-all mt-2"
           >
-            {loading ? 'Creating Account...' : 'Register & Enter'}
+            {loading ? 'Creating Account...' : 'Register with Email'}
           </button>
         </form>
-
-        {/* Divider */}
-        <div className="relative my-4">
-          <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-neutral-800" />
-          </div>
-          <div className="relative flex justify-center text-[11px] uppercase">
-            <span className="bg-neutral-900 px-3 text-neutral-500 font-semibold tracking-wider">
-              Or continue with
-            </span>
-          </div>
-        </div>
-
-        {/* Google Sign In / Registration Component */}
-        <GoogleSignInButton mode="signup" onError={setError} />
 
         <div className="mt-6 pt-5 border-t border-neutral-800 text-center text-xs text-neutral-400">
           Already registered?{' '}

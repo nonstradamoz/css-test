@@ -72,6 +72,24 @@ export default function LoginPage() {
             </div>
           )}
 
+          {/* 1. Primary Authentication: Real Google Account Sign-In */}
+          <div className="space-y-3">
+            <GoogleSignInButton mode="signin" onError={setError} />
+          </div>
+
+          {/* Divider */}
+          <div className="relative my-4">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-neutral-800" />
+            </div>
+            <div className="relative flex justify-center text-[11px] uppercase">
+              <span className="bg-neutral-900 px-3 text-neutral-500 font-semibold tracking-wider">
+                Or sign in with email
+              </span>
+            </div>
+          </div>
+
+          {/* 2. Secondary Option: Email & Password */}
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-400 mb-1.5">
@@ -113,26 +131,11 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-medium rounded-xl text-sm shadow-lg shadow-emerald-900/30 disabled:opacity-50 transition-all mt-2"
+              className="w-full py-3 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-white font-medium rounded-xl text-sm disabled:opacity-50 transition-all mt-2"
             >
-              {loading ? 'Authenticating...' : 'Sign In to Dashboard'}
+              {loading ? 'Authenticating...' : 'Sign In with Password'}
             </button>
           </form>
-
-          {/* Divider */}
-          <div className="relative my-4">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-neutral-800" />
-            </div>
-            <div className="relative flex justify-center text-[11px] uppercase">
-              <span className="bg-neutral-900 px-3 text-neutral-500 font-semibold tracking-wider">
-                Or continue with
-              </span>
-            </div>
-          </div>
-
-          {/* Google Sign In Component */}
-          <GoogleSignInButton mode="signin" onError={setError} />
 
           <div className="pt-4 border-t border-neutral-800 text-center text-xs text-neutral-400">
             New team member?{' '}

@@ -75,6 +75,9 @@ class RefreshTokenRequest(BaseModel):
 class GoogleAuthRequest(BaseModel):
     id_token: Optional[str] = None
     credential: Optional[str] = None
+    access_token: Optional[str] = None
+    code: Optional[str] = None
+    redirect_uri: Optional[str] = None
     email: Optional[EmailStr] = None
     full_name: Optional[str] = None
 

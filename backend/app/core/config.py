@@ -35,6 +35,10 @@ class Settings(BaseSettings):
 
     # CORS Allowed Origins (Comma-separated for production deployments)
     CORS_ORIGINS: Optional[str] = None
+
+    # Google OAuth Authentication
+    GOOGLE_CLIENT_ID: Optional[str] = None
+    GOOGLE_CLIENT_SECRET: Optional[str] = None
     
     model_config = SettingsConfigDict(
         env_file=".env",

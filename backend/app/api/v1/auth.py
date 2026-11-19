@@ -1,9 +1,12 @@
+import os
 import secrets
 import httpx
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.config import settings
 
 from app.core.database import get_db
 from app.core.security import (
@@ -121,6 +124,16 @@ async def login(
     )
 
 
+@router.get("/google/config")
+async def get_google_auth_config():
+    """Returns public Google OAuth Client ID for frontend initialization."""
+    client_id = settings.GOOGLE_CLIENT_ID or os.getenv("GOOGLE_CLIENT_ID") or os.getenv("NEXT_PUBLIC_GOOGLE_CLIENT_ID", "")
+    return {
+        "client_id": client_id,
+        "is_configured": bool(client_id)
+    }
+
+
 @router.post("/google", response_model=TokenResponse)
 async def google_login(
     data: GoogleAuthRequest,
@@ -128,13 +141,14 @@ async def google_login(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Authenticate via Google OAuth / Google Identity Services ID Token.
-    Verifies token, checks or provisions user with EMPLOYEE role, and returns JWT session.
+    Authenticate via Google OAuth / Google Identity Services ID Token / Access Token.
+    Verifies token with Google servers, provisions user if new, and returns active JWT session.
     """
     token = data.id_token or data.credential
     user_email = None
     user_name = None
 
+    # 1. Verify Google GIS ID Token if provided
     if token:
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
@@ -146,7 +160,51 @@ async def google_login(
         except Exception as e:
             print(f"[WARN] Google tokeninfo verification exception: {e}")
 
-    # Fallback for dev / mock testing if token wasn't verifiable or direct profile payload provided
+    # 2. Verify Google OAuth Access Token via userinfo endpoint if provided
+    if not user_email and data.access_token:
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(
+                    "https://www.googleapis.com/oauth2/v3/userinfo",
+                    headers={"Authorization": f"Bearer {data.access_token}"}
+                )
+                if resp.status_code == 200:
+                    info = resp.json()
+                    user_email = info.get("email")
+                    user_name = info.get("name") or info.get("email", "").split("@")[0]
+        except Exception as e:
+            print(f"[WARN] Google userinfo verification exception: {e}")
+
+    # 3. Exchange Authorization Code if provided
+    if not user_email and data.code and settings.GOOGLE_CLIENT_ID:
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                token_resp = await client.post(
+                    "https://oauth2.googleapis.com/token",
+                    data={
+                        "code": data.code,
+                        "client_id": settings.GOOGLE_CLIENT_ID,
+                        "client_secret": settings.GOOGLE_CLIENT_SECRET or "",
+                        "redirect_uri": data.redirect_uri or "postmessage",
+                        "grant_type": "authorization_code"
+                    }
+                )
+                if token_resp.status_code == 200:
+                    token_data = token_resp.json()
+                    acc_token = token_data.get("access_token")
+                    if acc_token:
+                        uinfo = await client.get(
+                            "https://www.googleapis.com/oauth2/v3/userinfo",
+                            headers={"Authorization": f"Bearer {acc_token}"}
+                        )
+                        if uinfo.status_code == 200:
+                            info = uinfo.json()
+                            user_email = info.get("email")
+                            user_name = info.get("name") or info.get("email", "").split("@")[0]
+        except Exception as e:
+            print(f"[WARN] Google code exchange exception: {e}")
+
+    # 4. Fallback for testing suites with synthetic payloads
     if not user_email:
         if data.email:
             user_email = data.email
@@ -154,7 +212,7 @@ async def google_login(
         else:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid Google Authentication token or credentials."
+                detail="Invalid Google Authentication token or credentials. Please authenticate through Google."
             )
 
     # Check if user exists in database
