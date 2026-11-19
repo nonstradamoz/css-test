@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     CORS_ORIGINS: Optional[str] = None
 
     # Google OAuth Authentication
-    GOOGLE_CLIENT_ID: Optional[str] = None
+    GOOGLE_CLIENT_ID: Optional[str] = "649525935317-nav17ordgvaprqafpuglnn8ibvs0djgf.apps.googleusercontent.com"
     GOOGLE_CLIENT_SECRET: Optional[str] = None
     
     model_config = SettingsConfigDict(
