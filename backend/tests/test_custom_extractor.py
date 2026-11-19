@@ -46,6 +46,50 @@ async def test_financial_parser_amount_and_date():
 
 
 @pytest.mark.asyncio
+async def test_financial_parser_ignores_contact_and_phone_numbers():
+    raw_text = """
+    TAX INVOICE / RETAIL INVOICE
+    ORIGINAL FOR RECIPIENT
+    CHAAYOS - SUNSHINE TEAS PVT LTD
+    Plot 14, 100ft Road, Indiranagar, Bangalore - 560038
+    Ph: +91 9845012345
+    Mob: 919876543210
+    Customer Care Tel: 1800-102-1234
+    GSTIN: 29AAFCS1234F1Z5
+    Date: 18/11/2026
+    Invoice No: CH-90812
+
+    Kulhad Chai 120.00
+    Bun Maska 90.00
+    Subtotal: 210.00
+    CGST 2.5%: 5.25
+    SGST 2.5%: 5.25
+    Grand Total: ₹220.50
+    Call us for feedback: 9845099999
+    """
+    parsed = FinancialParser.parse(raw_text, "chaayos_bill.pdf", "PDF_STREAM", 0.95)
+
+    # 1. Merchant name should be Chaayos, NOT "TAX INVOICE / RETAIL INVOICE"
+    assert "CHAAYOS" in parsed["merchant_name"].upper()
+    assert "TAX INVOICE" not in parsed["merchant_name"].upper()
+    assert "ORIGINAL" not in parsed["merchant_name"].upper()
+
+    # 2. Category should be MEALS
+    assert parsed["suggested_category"] == "MEALS"
+
+    # 3. Total amount should be 220.50, NOT a phone number
+    assert parsed["amount"] == 220.50
+
+    # 4. Line items should only contain real items, NOT phone numbers or pincode
+    line_descs = [item["description"].lower() for item in parsed["line_items"]]
+    for item in parsed["line_items"]:
+        assert item["amount"] < 10000.0
+        assert item["amount"] not in (9845012345, 919876543210, 560038, 18001021234)
+
+    assert not any("ph:" in d or "mob:" in d or "tel:" in d or "care" in d for d in line_descs)
+
+
+@pytest.mark.asyncio
 async def test_financial_parser_prohibited_items_auditor():
     raw_text = """
     THE PALACE BISTRO & LOUNGE

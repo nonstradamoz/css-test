@@ -15,6 +15,55 @@ class FinancialParser:
         "spa", "massage", "gift card", "casino", "tobacco", "cigarette", "vape", "personal"
     ]
 
+    DOCUMENT_HEADINGS = [
+        "tax invoice", "retail invoice", "commercial invoice", "invoice",
+        "bill of supply", "cash memo", "cash receipt", "receipt", "e-ticket",
+        "ticket receipt", "original for recipient", "duplicate for supplier",
+        "triplicate", "customer copy", "merchant copy", "order receipt",
+        "tax memo", "bill", "final bill", "guest folio", "tax summary",
+        "welcome", "thank you", "visit again", "have a nice day",
+        "estimate", "quotation", "statement of account"
+    ]
+
+    CONTACT_METADATA_KEYWORDS = [
+        "phone", "ph", "mob", "mobile", "tel", "telephone", "contact", "call", "fax",
+        "whatsapp", "cell", "toll free", "helpline", "cust care", "customer care",
+        "pincode", "pin code", "pin", "postal", "zip", "fssai", "cin", "pan", "gstin",
+        "table", "token", "counter", "cashier", "stn", "waiter", "steward", "email", "www",
+        "address", "road", "street", "layout", "nagar", "floor", "near", "opposite"
+    ]
+
+    KNOWN_BRANDS = {
+        "TRAVEL": [
+            "indigo", "air india", "vistara", "spicejet", "akasa", "uber", "ola",
+            "fast cabs", "meru", "irctc", "metro rail", "fastag", "indian oil",
+            "bharat petroleum", "hpcl"
+        ],
+        "MEALS": [
+            "blue tokai", "starbucks", "cafe coffee day", "chaayos", "chai point", "mcdonald's",
+            "domino's", "subway", "kfc", "burger king", "haldiram", "swiggy",
+            "zomato", "barbeque nation", "mainland china", "bistro", "kitchen",
+            "restaurant", "cafe", "bakery", "pizzeria", "diner", "eats"
+        ],
+        "ACCOMMODATION": [
+            "taj", "marriott", "hyatt", "hilton", "radisson", "itc", "lemon tree",
+            "oyo", "ginger", "novotel", "holiday inn", "westin", "sheraton",
+            "hotel", "resort", "suites", "inn"
+        ],
+        "SOFTWARE": [
+            "amazon web services", "aws", "google cloud", "gcp", "microsoft azure",
+            "azure", "github", "gitlab", "atlassian", "jira", "slack", "zoom",
+            "notion", "figma", "digitalocean", "cloudflare", "openai", "jetbrains"
+        ],
+        "HARDWARE": [
+            "apple", "dell", "hp", "lenovo", "croma", "reliance digital", "vijay sales",
+            "electronics", "hardware", "components"
+        ],
+        "SUPPLIES": [
+            "staples", "office depot", "amazon seller", "flipkart", "stationery", "print shop"
+        ]
+    }
+
     CATEGORY_TAXONOMY = {
         "TRAVEL": [
             "flight", "airline", "indigo", "air india", "vistara", "uber", "ola", "taxi", "cab",
@@ -24,7 +73,7 @@ class FinancialParser:
         "MEALS": [
             "restaurant", "bistro", "kitchen", "cafe", "coffee", "food", "dining", "lunch",
             "dinner", "breakfast", "swiggy", "zomato", "starbucks", "buffet", "beverages",
-            "bakery", "refreshment", "meal"
+            "bakery", "refreshment", "meal", "chaayos", "tea", "snack"
         ],
         "ACCOMMODATION": [
             "hotel", "stay", "resort", "inn", "taj", "marriott", "hilton", "hyatt", "oyo",
@@ -70,21 +119,24 @@ class FinancialParser:
         # 1. Currency
         currency = cls._extract_currency(text)
 
-        # 2. Total Amount
+        # 2. Category Classification (Run FIRST to guide merchant & title extraction)
+        category = cls._classify_category(text, filename)
+
+        # 3. Total Amount (Strictly ignoring phone / contact numbers)
         amount = cls._extract_total_amount(lines, text)
 
-        # 3. Expense Date
+        # 4. Expense Date
         expense_date = cls._extract_date(text)
 
-        # 4. Merchant Name
-        merchant_name = cls._extract_merchant(lines)
+        # 5. Merchant Name & Title (Category-aware, ignores generic headings and contact lines)
+        merchant_name = cls._extract_merchant(lines, category)
 
-        # 5. Tax & GSTIN
+        # 6. Tax & GSTIN
         tax_amount = cls._extract_tax(lines, amount)
         invoice_number, gstin = cls._extract_invoice_and_gstin(text)
 
-        # 6. Line Items
-        line_items = cls._extract_line_items(lines)
+        # 7. Line Items (Strictly filtered from contact lines, phone numbers, and pincodes)
+        line_items = cls._extract_line_items(lines, amount)
 
         # If no explicit line items were parsed from text, create one from amount
         if not line_items and amount > 0:
@@ -95,11 +147,8 @@ class FinancialParser:
                 "reason": None
             }]
 
-        # 7. Audit line items for prohibited compliance violations
+        # 8. Audit line items for prohibited compliance violations
         cls._audit_prohibited_items(line_items)
-
-        # 8. Category Classification
-        category = cls._classify_category(text, filename)
 
         confidence = min(0.98, max(0.65, base_confidence))
 
@@ -131,8 +180,7 @@ class FinancialParser:
 
     @classmethod
     def _extract_total_amount(cls, lines: List[str], full_text: str) -> float:
-        """Find the grand total amount using proximity scoring"""
-        # Keywords indicating grand total
+        """Find the grand total amount using proximity scoring while strictly rejecting contact & phone numbers"""
         priority_keywords = [
             (r"(?:grand\s*total|net\s*payable|amount\s*payable|total\s*amount|balance\s*due|amount\s*due)", 100),
             (r"(?:^|\s)total(?:\s*[:=]|\s+INR|\s+Rs|\s+₹|\s+\$)?", 50),
@@ -143,31 +191,39 @@ class FinancialParser:
 
         for line in lines:
             line_lower = line.lower()
-            # Clean commas from numbers e.g. 1,450.00 -> 1450.00
+            # SKIP lines that are phone numbers or contact lines
+            if any(k in line_lower for k in ["phone", "mob", "tel", "call", "fax", "contact", "pincode", "fssai", "gstin"]):
+                continue
+
             for pattern, weight in priority_keywords:
                 if re.search(pattern, line_lower):
-                    # Extract numbers from this line
                     matches = re.findall(r"(?:₹|rs\.?|inr|\$|€|£)?\s*([0-9]+(?:,[0-9]{3})*(?:\.[0-9]{1,2})?)", line, re.IGNORECASE)
                     for m in matches:
                         try:
                             clean_num = float(m.replace(",", ""))
-                            if clean_num > 0 and clean_num < 10000000:
+                            int_part = m.split(".")[0].replace(",", "")
+                            # Ignore 10-digit mobile numbers or 6-digit pincodes
+                            if len(int_part) in (6, 10, 11, 12):
+                                continue
+                            if 0 < clean_num < 2000000:
                                 candidates.append((clean_num, weight))
                         except ValueError:
                             pass
 
         if candidates:
-            # Sort by highest weight first, then highest amount
             candidates.sort(key=lambda c: (c[1], c[0]), reverse=True)
             return round(candidates[0][0], 2)
 
-        # Fallback: scan for any large plausible amounts at the end of the text
-        all_numbers = re.findall(r"\b([0-9]{2,6}(?:\.[0-9]{2})?)\b", full_text)
+        # Fallback: scan for any plausible monetary amounts (rejecting 6-digit pincodes or 10-digit mobile numbers)
+        all_numbers = re.findall(r"\b([0-9]{2,5}(?:\.[0-9]{2})?)\b", full_text)
         valid_nums = []
         for n in all_numbers:
             try:
+                int_p = n.split(".")[0]
+                if len(int_p) in (6, 10, 11, 12):
+                    continue
                 val = float(n)
-                if 10.0 <= val <= 500000.0:
+                if 10.0 <= val <= 200000.0:
                     valid_nums.append(val)
             except ValueError:
                 pass
@@ -203,29 +259,74 @@ class FinancialParser:
         return datetime.utcnow().strftime("%Y-%m-%d")
 
     @classmethod
-    def _extract_merchant(cls, lines: List[str]) -> str:
-        """Deduce business or establishment name from top layout"""
-        # Usually merchant is in the top 3-5 lines
-        noise_words = ["invoice", "tax invoice", "receipt", "bill", "cash memo", "gstin", "date", "welcome", "tel", "phone"]
+    def _extract_merchant(cls, lines: List[str], category: str) -> str:
+        """
+        Deduce clean establishment name and filter out generic document headings, addresses, and contact numbers.
+        Incorporates category domain awareness.
+        """
+        # 1. First, search for any known brand matching the category or general brands
+        combined_text = " ".join(lines[:12]).lower()
+        if category in cls.KNOWN_BRANDS:
+            for brand in cls.KNOWN_BRANDS[category]:
+                if brand in combined_text:
+                    for line in lines[:10]:
+                        if brand in line.lower():
+                            # Remove corporate entity suffixes for clean display
+                            clean_line = re.sub(r"(?:pvt\.?\s*ltd\.?|llc|inc\.?|corp\.?|co\.?)$", "", line.strip(), flags=re.I).strip()
+                            clean_line = re.sub(r"^[#*•\-\s]+|[#*•\-\s]+$", "", clean_line)
+                            if len(clean_line) >= 3:
+                                return clean_line[:50]
+                    return brand.title()
 
-        for line in lines[:6]:
+        # 2. Inspect top lines for business name
+        for line in lines[:8]:
             clean = line.strip()
-            # If line is not a noise word and has letters
-            if len(clean) > 3 and not any(clean.lower().startswith(nw) for nw in noise_words):
-                if re.search(r"[a-zA-Z]", clean) and not re.search(r"^\d+$", clean):
-                    # Truncate if unusually long
-                    return clean[:60]
+            clean_lower = clean.lower()
 
-        return "Corporate Business Merchant"
+            # Skip if line is too short or purely numeric
+            if len(clean) < 3 or re.match(r"^[\d\W]+$", clean):
+                continue
+
+            # Skip if line is a document heading (e.g. "TAX INVOICE", "ORIGINAL FOR RECIPIENT")
+            is_heading = any(
+                clean_lower == h or clean_lower.startswith(h) or h in clean_lower
+                for h in cls.DOCUMENT_HEADINGS
+            )
+            if is_heading:
+                continue
+
+            # Skip if line contains contact info, address, website, or tax registration
+            is_contact_or_address = any(k in clean_lower for k in cls.CONTACT_METADATA_KEYWORDS)
+            if is_contact_or_address:
+                continue
+
+            # Skip if line is a date or invoice pattern
+            if re.search(r"\b\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4}\b", clean) or re.search(r"\binv(?:oice)?\b", clean_lower):
+                continue
+
+            # Found a plausible merchant line! Clean up trailing punctuation
+            clean_merchant = re.sub(r"^[#*•\-\s]+|[#*•\-\s]+$", "", clean)
+            if len(clean_merchant) >= 3:
+                return clean_merchant[:50]
+
+        # 3. Category-based fallback merchant if heading was stripped
+        category_defaults = {
+            "TRAVEL": "City Travel & Commute Services",
+            "MEALS": "Executive Dining & Catering",
+            "ACCOMMODATION": "Hospitality & Hotel Services",
+            "SOFTWARE": "Cloud & Software Services",
+            "HARDWARE": "Hardware & Equipment Supplies",
+            "TRAINING": "Professional Training Institute",
+            "SUPPLIES": "Office Supplies & Stationery"
+        }
+        return category_defaults.get(category, "Corporate Business Merchant")
 
     @classmethod
     def _extract_invoice_and_gstin(cls, text: str) -> Tuple[str, Optional[str]]:
         """Extract invoice reference number and Indian GSTIN if present"""
-        # GSTIN pattern: 2 digits + 5 letters + 4 digits + 1 letter + 1 char + Z + 1 char
         gstin_match = re.search(r"\b\d{2}[A-Z]{5}\d{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}\b", text)
         gstin = gstin_match.group(0) if gstin_match else None
 
-        # Invoice number pattern
         inv_match = re.search(r"(?:invoice|inv|bill|receipt|ref|order)\s*(?:no|num|#|id)?[:.\s-]*([A-Za-z0-9\-_/]{4,20})", text, re.IGNORECASE)
         inv_num = inv_match.group(1) if inv_match else f"INV-{abs(hash(text[:100])) % 1000000:06d}"
 
@@ -236,8 +337,10 @@ class FinancialParser:
         """Extract GST / VAT / Tax amounts"""
         tax_lines = []
         for line in lines:
-            if re.search(r"\b(?:cgst|sgst|igst|gst|vat|tax)\b", line, re.IGNORECASE):
-                # Search for amount in line
+            line_lower = line.lower()
+            if any(k in line_lower for k in ["phone", "mob", "tel", "pincode"]):
+                continue
+            if re.search(r"\b(?:cgst|sgst|igst|gst|vat|tax)\b", line_lower):
                 m = re.findall(r"(?:₹|rs\.?|inr|\$)?\s*([0-9]+(?:\.[0-9]{2})?)", line, re.IGNORECASE)
                 for val in m:
                     try:
@@ -250,39 +353,65 @@ class FinancialParser:
         if tax_lines:
             return round(sum(tax_lines), 2)
 
-        # If GST was detected but no line amount, compute estimated 18% standard GST
         return round(total_amount * 0.18, 2) if total_amount > 0 else None
 
     @classmethod
-    def _extract_line_items(cls, lines: List[str]) -> List[Dict[str, Any]]:
-        """Parse tabular lines into line items"""
+    def _extract_line_items(cls, lines: List[str], total_amount: float) -> List[Dict[str, Any]]:
+        """Parse tabular lines into line items, strictly filtering out contact numbers, pincodes, and headers"""
         items: List[Dict[str, Any]] = []
 
-        # Look for lines that end with a price: <Description text> <Price>
-        line_item_pattern = re.compile(r"^([A-Za-z0-9\s\-_.,/&()]{3,50})\s+(?:₹|rs\.?|\$)?\s*([0-9]+(?:\.[0-9]{1,2})?)$", re.IGNORECASE)
+        line_item_pattern = re.compile(
+            r"^([A-Za-z0-9\s\-_.,/&()]{3,50})\s+(?:₹|rs\.?|\$|€|£)?\s*([0-9]+(?:,[0-9]{3})*(?:\.[0-9]{1,2})?)$",
+            re.IGNORECASE
+        )
 
         for line in lines:
             line_clean = line.strip()
-            # Skip totals or headers
-            if any(k in line_clean.lower() for k in ["total", "subtotal", "tax", "gst", "cgst", "sgst", "discount", "invoice", "date"]):
+            line_lower = line_clean.lower()
+
+            # 1. Skip lines that contain totals, taxes, discounts, dates
+            if any(k in line_lower for k in ["total", "subtotal", "tax", "gst", "cgst", "sgst", "discount", "invoice", "date"]):
+                continue
+
+            # 2. STRICT: Skip lines that contain contact information, phones, addresses, pincodes, or tax IDs
+            if any(k in line_lower for k in cls.CONTACT_METADATA_KEYWORDS):
+                continue
+
+            # 3. Skip if line contains a phone number pattern
+            if re.search(r"(?:\+91|0)?[6-9]\d{9}", line_clean) or re.search(r"\b1800[- ]?\d{3}", line_clean):
                 continue
 
             match = line_item_pattern.match(line_clean)
             if match:
                 desc = match.group(1).strip()
+                raw_num = match.group(2).replace(",", "")
                 try:
-                    price = float(match.group(2))
-                    if price > 0:
-                        items.append({
-                            "description": desc,
-                            "amount": price,
-                            "flagged": False,
-                            "reason": None
-                        })
+                    price = float(raw_num)
+                    # Check that price is realistic for an expense line item
+                    # A 10-digit number (mobile number) or 6-digit integer (pincode) is NOT a price!
+                    int_part = raw_num.split(".")[0]
+                    if len(int_part) in (6, 10, 11, 12):
+                        continue
+                    if price <= 0 or price > 500000.0:
+                        continue
+                    if total_amount > 0 and price > (total_amount * 1.5):
+                        continue
+
+                    # Filter out descriptions that are just noise or headings
+                    desc_clean = re.sub(r"^[0-9.\-\s]+|[0-9.\-\s]+$", "", desc).strip()
+                    if len(desc_clean) < 2 or any(desc_clean.lower() == h for h in cls.DOCUMENT_HEADINGS):
+                        continue
+
+                    items.append({
+                        "description": desc_clean,
+                        "amount": round(price, 2),
+                        "flagged": False,
+                        "reason": None
+                    })
                 except ValueError:
                     pass
 
-        return items[:15]  # Cap at 15 items for clean UI rendering
+        return items[:15]
 
     @classmethod
     def _classify_category(cls, text: str, filename: str) -> str:

@@ -74,16 +74,26 @@ export default function NewExpensePage() {
     }
   };
 
-  // Apply AI extracted values to form
+  // Apply AI extracted values to form (category-aware title formatting)
   const applyExtractedData = () => {
     if (!scanResult) return;
-    if (scanResult.merchant_name) setTitle(`${scanResult.merchant_name} Expense`);
-    if (scanResult.amount) setAmount(scanResult.amount.toString());
-    if (scanResult.currency) setCurrency(scanResult.currency);
+
+    let matchedCategoryName = '';
     if (scanResult.suggested_category) {
       const match = categories.find(c => c.code === scanResult.suggested_category);
-      if (match) setCategory(match.code);
+      if (match) {
+        setCategory(match.code);
+        matchedCategoryName = match.name;
+      }
     }
+
+    if (scanResult.merchant_name) {
+      const catSuffix = matchedCategoryName ? ` (${matchedCategoryName})` : '';
+      setTitle(`${scanResult.merchant_name}${catSuffix}`);
+    }
+
+    if (scanResult.amount) setAmount(scanResult.amount.toString());
+    if (scanResult.currency) setCurrency(scanResult.currency);
     if (scanResult.expense_date) {
       setExpenseDate(scanResult.expense_date);
     }
