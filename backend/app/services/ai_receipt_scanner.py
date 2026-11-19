@@ -28,19 +28,24 @@ class AIReceiptScanner:
         filename: str,
         content_type: str = "image/jpeg"
     ) -> Dict[str, Any]:
-        """Analyze receipt image/PDF and return structured financial extraction"""
+        """
+        Analyze receipt image/PDF and return structured financial extraction.
+        Runs our custom in-house extractor by default with zero external API calls.
+        """
+        use_gemini = os.getenv("USE_GEMINI_API", "false").lower() in ("true", "1")
         gemini_api_key = os.getenv("GEMINI_API_KEY")
 
-        if gemini_api_key:
+        if use_gemini and gemini_api_key:
             try:
                 extracted = await cls._analyze_with_gemini(file_bytes, content_type, gemini_api_key)
                 if extracted:
                     return extracted
             except Exception as e:
-                # Fallback to local heuristic extractor on any API failure
-                print(f"[WARN] Gemini Vision API call failed: {e}. Falling back to heuristic scanner.")
+                print(f"[WARN] Gemini Vision API call failed: {e}. Falling back to custom in-house extractor.")
 
-        return cls._heuristic_extract(file_bytes, filename)
+        # Primary In-House Custom Extractor
+        from app.services.extractor import CustomReceiptExtractor
+        return CustomReceiptExtractor.extract(file_bytes, filename, content_type)
 
     @classmethod
     async def _analyze_with_gemini(
