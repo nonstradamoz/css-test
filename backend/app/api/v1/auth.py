@@ -1,8 +1,10 @@
 import os
 import secrets
 import httpx
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import RedirectResponse
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -132,6 +134,111 @@ async def get_google_auth_config():
         "client_id": client_id,
         "is_configured": bool(client_id)
     }
+
+
+@router.get("/google/login")
+async def google_oauth_login(request: Request):
+    """
+    Initiates backend-driven Google OAuth 2.0 flow.
+    Redirects user directly to Google Accounts authorization screen.
+    """
+    client_id = settings.GOOGLE_CLIENT_ID or os.getenv("GOOGLE_CLIENT_ID", "")
+    if not client_id:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Google Authentication Client ID is not configured on the backend server."
+        )
+    base_url = str(request.base_url).rstrip("/")
+    redirect_uri = f"{base_url}/api/v1/auth/google/callback"
+    scope = "openid%20email%20profile"
+    auth_url = (
+        f"https://accounts.google.com/o/oauth2/v2/auth?"
+        f"client_id={client_id}&"
+        f"redirect_uri={redirect_uri}&"
+        f"response_type=code&"
+        f"scope={scope}&"
+        f"access_type=offline&"
+        f"prompt=consent"
+    )
+    return RedirectResponse(url=auth_url)
+
+
+@router.get("/google/callback")
+async def google_oauth_callback(
+    request: Request,
+    code: Optional[str] = None,
+    error: Optional[str] = None,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Handles Google OAuth 2.0 callback, exchanges code, provisions/finds user,
+    and redirects user to frontend dashboard with JWT session credentials.
+    """
+    frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+    if error or not code:
+        return RedirectResponse(url=f"{frontend_url}/login?error={error or 'Google authorization denied'}")
+
+    client_id = settings.GOOGLE_CLIENT_ID or os.getenv("GOOGLE_CLIENT_ID", "")
+    client_secret = settings.GOOGLE_CLIENT_SECRET or os.getenv("GOOGLE_CLIENT_SECRET", "")
+    base_url = str(request.base_url).rstrip("/")
+    redirect_uri = f"{base_url}/api/v1/auth/google/callback"
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            token_res = await client.post(
+                "https://oauth2.googleapis.com/token",
+                data={
+                    "code": code,
+                    "client_id": client_id,
+                    "client_secret": client_secret,
+                    "redirect_uri": redirect_uri,
+                    "grant_type": "authorization_code"
+                }
+            )
+            if token_res.status_code != 200:
+                return RedirectResponse(url=f"{frontend_url}/login?error=Failed to exchange Google OAuth authorization code")
+
+            token_data = token_res.json()
+            acc_token = token_data.get("access_token")
+            uinfo_res = await client.get(
+                "https://www.googleapis.com/oauth2/v3/userinfo",
+                headers={"Authorization": f"Bearer {acc_token}"}
+            )
+            if uinfo_res.status_code != 200:
+                return RedirectResponse(url=f"{frontend_url}/login?error=Failed to retrieve Google profile data")
+
+            info = uinfo_res.json()
+            user_email = info.get("email")
+            user_name = info.get("name") or user_email.split("@")[0]
+
+            # Find or provision user in DB
+            result = await db.execute(select(User).where(User.email == user_email.lower()))
+            user = result.scalars().first()
+            if not user:
+                user_count = await db.scalar(select(func.count(User.id)))
+                assigned_role = UserRole.ADMIN if user_count == 0 else UserRole.EMPLOYEE
+                user = User(
+                    email=user_email.lower(),
+                    hashed_password=get_password_hash(secrets.token_urlsafe(24)),
+                    full_name=user_name,
+                    role=assigned_role,
+                    is_active=True
+                )
+                db.add(user)
+                await db.flush()
+
+            access_token = create_access_token(subject=user.id, role=user.role.value)
+            raw_refresh_token, hashed_token = create_refresh_token()
+            db.add(RefreshToken(
+                user_id=user.id,
+                token_hash=hashed_token,
+                expires_at=datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+            ))
+            await db.commit()
+
+            return RedirectResponse(url=f"{frontend_url}/dashboard?token={access_token}&refresh_token={raw_refresh_token}")
+    except Exception as e:
+        return RedirectResponse(url=f"{frontend_url}/login?error={str(e)}")
 
 
 @router.post("/google", response_model=TokenResponse)

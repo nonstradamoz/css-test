@@ -143,6 +143,8 @@ class ApiClient {
       return this.request<{ client_id: string; is_configured: boolean }>('/auth/google/config', {}, false);
     },
 
+    getGoogleAuthUrl: () => `${API_BASE}/auth/google/login`,
+
     googleLogin: async (payload: {
       id_token?: string;
       credential?: string;

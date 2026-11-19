@@ -53,6 +53,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const urlToken = params.get('token');
+      const urlRefresh = params.get('refresh_token');
+      if (urlToken) {
+        api.setTokens(urlToken, urlRefresh || '');
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+    }
     const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
     if (token) {
       refreshUser();

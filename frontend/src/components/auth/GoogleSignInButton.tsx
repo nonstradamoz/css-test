@@ -3,7 +3,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { api } from '@/lib/api';
-import { KeyRound, ExternalLink, Check, Settings2, X, AlertCircle } from 'lucide-react';
 
 interface GoogleSignInButtonProps {
   mode?: 'signin' | 'signup';
@@ -26,15 +25,10 @@ export const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({
   const [scriptLoaded, setScriptLoaded] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [clientId, setClientId] = useState<string>('');
-  const [showConfigModal, setShowConfigModal] = useState(false);
-  const [configInputId, setConfigInputId] = useState('');
-  const [configError, setConfigError] = useState<string | null>(null);
-  const [currentOrigin, setCurrentOrigin] = useState<string>('');
 
-  // 1. Resolve Google Client ID from environment, localStorage, or backend config
+  // 1. Check for configured Google Client ID from environment or backend
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      setCurrentOrigin(window.location.origin);
       const envId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
       const localId = localStorage.getItem('google_oauth_client_id');
 
@@ -43,7 +37,6 @@ export const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({
       } else if (localId && localId.trim()) {
         setClientId(localId.trim());
       } else {
-        // Query backend for configured client ID
         api.auth.getGoogleConfig()
           .then(res => {
             if (res.client_id && res.client_id.trim()) {
@@ -55,7 +48,7 @@ export const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({
     }
   }, []);
 
-  // 2. Dynamically load official Google Identity Services (GIS) SDK
+  // 2. Load Google Identity Services SDK if Client ID is configured
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
@@ -78,7 +71,7 @@ export const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({
     document.head.appendChild(script);
   }, []);
 
-  // 3. Initialize Google Identity Services ID Token rendering if clientId is present
+  // 3. Render official Google GIS button if Client ID exists
   useEffect(() => {
     if (!scriptLoaded || !clientId || !window.google?.accounts?.id || !buttonContainerRef.current) return;
 
@@ -101,7 +94,6 @@ export const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({
         cancel_on_tap_outside: true,
       });
 
-      // Clear container and render official Google GIS Button
       buttonContainerRef.current.innerHTML = '';
       window.google.accounts.id.renderButton(buttonContainerRef.current, {
         type: 'standard',
@@ -117,100 +109,65 @@ export const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({
     }
   }, [scriptLoaded, clientId, mode, googleLogin, onError]);
 
-  // 4. Trigger Real Google OAuth 2.0 Popup Flow via Token Client
-  const triggerGoogleOAuthPopup = useCallback((activeClientId: string) => {
-    if (!window.google?.accounts?.oauth2) {
-      onError?.('Google authentication library is initializing. Please try again in a moment.');
-      return;
-    }
-
-    try {
-      setIsProcessing(true);
-      const tokenClient = window.google.accounts.oauth2.initTokenClient({
-        client_id: activeClientId,
-        scope: 'openid email profile',
-        callback: async (tokenResponse: any) => {
-          if (tokenResponse.error) {
-            setIsProcessing(false);
-            onError?.(tokenResponse.error_description || tokenResponse.error || 'Google Sign-In was cancelled or failed.');
-            return;
-          }
-
-          if (tokenResponse.access_token) {
-            try {
-              await googleLogin({ access_token: tokenResponse.access_token });
-            } catch (err: any) {
-              onError?.(err.message || 'Failed to authenticate Google account with server.');
-            } finally {
+  // 4. Handle Google Sign-In Click
+  const handleGoogleClick = useCallback(() => {
+    // If client ID is present on frontend, use Google OAuth Token Client popup
+    if (clientId && window.google?.accounts?.oauth2) {
+      try {
+        setIsProcessing(true);
+        const tokenClient = window.google.accounts.oauth2.initTokenClient({
+          client_id: clientId,
+          scope: 'openid email profile',
+          callback: async (tokenResponse: any) => {
+            if (tokenResponse.error) {
               setIsProcessing(false);
+              onError?.(tokenResponse.error_description || tokenResponse.error || 'Google Sign-In was cancelled.');
+              return;
             }
+
+            if (tokenResponse.access_token) {
+              try {
+                await googleLogin({ access_token: tokenResponse.access_token });
+              } catch (err: any) {
+                onError?.(err.message || 'Failed to authenticate Google account with server.');
+              } finally {
+                setIsProcessing(false);
+              }
+            }
+          },
+          error_callback: (err: any) => {
+            setIsProcessing(false);
+            console.warn('Google OAuth error:', err);
+            onError?.(err.message || 'Google Sign-In failed.');
           }
-        },
-        error_callback: (err: any) => {
-          setIsProcessing(false);
-          console.warn('Google OAuth popup error:', err);
-          onError?.(err.message || 'Google Sign-In popup could not be completed.');
-        }
-      });
+        });
 
-      // Launch official Google popup window
-      tokenClient.requestAccessToken({ prompt: 'consent' });
-    } catch (e: any) {
-      setIsProcessing(false);
-      console.error('Failed to launch Google popup:', e);
-      onError?.(e.message || 'Unable to start Google authentication popup.');
-    }
-  }, [googleLogin, onError]);
-
-  // Handle Button Click
-  const handleButtonClick = () => {
-    if (!clientId) {
-      // Prompt user to enter / configure Google OAuth Client ID
-      setShowConfigModal(true);
-      return;
+        tokenClient.requestAccessToken({ prompt: 'consent' });
+        return;
+      } catch (e: any) {
+        console.warn('Failed to launch GIS popup, falling back to backend redirect:', e);
+      }
     }
 
-    triggerGoogleOAuthPopup(clientId);
-  };
-
-  // Save Client ID from setup modal and immediately initiate sign-in
-  const handleSaveConfig = (e: React.FormEvent) => {
-    e.preventDefault();
-    const trimmed = configInputId.trim();
-    if (!trimmed) {
-      setConfigError('Please enter a valid Google OAuth Client ID.');
-      return;
-    }
-    if (!trimmed.includes('.apps.googleusercontent.com') && trimmed.length < 20) {
-      setConfigError('Google Client ID usually ends with ".apps.googleusercontent.com". Please check your credentials.');
-      return;
-    }
-
-    localStorage.setItem('google_oauth_client_id', trimmed);
-    setClientId(trimmed);
-    setShowConfigModal(false);
-    setConfigError(null);
-
-    // Launch Google Sign In immediately with newly configured client ID
-    setTimeout(() => {
-      triggerGoogleOAuthPopup(trimmed);
-    }, 200);
-  };
+    // Direct redirect to backend Google OAuth initiation route
+    setIsProcessing(true);
+    window.location.href = api.auth.getGoogleAuthUrl();
+  }, [clientId, googleLogin, onError]);
 
   return (
-    <div className="w-full space-y-3">
-      {/* Official Google Identity Services Rendered Container (if Client ID present) */}
+    <div className="w-full">
+      {/* Official Google Identity Services Rendered Container */}
       {clientId && (
         <div className="flex justify-center w-full min-h-[44px]">
           <div ref={buttonContainerRef} className="w-full max-w-[380px] flex justify-center" />
         </div>
       )}
 
-      {/* Modern High-Impact Google Auth Button */}
+      {/* Styled Google Auth Button */}
       {(!clientId || isProcessing) && (
         <button
           type="button"
-          onClick={handleButtonClick}
+          onClick={handleGoogleClick}
           disabled={isProcessing}
           className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-white hover:bg-neutral-50 active:bg-neutral-100 text-neutral-800 text-sm font-semibold rounded-xl border border-neutral-300 shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 disabled:opacity-60"
         >
@@ -235,119 +192,12 @@ export const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({
           </svg>
           <span>
             {isProcessing
-              ? 'Authenticating with Google...'
+              ? 'Connecting to Google...'
               : mode === 'signup'
               ? 'Sign up with Google Account'
               : 'Sign in with Google Account'}
           </span>
         </button>
-      )}
-
-      {/* Config Button (optional gear to re-configure or check client ID) */}
-      <div className="flex justify-between items-center text-[11px] text-neutral-500 px-1">
-        <span>Google Single Sign-On (OAuth 2.0)</span>
-        <button
-          type="button"
-          onClick={() => {
-            setConfigInputId(clientId);
-            setShowConfigModal(true);
-          }}
-          className="hover:text-neutral-300 transition-colors flex items-center gap-1 font-medium"
-        >
-          <Settings2 size={12} />
-          {clientId ? 'Google Client ID Active' : 'Setup Client ID'}
-        </button>
-      </div>
-
-      {/* Google OAuth Setup / Client ID Modal */}
-      {showConfigModal && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-150">
-          <div className="bg-neutral-900 border border-neutral-800 rounded-2xl max-w-md w-full p-6 shadow-2xl text-white space-y-5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 bg-blue-500/10 text-blue-400 rounded-xl">
-                  <KeyRound size={20} />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-white">Google OAuth Authentication</h3>
-                  <p className="text-xs text-neutral-400">Connect to official Google Cloud Identity</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowConfigModal(false)}
-                className="p-1.5 text-neutral-400 hover:text-white rounded-lg hover:bg-neutral-800 transition-colors"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="text-xs text-neutral-300 space-y-2 bg-neutral-800/50 p-3.5 rounded-xl border border-neutral-700/50">
-              <p className="font-semibold text-neutral-200">How to connect your Google Cloud Project:</p>
-              <ol className="list-decimal list-inside space-y-1.5 text-neutral-400">
-                <li>
-                  Open{' '}
-                  <a
-                    href="https://console.cloud.google.com/apis/credentials"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-blue-400 underline inline-flex items-center gap-0.5"
-                  >
-                    Google Cloud Console <ExternalLink size={11} />
-                  </a>
-                </li>
-                <li>Create an <strong>OAuth 2.0 Client ID</strong> (Web application)</li>
-                <li>
-                  Add Authorized JavaScript origin:
-                  <code className="block mt-1 p-1 bg-black/60 rounded text-emerald-400 font-mono text-[11px] select-all">
-                    {currentOrigin || 'http://localhost:3000'}
-                  </code>
-                </li>
-                <li>Copy the <strong>Client ID</strong> and paste below.</li>
-              </ol>
-            </div>
-
-            {configError && (
-              <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl flex items-center gap-2 text-xs text-red-400">
-                <AlertCircle size={15} className="shrink-0" />
-                <span>{configError}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleSaveConfig} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-400 mb-1.5">
-                  Google OAuth Client ID
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={configInputId}
-                  onChange={(e) => setConfigInputId(e.target.value)}
-                  placeholder="e.g. 123456789-xxxxxx.apps.googleusercontent.com"
-                  className="w-full px-3.5 py-2.5 bg-neutral-800 border border-neutral-700 rounded-xl text-white placeholder-neutral-500 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-all"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowConfigModal(false)}
-                  className="px-4 py-2 text-xs font-semibold text-neutral-400 hover:text-white transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-medium text-xs rounded-xl shadow-lg shadow-blue-900/30 flex items-center gap-2 transition-all"
-                >
-                  <Check size={14} />
-                  Save & Sign In with Google
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
       )}
     </div>
   );
