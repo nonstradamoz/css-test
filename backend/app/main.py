@@ -169,11 +169,16 @@ origins = [
     "http://localhost:8000"
 ]
 if settings.CORS_ORIGINS:
-    origins.extend([o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()])
+    for o in settings.CORS_ORIGINS.split(","):
+        cleaned = o.strip()
+        if cleaned and "*" not in cleaned:
+            origins.append(cleaned)
 
 cors_regex = None
 if settings.ENVIRONMENT == "development":
     cors_regex = r"^http://(localhost|127\.0\.0\.1)(:\d+)?$"
+elif settings.CORS_ORIGINS and "*.vercel.app" in settings.CORS_ORIGINS:
+    cors_regex = r"^https://[a-zA-Z0-9_-]+\.vercel\.app$"
 
 app.add_middleware(
     CORSMiddleware,
