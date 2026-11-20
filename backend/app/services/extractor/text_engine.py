@@ -16,28 +16,94 @@ MAX_IMAGE_DIMENSION = 5000          # Maximum width/height in pixels
 MAX_IMAGE_HARD_LIMIT = 8000         # Immediate rejection threshold to prevent memory allocation attacks
 PDF_TIMEOUT_SECONDS = 5.0           # Strict timeout on PDF parsing process
 OCR_TIMEOUT_SECONDS = 10.0          # Strict timeout on image OCR subprocess
-MAX_CONCURRENT_PDF_PROCESSES = 2    # Finding 6: Bounded concurrency pool for PDF extraction
+MAX_CONCURRENT_PDF_PROCESSES = 2    # Local worker concurrency limit
+MAX_GLOBAL_PDF_CONCURRENCY = 4      # Finding 6: Distributed concurrency limit across instances
 _pdf_semaphore = multiprocessing.Semaphore(MAX_CONCURRENT_PDF_PROCESSES)
+
+
+def _acquire_pdf_concurrency_slot() -> Tuple[bool, Optional[object]]:
+    """
+    Finding 6: Acquire global and local concurrency limits for PDF parsing.
+    Enforces a distributed limit across all app instances using Redis if configured,
+    and bounds local worker process concurrency via OS semaphore.
+    """
+    from app.core.config import settings
+    redis_client = None
+    if settings.REDIS_URL and settings.REDIS_URL.strip():
+        try:
+            import redis
+            r = redis.Redis.from_url(settings.REDIS_URL, socket_timeout=1.0)
+            lua_acquire = """
+            local current = redis.call('GET', KEYS[1])
+            if current and tonumber(current) >= tonumber(ARGV[1]) then
+                return 0
+            end
+            redis.call('INCR', KEYS[1])
+            redis.call('EXPIRE', KEYS[1], 30)
+            return 1
+            """
+            allowed = r.eval(lua_acquire, 1, "global_concurrent_pdf_workers", MAX_GLOBAL_PDF_CONCURRENCY)
+            if not allowed:
+                return False, None
+            redis_client = r
+        except Exception:
+            if settings.ENVIRONMENT == "production":
+                return False, None
+
+    acquired_local = _pdf_semaphore.acquire(timeout=PDF_TIMEOUT_SECONDS)
+    if not acquired_local:
+        if redis_client:
+            try:
+                redis_client.decr("global_concurrent_pdf_workers")
+            except Exception:
+                pass
+        return False, None
+    return True, redis_client
+
+
+def _release_pdf_concurrency_slot(redis_client: Optional[object]) -> None:
+    try:
+        _pdf_semaphore.release()
+    except Exception:
+        pass
+    if redis_client:
+        try:
+            redis_client.decr("global_concurrent_pdf_workers")
+        except Exception:
+            pass
 
 
 def _isolated_pdf_worker(data: bytes, max_pages: int, conn) -> None:
     """
-    Isolated worker process for PDF parsing (Findings 3 & 6).
-    Executes in a separate OS process with OS-level CPU & memory limits,
-    terminable immediately via proc.terminate().
+    Isolated worker process for PDF parsing (Findings 6 & 7).
+    Executes in a separate OS process with OS-level CPU & memory limits.
+    Verifies that CPU and memory restrictions are active and fails worker
+    initialization in production if limits cannot be enforced.
     """
     try:
+        from app.core.config import settings
+        import sys
+        is_prod = settings.ENVIRONMENT == "production"
+
         try:
             import resource
             # Limit child process CPU time to 8 seconds max
             resource.setrlimit(resource.RLIMIT_CPU, (8, 10))
-            # Limit child process virtual address space to 256MB max if supported
-            try:
+            cur_cpu, _ = resource.getrlimit(resource.RLIMIT_CPU)
+            if cur_cpu > 10:
+                raise RuntimeError("RLIMIT_CPU verification failed")
+
+            # Memory address space limit on supported environments (Linux/POSIX)
+            if hasattr(resource, "RLIMIT_AS") and sys.platform.startswith("linux"):
                 resource.setrlimit(resource.RLIMIT_AS, (256 * 1024 * 1024, 512 * 1024 * 1024))
-            except (ValueError, OSError):
-                pass
-        except (ImportError, AttributeError):
-            pass
+                cur_as, _ = resource.getrlimit(resource.RLIMIT_AS)
+                if cur_as > 512 * 1024 * 1024:
+                    raise RuntimeError("RLIMIT_AS verification failed")
+        except Exception as res_err:
+            if is_prod:
+                conn.send(("ERROR", f"PDF_RESOURCE_LIMIT_FAILURE: {res_err}"))
+                return
+            print(f"[WARN] Non-fatal PDF resource limit warning in dev: {res_err}")
 
         reader = PdfReader(io.BytesIO(data))
         text_parts = []
@@ -105,7 +171,7 @@ class DocumentTextEngine:
         if len(file_bytes) > MAX_PDF_SIZE:
             return "", "PDF_ERROR_OVERSIZED", 0.0
 
-        acquired = _pdf_semaphore.acquire(timeout=PDF_TIMEOUT_SECONDS)
+        acquired, redis_client = _acquire_pdf_concurrency_slot()
         if not acquired:
             return "", "PDF_ERROR_CONCURRENCY_LIMIT", 0.0
 
@@ -144,7 +210,7 @@ class DocumentTextEngine:
         except Exception as e:
             return "", f"PDF_ERROR_{type(e).__name__}", 0.30
         finally:
-            _pdf_semaphore.release()
+            _release_pdf_concurrency_slot(redis_client)
 
     @classmethod
     def _extract_from_image(cls, file_bytes: bytes, filename: str) -> Tuple[str, str, float]:

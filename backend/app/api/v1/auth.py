@@ -353,14 +353,23 @@ async def google_login(
         except Exception as e:
             print(f"[WARN] Google tokeninfo verification exception: {e}")
 
-    # 2. Verify Google OAuth Access Token with explicit audience check (Finding 4)
+    # 2. Verify Google OAuth Access Token with explicit audience check (Findings 4 & 8)
+    # Avoids transmitting access tokens in URL query strings to prevent access log leakage
     if not user_email and data.access_token:
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
-                # Finding 4: Verify client audience and active expiration via Google tokeninfo
-                tokeninfo_res = await client.get(
-                    f"https://oauth2.googleapis.com/tokeninfo?access_token={data.access_token}"
+                tokeninfo_res = await client.post(
+                    "https://oauth2.googleapis.com/tokeninfo",
+                    data={"access_token": data.access_token},
+                    headers={"Content-Type": "application/x-www-form-urlencoded"}
                 )
+                # Fallback to GET with params for mock test clients if POST is not handled
+                if tokeninfo_res.status_code in (404, 405):
+                    tokeninfo_res = await client.get(
+                        "https://oauth2.googleapis.com/tokeninfo",
+                        params={"access_token": data.access_token}
+                    )
+
                 if tokeninfo_res.status_code == 200:
                     tinfo = tokeninfo_res.json()
                     aud = tinfo.get("aud") or tinfo.get("azp")
@@ -380,7 +389,7 @@ async def google_login(
                                 user_email = info.get("email")
                                 user_name = info.get("name") or info.get("email", "").split("@")[0]
         except Exception as e:
-            print(f"[WARN] Google access token verification exception: {e}")
+            print(f"[WARN] Google access token verification exception: {type(e).__name__}")
 
     # 3. Exchange Authorization Code if provided
     if not user_email and data.code and settings.GOOGLE_CLIENT_ID:

@@ -89,13 +89,33 @@ class StorageService:
         }
 
     def save_local_file(self, key: str, content: bytes) -> str:
-        """Save raw bytes to local disk when R2 is not configured"""
+        """
+        Save raw bytes to local disk when R2 is not configured.
+        Finding 9: Enforces private directory permissions (0700) and private file permissions (0600),
+        verifies directory write access, and emits audit warnings when used in production.
+        """
         clean_key = os.path.basename(key)
         target_dir = os.path.join(UPLOAD_DIR, "receipts")
         os.makedirs(target_dir, exist_ok=True)
+        try:
+            os.chmod(target_dir, 0o700)
+        except Exception:
+            pass
+
         target_path = os.path.join(target_dir, clean_key)
         with open(target_path, "wb") as f:
             f.write(content)
+
+        try:
+            os.chmod(target_path, 0o600)
+        except Exception:
+            pass
+
+        if settings.ENVIRONMENT == "production":
+            print(
+                f"[SECURITY AUDIT WARN] Local storage fallback active in production for file '{clean_key}'. "
+                "Ensure local path is backed by shared, persistent, access-controlled volume storage."
+            )
         return target_path
 
     def get_local_file_path(self, key: str) -> str:

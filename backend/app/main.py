@@ -190,8 +190,10 @@ from fastapi.responses import JSONResponse, RedirectResponse
 
 class UploadSizeLimitMiddleware(BaseHTTPMiddleware):
     """
-    Finding 5: Enforce upload size limits at the ASGI layer before
-    multipart form parsing or body buffers consume memory.
+    Enforce upload size limits at the ASGI layer before multipart form parsing
+    or memory buffers consume resources.
+    Protects against oversized Content-Length headers and unchunked/streamed
+    payloads without Content-Length headers.
     """
     MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB
 
@@ -207,7 +209,37 @@ class UploadSizeLimitMiddleware(BaseHTTPMiddleware):
                         )
                 except ValueError:
                     pass
-        return await call_next(request)
+
+            # Enforce actual streamed body limit for chunked or unannounced payload sizes
+            bytes_received = 0
+            original_receive = request._receive
+
+            async def custom_receive():
+                nonlocal bytes_received
+                message = await original_receive()
+                if message.get("type") == "http.request":
+                    body_chunk = message.get("body", b"")
+                    bytes_received += len(body_chunk)
+                    if bytes_received > self.MAX_UPLOAD_BYTES:
+                        from starlette.exceptions import HTTPException as StarletteHTTPException
+                        raise StarletteHTTPException(
+                            status_code=413,
+                            detail="File exceeds maximum allowed size of 10MB."
+                        )
+                return message
+
+            request._receive = custom_receive
+
+        try:
+            return await call_next(request)
+        except Exception as exc:
+            from starlette.exceptions import HTTPException as StarletteHTTPException
+            if (isinstance(exc, (HTTPException, StarletteHTTPException)) and getattr(exc, "status_code", None) == 413):
+                return JSONResponse(
+                    status_code=413,
+                    content={"detail": "File exceeds maximum allowed size of 10MB."}
+                )
+            raise
 
 
 app.add_middleware(UploadSizeLimitMiddleware)

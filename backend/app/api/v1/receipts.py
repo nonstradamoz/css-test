@@ -273,7 +273,9 @@ async def download_file(
                 detail="Access denied: You do not own this receipt document."
             )
     else:
-        # Finding 7: Enforce centre / tenant data isolation for Reviewers/Finance if centre is assigned
+        # Findings 4 & 5: Enforce centre / tenant data isolation for Reviewers/Finance if centre is assigned.
+        # Fails closed if matching expense is missing or centre association cannot be established,
+        # and rejects ambiguous matches across multiple records.
         user_centre = getattr(current_user, "centre_id", None) or (current_user.bank_details or {}).get("centre_id")
         if user_centre and current_user.role != UserRole.ADMIN:
             exp_res = await db.execute(
@@ -284,14 +286,26 @@ async def download_file(
                     (Expense.receipt_url == f"receipts/{clean_key}")
                 )
             )
-            exp_obj = exp_res.scalars().first()
-            if exp_obj:
-                exp_centre = (exp_obj.extracted_metadata or {}).get("centre_id") or (exp_obj.category_details or {}).get("centre_id")
-                if exp_centre and exp_centre != user_centre:
-                    raise HTTPException(
-                        status_code=status.HTTP_403_FORBIDDEN,
-                        detail="Access denied: Reviewer/Finance scope restricted to assigned centre."
-                    )
+            matching_privileged_expenses = exp_res.scalars().all()
+            if not matching_privileged_expenses:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Access denied: No expense record found verifying centre association for this receipt."
+                )
+
+            if len(matching_privileged_expenses) > 1:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Access denied: Ambiguous receipt matches detected across multiple expense records."
+                )
+
+            exp_obj = matching_privileged_expenses[0]
+            exp_centre = (exp_obj.extracted_metadata or {}).get("centre_id") or (exp_obj.category_details or {}).get("centre_id")
+            if not exp_centre or exp_centre != user_centre:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Access denied: Reviewer/Finance scope restricted to assigned centre."
+                )
 
     media_type, _ = mimetypes.guess_type(file_path)
     return FileResponse(file_path, media_type=media_type or "application/octet-stream")

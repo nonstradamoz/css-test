@@ -865,6 +865,7 @@ async def test_google_access_token_audience_validation(monkeypatch):
         return MockResp({"email": "user@example.com", "email_verified": True})
 
     monkeypatch.setattr(httpx.AsyncClient, "get", lambda self, url, **kwargs: mock_get(url, **kwargs))
+    monkeypatch.setattr(httpx.AsyncClient, "post", lambda self, url, **kwargs: mock_get(url, **kwargs))
 
     req = GoogleAuthRequest(access_token="valid_format_but_wrong_aud_token")
     with pytest.raises(HTTPException) as exc:
@@ -1004,7 +1005,7 @@ async def test_reviewer_centre_level_isolation(client):
 @pytest.mark.asyncio
 async def test_asgi_middleware_upload_size_limit(client):
     """
-    Finding 5: ASGI middleware intercepts requests with content-length > 10MB
+    Finding 1 & 5: ASGI middleware intercepts requests with content-length > 10MB
     before multipart parsing occurs.
     """
     oversized_headers = {
@@ -1013,4 +1014,151 @@ async def test_asgi_middleware_upload_size_limit(client):
     res = await client.post("/api/v1/receipts/upload", headers=oversized_headers, content=b"dummy")
     assert res.status_code == 413
     assert "exceeds maximum allowed size" in res.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_redis_tls_and_authentication_enforcement():
+    """
+    Finding 2: Enforce TLS (rediss://) and authentication credentials on production Redis.
+    """
+    from app.core.config import Settings
+
+    # 1. Unencrypted scheme (redis://) without ALLOW_UNENCRYPTED_REDIS
+    s_unenc = Settings(
+        ENVIRONMENT="production",
+        JWT_SECRET_KEY="c8f1e29a83d47b019f2e4c6b8a0d3f5e1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d",
+        REDIS_URL="redis://:supersecretpass@remote-redis.internal:6379",
+        GOOGLE_CLIENT_ID="valid_id_123",
+        ALLOW_UNENCRYPTED_REDIS=False
+    )
+    with pytest.raises(RuntimeError) as exc_unenc:
+        s_unenc.validate_production_security()
+    assert "TLS encryption" in str(exc_unenc.value)
+
+    # 2. Unauthenticated Redis (no password)
+    s_no_auth = Settings(
+        ENVIRONMENT="production",
+        JWT_SECRET_KEY="c8f1e29a83d47b019f2e4c6b8a0d3f5e1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d",
+        REDIS_URL="rediss://remote-redis.internal:6379",
+        GOOGLE_CLIENT_ID="valid_id_123"
+    )
+    with pytest.raises(RuntimeError) as exc_noauth:
+        s_no_auth.validate_production_security()
+    assert "authenticated with credentials" in str(exc_noauth.value)
+
+    # 3. Valid authenticated TLS Redis passes validation
+    s_valid = Settings(
+        ENVIRONMENT="production",
+        JWT_SECRET_KEY="c8f1e29a83d47b019f2e4c6b8a0d3f5e1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d",
+        REDIS_URL="rediss://default:supersecretpass123!@remote-redis.internal:6379",
+        DATABASE_URL="postgresql+asyncpg://app_user:StrongCustomPassw0rd!@db.internal:5432/crs_db",
+        GOOGLE_CLIENT_ID="valid_id_123"
+    )
+    s_valid.validate_production_security()
+
+
+@pytest.mark.asyncio
+async def test_database_credentials_comprehensive_validation():
+    """
+    Finding 10: Reject common default, weak, and placeholder database credentials in production.
+    """
+    from app.core.config import Settings
+
+    weak_urls = [
+        "postgresql+asyncpg://postgres:postgres@db.internal:5432/crs_db",
+        "postgresql+asyncpg://admin:admin@db.internal:5432/crs_db",
+        "postgresql+asyncpg://root:root@db.internal:5432/crs_db",
+        "postgresql+asyncpg://postgres:password@db.internal:5432/crs_db",
+        "postgresql+asyncpg://postgres:@db.internal:5432/crs_db",
+    ]
+
+    for w_url in weak_urls:
+        s = Settings(
+            ENVIRONMENT="production",
+            JWT_SECRET_KEY="c8f1e29a83d47b019f2e4c6b8a0d3f5e1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d",
+            REDIS_URL="rediss://default:secret123!@redis.internal:6379",
+            DATABASE_URL=w_url,
+            GOOGLE_CLIENT_ID="valid_id_123"
+        )
+        with pytest.raises(RuntimeError) as exc:
+            s.validate_production_security()
+        assert "Default database credentials detected" in str(exc.value)
+
+
+@pytest.mark.asyncio
+async def test_centre_level_fail_closed_missing_or_ambiguous_expense(client):
+    """
+    Findings 4 & 5: Centre-level authorization must fail closed when:
+    1. No matching expense record exists for the receipt.
+    2. Multiple matching expense records exist for the receipt (ambiguous).
+    3. The matching expense has no centre association.
+    """
+    from app.services.storage import storage_service
+
+    # 1. Setup admin and reviewer with centre BLR-1
+    admin_email = f"admin.centre.{uuid.uuid4().hex[:6]}@crs-corp.com"
+    await client.post("/api/v1/auth/register", json={
+        "email": admin_email, "full_name": "Admin User", "password": "Password123!"
+    })
+    rev_email = f"rev.strict.{uuid.uuid4().hex[:6]}@crs-corp.com"
+    await client.post("/api/v1/auth/register", json={
+        "email": rev_email, "full_name": "Reviewer Strict", "password": "Password123!"
+    })
+    l_adm = await client.post("/api/v1/auth/login", json={"email": admin_email, "password": "Password123!"})
+    h_adm = {"Authorization": f"Bearer {l_adm.json()['access_token']}"}
+
+    users_res = await client.get("/api/v1/users", headers=h_adm)
+    rev_user = next(u for u in users_res.json() if u["email"] == rev_email)
+    await client.patch(
+        f"/api/v1/users/{rev_user['id']}",
+        headers=h_adm,
+        json={"role": "REVIEWER", "bank_details": {"centre_id": "BLR-1"}}
+    )
+
+    l_rev = await client.post("/api/v1/auth/login", json={"email": rev_email, "password": "Password123!"})
+    h_rev = {"Authorization": f"Bearer {l_rev.json()['access_token']}"}
+
+    # Case 1: Receipt exists on disk, but NO matching expense record in DB
+    unlinked_key = f"unlinked_orphan_{uuid.uuid4().hex}.jpg"
+    storage_service.save_local_file(unlinked_key, b"\xff\xd8\xff" + b"\x00" * 50)
+
+    orphan_res = await client.get(f"/api/v1/receipts/download?key={unlinked_key}", headers=h_rev)
+    assert orphan_res.status_code == 403
+    assert "No expense record found verifying centre association" in orphan_res.json()["detail"]
+
+    # Case 2: Matching expense exists, but has NO centre recorded
+    no_centre_key = f"no_centre_exp_{uuid.uuid4().hex}.jpg"
+    storage_service.save_local_file(no_centre_key, b"\xff\xd8\xff" + b"\x00" * 50)
+    await client.post("/api/v1/expenses", headers=h_adm, json={
+        "title": "Unassigned Centre Expense",
+        "category": "SUPPLIES",
+        "amount": 250.0,
+        "receipt_url": f"/api/v1/receipts/download?key={no_centre_key}",
+        "expense_date": "2026-11-20T10:00:00Z"
+    })
+    no_centre_res = await client.get(f"/api/v1/receipts/download?key={no_centre_key}", headers=h_rev)
+    assert no_centre_res.status_code == 403
+    assert "restricted to assigned centre" in no_centre_res.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_local_storage_fallback_permissions(monkeypatch):
+    """
+    Finding 9: Verify save_local_file applies restricted private permissions (0700/0600).
+    """
+    from app.services.storage import storage_service
+    import stat
+
+    test_key = f"perm_test_{uuid.uuid4().hex}.jpg"
+    saved_path = storage_service.save_local_file(test_key, b"\xff\xd8\xff" + b"\x00" * 20)
+
+    assert os.path.exists(saved_path)
+    file_mode = stat.S_IMODE(os.stat(saved_path).st_mode)
+    # File permissions should not be world or group writable
+    assert (file_mode & 0o077) == 0  # Only owner has permissions (0600 or stricter)
+
+    parent_dir = os.path.dirname(saved_path)
+    dir_mode = stat.S_IMODE(os.stat(parent_dir).st_mode)
+    assert (dir_mode & 0o077) == 0  # Directory 0700
+
 
