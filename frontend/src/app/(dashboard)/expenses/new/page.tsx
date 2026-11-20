@@ -607,10 +607,18 @@ export default function NewExpensePage() {
             <select
               value={category}
               onChange={(e) => setCategory(e.target.value)}
-              className="w-full px-4 py-2.5 border border-neutral-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 bg-white"
+              className="w-full px-4 py-2.5 border border-neutral-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 bg-white text-neutral-900 font-medium"
             >
-              {categories.map((cat) => (
-                <option key={cat.code} value={cat.code}>
+              {(categories && categories.length > 0 ? categories : [
+                { code: 'TRAVEL', name: 'Travel & Commute' },
+                { code: 'MEALS', name: 'Meals & Entertainment' },
+                { code: 'SUPPLIES', name: 'Office Supplies & Equipment' },
+                { code: 'SOFTWARE', name: 'Software & Cloud Services' },
+                { code: 'TRAINING', name: 'Training & Certifications' },
+                { code: 'ACCOMMODATION', name: 'Hotel & Lodging' },
+                { code: 'OTHER', name: 'Miscellaneous & Other' },
+              ]).map((cat) => (
+                <option key={cat.code} value={cat.code} className="text-neutral-900 bg-white">
                   {cat.name}
                 </option>
               ))}
@@ -803,7 +811,7 @@ export default function NewExpensePage() {
                 <select
                   value={certType}
                   onChange={(e) => setCertType(e.target.value)}
-                  className="w-full px-4 py-2.5 border border-neutral-300 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                  className="w-full px-4 py-2.5 border border-neutral-300 rounded-xl text-sm bg-white text-neutral-900 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                 >
                   <option value="Professional Course">Professional Course</option>
                   <option value="Technical Training">Technical Training</option>
@@ -837,7 +845,7 @@ export default function NewExpensePage() {
                 <select
                   value={travelMode}
                   onChange={(e) => setTravelMode(e.target.value)}
-                  className="w-full px-4 py-2.5 border border-neutral-300 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                  className="w-full px-4 py-2.5 border border-neutral-300 rounded-xl text-sm bg-white text-neutral-900 font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                 >
                   <option value="Flight">Flight</option>
                   <option value="Train">Train</option>
