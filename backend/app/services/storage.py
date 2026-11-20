@@ -57,9 +57,9 @@ class StorageService:
                     Body=content,
                     ContentType=content_type
                 )
-                # Security: Receipts are confidential financial documents and must NEVER be exposed
-                # via public unauthenticated CDN URLs. Generate a pre-signed time-limited download URL.
-                signed_url = self.generate_presigned_download(key, expires_in=86400)
+                # Security Finding 5: Receipts are confidential financial documents.
+                # Restrict pre-signed download URLs to 15 minutes (900 seconds) max.
+                signed_url = self.generate_presigned_download(key, expires_in=900)
                 return {"url": signed_url, "key": key}
             except Exception as e:
                 print(f"[WARN] Direct R2 upload failed ({e}). Falling back to local storage.")
@@ -117,8 +117,8 @@ class StorageService:
             ExpiresIn=3600  # 1 hour
         )
 
-        # Security: Always use pre-signed time-limited download URLs rather than public bucket domains
-        signed_download_url = self.generate_presigned_download(key, expires_in=86400)
+        # Security Finding 5: Generate short-lived presigned download URLs (15 minutes / 900s)
+        signed_download_url = self.generate_presigned_download(key, expires_in=900)
 
         return {
             "upload_url": upload_url,
@@ -127,8 +127,8 @@ class StorageService:
             "fields": None
         }
 
-    def generate_presigned_download(self, key: str, expires_in: int = 3600) -> str:
-        """Generate pre-signed GET URL for downloading receipt"""
+    def generate_presigned_download(self, key: str, expires_in: int = 900) -> str:
+        """Generate pre-signed GET URL for downloading receipt (Finding 5: 15-minute default TTL)"""
         if not self.is_configured():
             return f"http://localhost:8000/api/v1/receipts/download?key={key}"
 

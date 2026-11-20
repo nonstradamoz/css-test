@@ -73,20 +73,37 @@ def require_role(allowed_roles: List[UserRole]):
 
 SENSITIVE_AUDIT_KEYS = {
     "password", "hashed_password", "token", "secret", "access_token",
-    "refresh_token", "jwt", "client_secret", "credential"
+    "refresh_token", "jwt", "client_secret", "credential", "cvv",
+    "cvc", "pin", "api_key", "apikey", "auth_header", "bearer",
+    "authorization", "private_key", "cookie"
+}
+
+MASKED_PII_KEYS = {
+    "account_number", "acc_no", "account_no", "bank_account", "iban",
+    "routing_number", "ifsc", "ifsc_code", "upi_id", "upi",
+    "card_number", "credit_card", "pan", "pan_number", "aadhaar",
+    "aadhaar_number", "ssn", "tax_id", "national_id", "phone",
+    "mobile", "phone_number"
 }
 
 
 def sanitize_audit_data(data: Any) -> Any:
-    """Recursively scrub credentials and mask PII (bank accounts) from audit trails"""
+    """
+    Finding 4: Recursively scrub credentials, API keys, tokens, and mask PII
+    (bank accounts, IFSC, UPI, PAN, Aadhaar, SSN, phone numbers) from audit trails.
+    """
     if isinstance(data, dict):
         sanitized = {}
         for k, v in data.items():
             k_lower = str(k).lower()
             if any(s in k_lower for s in SENSITIVE_AUDIT_KEYS):
                 sanitized[k] = "[REDACTED]"
-            elif k_lower in ["account_number", "acc_no"]:
-                sanitized[k] = f"****{str(v)[-4:]}" if len(str(v)) > 4 else "****"
+            elif any(p == k_lower or p in k_lower for p in MASKED_PII_KEYS):
+                val_str = str(v) if v is not None else ""
+                if len(val_str) > 4:
+                    sanitized[k] = f"****{val_str[-4:]}"
+                else:
+                    sanitized[k] = "****"
             else:
                 sanitized[k] = sanitize_audit_data(v)
         return sanitized

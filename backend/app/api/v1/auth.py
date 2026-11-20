@@ -230,6 +230,11 @@ async def google_oauth_callback(
                 return RedirectResponse(url=f"{frontend_url}/login?error=Failed to retrieve Google profile data")
 
             info = uinfo_res.json()
+            is_verified = info.get("email_verified") is True or info.get("email_verified") == "true"
+            has_email = bool(info.get("email"))
+            if not is_verified or not has_email:
+                return RedirectResponse(url=f"{frontend_url}/login?error=Google+email+is+unverified+or+missing")
+
             user_email = info.get("email")
             user_name = info.get("name") or user_email.split("@")[0]
 
@@ -300,7 +305,8 @@ async def google_login(
     user_name = None
 
     # Development/testing mock token support (STRICTLY disabled in production)
-    if settings.ENVIRONMENT == "development" and token and token.startswith("mock_google_id_token_"):
+    is_non_prod = settings.ENVIRONMENT in ["development", "test"]
+    if is_non_prod and token and token.startswith("mock_google_id_token_"):
         user_email = token.replace("mock_google_id_token_", "")
         user_name = data.full_name or user_email.split("@")[0].replace(".", " ").title()
 
@@ -313,7 +319,10 @@ async def google_login(
                     info = resp.json()
                     is_verified = info.get("email_verified") is True or info.get("email_verified") == "true"
                     valid_iss = info.get("iss") in ["accounts.google.com", "https://accounts.google.com"]
-                    if (is_verified or valid_iss) and info.get("email"):
+                    valid_aud = (not settings.GOOGLE_CLIENT_ID) or (info.get("aud") == settings.GOOGLE_CLIENT_ID)
+                    has_email = bool(info.get("email"))
+                    # Finding 12: Strict conjunction (AND) across signature/status, iss, aud, email_verified, and email
+                    if is_verified and valid_iss and valid_aud and has_email:
                         user_email = info.get("email")
                         user_name = info.get("name") or info.get("email", "").split("@")[0]
         except Exception as e:
@@ -330,7 +339,9 @@ async def google_login(
                 if resp.status_code == 200:
                     info = resp.json()
                     is_verified = info.get("email_verified") is True or info.get("email_verified") == "true"
-                    if (is_verified or info.get("email")) and info.get("email"):
+                    has_email = bool(info.get("email"))
+                    # Finding 12: Require verified email
+                    if is_verified and has_email:
                         user_email = info.get("email")
                         user_name = info.get("name") or info.get("email", "").split("@")[0]
         except Exception as e:
@@ -360,7 +371,9 @@ async def google_login(
                         )
                         if uinfo.status_code == 200:
                             info = uinfo.json()
-                            if info.get("email"):
+                            is_verified = info.get("email_verified") is True or info.get("email_verified") == "true"
+                            has_email = bool(info.get("email"))
+                            if is_verified and has_email:
                                 user_email = info.get("email")
                                 user_name = info.get("name") or info.get("email", "").split("@")[0]
         except Exception as e:

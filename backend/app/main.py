@@ -144,7 +144,8 @@ async def lifespan(app: FastAPI):
 
 
 is_prod = settings.ENVIRONMENT == "production"
-docs_enabled = settings.ENABLE_API_DOCS if settings.ENABLE_API_DOCS is not None else not is_prod
+# Finding 8: API documentation is strictly disabled in production regardless of overrides.
+docs_enabled = False if is_prod else (settings.ENABLE_API_DOCS if settings.ENABLE_API_DOCS is not None else True)
 
 app = FastAPI(
     title="ClearSpend API",

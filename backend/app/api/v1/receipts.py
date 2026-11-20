@@ -6,6 +6,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.schemas import PresignedUploadRequest, PresignedUploadResponse, ReceiptAnalysisResponse
 from app.services.storage import storage_service
@@ -15,13 +16,54 @@ from app.api.v1.deps import get_current_user
 
 router = APIRouter(prefix="/receipts", tags=["Receipts"])
 
-MAX_RECEIPT_SIZE = 10 * 1024 * 1024  # 10 MB limit (Finding 9)
+MAX_RECEIPT_SIZE = 10 * 1024 * 1024  # 10 MB limit
+
+
+async def read_stream_with_size_limit(upload: UploadFile, max_size: int = MAX_RECEIPT_SIZE) -> bytes:
+    """
+    Finding 13 Fix: Read upload stream in 64KB chunks and abort immediately with HTTP 413
+    if accumulated bytes exceed limit before reading the entire file into memory.
+    """
+    chunks = []
+    total_size = 0
+    chunk_size = 64 * 1024  # 64 KB
+    while True:
+        chunk = await upload.read(chunk_size)
+        if not chunk:
+            break
+        total_size += len(chunk)
+        if total_size > max_size:
+            raise HTTPException(
+                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                detail=f"File exceeds maximum allowed size of {max_size // (1024 * 1024)}MB."
+            )
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
+async def read_request_body_with_size_limit(request: Request, max_size: int = MAX_RECEIPT_SIZE) -> bytes:
+    """
+    Finding 13 Fix: Stream raw request body in chunks and abort with HTTP 413
+    if payload size exceeds limit before full buffer allocation.
+    """
+    chunks = []
+    total_size = 0
+    async for chunk in request.stream():
+        total_size += len(chunk)
+        if total_size > max_size:
+            raise HTTPException(
+                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                detail=f"Request payload exceeds maximum allowed size of {max_size // (1024 * 1024)}MB."
+            )
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
 def validate_receipt_upload(content: bytes, filename: str, content_type: Optional[str] = None) -> None:
     """
-    Finding 9 Fix: Validate receipt payload size and file signatures before processing.
-    Prevents memory exhaustion, DoS, and malformed binary attacks.
+    Validate receipt payload size and file signatures before processing.
+    Finding 9: Exact PNG signature b"\\x89PNG\\r\\n\\x1a\\n" verification.
+    Finding 10: Mock test bypasses strictly isolated to test environments, prohibited in production.
     """
     if not content:
         raise HTTPException(
@@ -45,10 +87,17 @@ def validate_receipt_upload(content: bytes, filename: str, content_type: Optiona
 
     # Magic bytes verification
     is_jpeg = content.startswith(b"\xff\xd8\xff")
+    # Finding 9: Exact 8-byte PNG signature
     is_png = content.startswith(b"\x89PNG\r\n\x1a\n")
     is_webp = len(content) >= 12 and content[:4] == b"RIFF" and content[8:12] == b"WEBP"
     is_pdf = content.startswith(b"%PDF-")
-    is_test_bytes = (
+
+    # Finding 10: Mock/test payloads are strictly prohibited in production
+    is_test_env = (
+        settings.ENVIRONMENT in ["development", "test"] and
+        (os.getenv("PYTEST_CURRENT_TEST") is not None or settings.ENVIRONMENT == "test")
+    )
+    is_test_bytes = is_test_env and (
         content.startswith(b"fake") or 
         content.startswith(b"test") or 
         content.startswith(b"mock") or 
@@ -72,7 +121,7 @@ async def analyze_receipt(
     Available to all authenticated personnel (Employee, Admin, Reviewer, Finance)
     to parse receipts and auto-fill expense details.
     """
-    content = await file.read()
+    content = await read_stream_with_size_limit(file, MAX_RECEIPT_SIZE)
     validate_receipt_upload(content, file.filename or "receipt.jpg", file.content_type)
     res = await AIReceiptScanner.analyze_receipt(
         file_bytes=content,
@@ -93,7 +142,7 @@ async def direct_upload_receipt(
     Stores directly in Cloudflare R2 if configured, or saves to local disk.
     Guarantees no CORS or localhost:8000 URL mismatch issues.
     """
-    content = await file.read()
+    content = await read_stream_with_size_limit(file, MAX_RECEIPT_SIZE)
     content_type = file.content_type or "image/jpeg"
     validate_receipt_upload(content, file.filename or "receipt.jpg", content_type)
     res = storage_service.upload_file_bytes(
@@ -146,7 +195,7 @@ async def local_upload(
     if ".." in key or clean_key != key:
         raise HTTPException(status_code=400, detail="Invalid receipt key.")
 
-    content = await request.body()
+    content = await read_request_body_with_size_limit(request, MAX_RECEIPT_SIZE)
     validate_receipt_upload(content, clean_key, "application/octet-stream")
     storage_service.save_local_file(clean_key, content)
     return {"message": "File uploaded successfully", "key": clean_key}
@@ -159,7 +208,7 @@ async def download_file(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Finding 2 Fix: Serve locally stored receipt file with strict authentication,
+    Finding 2 & 11 Fix: Serve locally stored receipt file with strict authentication,
     ownership verification, and path traversal defense.
     """
     clean_key = os.path.basename(key)
@@ -175,12 +224,17 @@ async def download_file(
         # Regular employee: Verify ownership of the expense associated with this receipt
         res = await db.execute(
             select(Expense).where(
-                (Expense.receipt_storage_key == clean_key) |
-                (Expense.receipt_url.like(f"%{clean_key}%"))
+                Expense.receipt_url.like(f"%{clean_key}%")
             )
         )
         expense = res.scalars().first()
-        if expense and expense.submitted_by != current_user.id:
+        # Finding 11: Fail closed by default if no expense record exists or not owned by current employee
+        if not expense:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied: No expense record found verifying ownership of this receipt."
+            )
+        if expense.submitted_by != current_user.id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Access denied: You do not own this receipt document."
