@@ -102,30 +102,7 @@ async def lifespan(app: FastAPI):
             elif settings_row.company_name in ["Centralised Expense System", "CRS Enterprise"]:
                 settings_row.company_name = "ClearSpend"
 
-            # 2. Seed initial admin & employee if they don't exist
-            admin_res = await session.execute(select(User).where(User.email == settings.FIRST_SUPERADMIN_EMAIL.lower()))
-            if not admin_res.scalars().first():
-                admin_user = User(
-                    email=settings.FIRST_SUPERADMIN_EMAIL.lower(),
-                    hashed_password=get_password_hash(settings.FIRST_SUPERADMIN_PASSWORD),
-                    full_name="Administrator",
-                    role=UserRole.ADMIN,
-                    is_active=True
-                )
-                session.add(admin_user)
-
-            emp_res = await session.execute(select(User).where(User.email == "employee.john@crs-corp.com"))
-            if not emp_res.scalars().first():
-                emp_user = User(
-                    email="employee.john@crs-corp.com",
-                    hashed_password=get_password_hash("Password123!"),
-                    full_name="Johnathan Doe",
-                    role=UserRole.EMPLOYEE,
-                    is_active=True
-                )
-                session.add(emp_user)
-
-            # 3. Seed default expense categories if none exist
+            # 2. Seed default expense categories if none exist
             cat_count = await session.scalar(select(func.count(ExpenseCategoryModel.id)))
             if cat_count == 0:
                 default_categories = [

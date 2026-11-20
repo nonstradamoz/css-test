@@ -230,8 +230,6 @@ ClearSpend uses a unified configuration setup. The platform reads from `.env` in
 | `R2_ENDPOINT_URL` | string | *(Optional)* | `https://<ACCOUNT_ID>.r2.cloudflarestorage.com` |
 | `R2_PUBLIC_DOMAIN` | string | *(Optional)* | Public access CDN domain for receipts (if configured) |
 | `MOCK_REFUND_OUTCOME` | string | `SUCCESS` | Payout simulator response (`SUCCESS`, `FAILURE`, `TIMEOUT`) |
-| `FIRST_SUPERADMIN_EMAIL` | string | `admin@crs-corp.com` | Default admin email seeded on startup |
-| `FIRST_SUPERADMIN_PASSWORD` | string | `Admin@123456` | Default admin password seeded on startup |
 | `CORS_ORIGINS` | string | `http://localhost:3000` | Comma-separated list of allowed CORS origins |
 | `GOOGLE_CLIENT_ID` | string | `649525935317-nav17ordgvaprqafpuglnn8ibvs0djgf...` | Google OAuth Web Client ID for authentication |
 | `GOOGLE_CLIENT_SECRET` | string | *(Optional)* | Google OAuth Web Client Secret (for code exchange) |
@@ -401,15 +399,45 @@ npm --prefix frontend run build
 
 ---
 
-## 8. Default System Credentials
+## 8. Admin User Provisioning
 
-For local evaluation, the database auto-seeds the primary administrator account on startup:
+To prevent insecure default credentials from being committed or automatically seeded, initial admin users are provisioned via CLI, direct database SQL queries, or initial self-registration.
 
-| Account | Email | Password | Role |
-| :--- | :--- | :--- | :--- |
-| **System Superadmin** | `admin@crs-corp.com` | `Admin@123456` | `ADMIN` |
+### Method 1: CLI Provisioning (Recommended)
+Run the dedicated admin creation utility:
+```bash
+# Interactive mode (prompts for email & secure password):
+python backend/create_admin.py
 
-*Note*: Any employee account can be registered via the `/signup` screen or via Google Sign-In. The first registered account automatically inherits the `ADMIN` role if no users exist.
+# Non-interactive CLI flag mode:
+python backend/create_admin.py --email admin@yourcompany.com --password YourStrongPassword123 --name "Lead Administrator"
+```
+*Note*: If the user already exists, running this command will safely elevate their role to `ADMIN` and update their password.
+
+### Method 2: Direct Database SQL Query
+ClearSpend secures passwords using **Argon2id**. To insert an admin user directly into PostgreSQL or SQLite:
+
+1. Generate the Argon2 password hash:
+```bash
+python -c "from app.core.security import get_password_hash; print(get_password_hash('YourStrongPassword123'))"
+```
+2. Execute the SQL insertion query:
+```sql
+INSERT INTO users (id, email, hashed_password, full_name, role, is_active, created_at, updated_at)
+VALUES (
+    'usr_' || substr(md5(random()::text), 1, 16),
+    'admin@yourcompany.com',
+    '$argon2id$v=19$m=65536,t=3,p=4$...YOUR_GENERATED_HASH...',
+    'System Administrator',
+    'ADMIN',
+    true,
+    NOW(),
+    NOW()
+);
+```
+
+### Method 3: First User Auto-Promotion (UI / API)
+When the database contains 0 registered users, registering the very first account via `/signup` or `POST /api/v1/auth/register` automatically promotes that account to the `ADMIN` role. Subsequent signups default to `EMPLOYEE`.
 
 ---
 

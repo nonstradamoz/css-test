@@ -28,10 +28,6 @@ class Settings(BaseSettings):
     
     # Refund Provider Mock Outcome (SUCCESS | FAILURE | TIMEOUT)
     MOCK_REFUND_OUTCOME: str = "SUCCESS"
-    
-    # Initial Admin Seed
-    FIRST_SUPERADMIN_EMAIL: str = "admin@crs-corp.com"
-    FIRST_SUPERADMIN_PASSWORD: str = "Admin@123456"
 
     # CORS Allowed Origins (Comma-separated for production deployments)
     CORS_ORIGINS: Optional[str] = None

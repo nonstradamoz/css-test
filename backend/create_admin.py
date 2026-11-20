@@ -1,7 +1,15 @@
 import argparse
 import asyncio
+import os
 import sys
 import getpass
+from pathlib import Path
+
+# Ensure backend root is in sys.path regardless of current working directory
+_backend_dir = Path(__file__).resolve().parent
+if str(_backend_dir) not in sys.path:
+    sys.path.insert(0, str(_backend_dir))
+
 from sqlalchemy import select
 
 from app.core.database import AsyncSessionLocal, engine, Base
