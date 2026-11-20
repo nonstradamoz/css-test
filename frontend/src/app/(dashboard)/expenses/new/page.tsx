@@ -20,6 +20,7 @@ export default function NewExpensePage() {
 
   const canSubmitOnBehalf = role === 'ADMIN' || role === 'REVIEWER';
   const [onBehalfOfUserId, setOnBehalfOfUserId] = useState<string>('');
+  const isProxyFiling = canSubmitOnBehalf && Boolean(onBehalfOfUserId);
   const [proxySearchQuery, setProxySearchQuery] = useState<string>('');
   const [isProxyDropdownOpen, setIsProxyDropdownOpen] = useState<boolean>(false);
   const proxyDropdownRef = useRef<HTMLDivElement>(null);
@@ -57,6 +58,7 @@ export default function NewExpensePage() {
   const [file, setFile] = useState<File | null>(null);
   const [isScanning, setIsScanning] = useState(false);
   const [scanResult, setScanResult] = useState<ReceiptAnalysisResponse | null>(null);
+  const [scanError, setScanError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -121,6 +123,20 @@ export default function NewExpensePage() {
   }, [categories, category]);
 
   // Handle file drop & AI Scanning
+  const runReceiptScan = async (selectedFile: File) => {
+    setIsScanning(true);
+    setScanError(null);
+    try {
+      const result = await api.receipts.analyze(selectedFile);
+      setScanResult(result);
+    } catch (err: any) {
+      console.warn('AI Receipt scan error:', err);
+      setScanError(err.message || 'Automatic receipt extraction encountered an issue.');
+    } finally {
+      setIsScanning(false);
+    }
+  };
+
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (!selectedFile) return;
@@ -128,19 +144,7 @@ export default function NewExpensePage() {
     setFile(selectedFile);
     setError(null);
     setScanResult(null);
-
-    // Run extraction in background for all roles
-    // Employees will NOT see the extraction result in the form, but it will be attached to metadata for Admins/Reviewers
-    setIsScanning(true);
-    try {
-      const result = await api.receipts.analyze(selectedFile);
-      setScanResult(result);
-    } catch (err: any) {
-      console.warn('AI Receipt scan error:', err);
-      // Non-blocking warning: user can still fill manually
-    } finally {
-      setIsScanning(false);
-    }
+    await runReceiptScan(selectedFile);
   };
 
   // Apply AI extracted values to form (category-aware title formatting)
@@ -980,6 +984,25 @@ export default function NewExpensePage() {
             </div>
           )}
 
+          {/* Scan Error / Advisory with Retry */}
+          {scanError && !scanResult && (
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between text-xs text-amber-800">
+              <div className="flex items-center gap-2">
+                <AlertCircle size={15} className="text-amber-600 shrink-0" />
+                <span>Extraction advisory: {scanError}. You may retry or fill form manually.</span>
+              </div>
+              {file && (
+                <button
+                  type="button"
+                  onClick={() => runReceiptScan(file)}
+                  className="px-2.5 py-1 bg-white hover:bg-amber-100 border border-amber-300 rounded text-amber-800 font-semibold transition-colors shrink-0 ml-2"
+                >
+                  Retry Scan
+                </button>
+              )}
+            </div>
+          )}
+
           {/* Extracted Result Banner (Available to All Users) */}
           {scanResult && (
             <div className="p-4 bg-emerald-50/50 border border-emerald-200/80 rounded-xl space-y-3">
@@ -993,6 +1016,11 @@ export default function NewExpensePage() {
                   <span className="text-xs font-bold text-emerald-800">
                     ₹{scanResult.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                   </span>
+                  {isProxyFiling && (
+                    <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded">
+                      Filing for {effectiveTargetUser?.full_name || 'Selected Employee'}
+                    </span>
+                  )}
                 </div>
 
                 <button

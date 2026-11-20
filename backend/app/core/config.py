@@ -54,6 +54,11 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_ID: Optional[str] = None
     GOOGLE_CLIENT_SECRET: Optional[str] = None
     GOOGLE_REDIRECT_URI: Optional[str] = None
+
+    # Multimodal AI Receipt Extraction (Google Gemini)
+    GEMINI_API_KEY: Optional[str] = None
+    USE_GEMINI_API: bool = True
+    GEMINI_MODEL: str = "gemini-1.5-flash"
     
     def validate_production_security(self) -> None:
         """

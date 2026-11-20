@@ -341,6 +341,14 @@ async def create_expense(
     storage_key = storage_service.extract_key_from_url(data.receipt_url) if data.receipt_url else None
     clean_storage_key = os.path.basename(storage_key) if storage_key else None
 
+    # Track proxy filer attribution in category_details
+    category_details = dict(data.category_details or {})
+    if data.on_behalf_of_user_id:
+        category_details["proxy_filed_by_id"] = current_user.id
+        category_details["proxy_filed_by_name"] = current_user.full_name
+        category_details["proxy_filed_by_email"] = current_user.email
+        category_details["proxy_filed_by_role"] = current_user.role.value
+
     new_expense = Expense(
         submitted_by=submitter_user.id,
         title=data.title,
@@ -356,7 +364,7 @@ async def create_expense(
         risk_level=forensic_eval["risk_level"],
         forensic_flags=forensic_eval["flags"],
         extracted_metadata=extracted_meta,
-        category_details=data.category_details or {},
+        category_details=category_details,
         status=ExpenseStatus.DRAFT
     )
 
@@ -617,12 +625,14 @@ async def get_expense(
     if current_user.role == UserRole.EMPLOYEE and expense.submitted_by != current_user.id:
         raise HTTPException(status_code=403, detail="Unauthorized to view this expense claim.")
 
-    # Drafts are strictly private to the user who created them (never visible to other admins or reviewers)
+    # Drafts are strictly private to the user who created them (or the admin/reviewer who proxy-created it)
     if expense.status == ExpenseStatus.DRAFT and expense.submitted_by != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Draft expense claims are private to the user and cannot be viewed by admins or reviewers."
-        )
+        proxy_filer_id = (expense.category_details or {}).get("proxy_filed_by_id")
+        if not (proxy_filer_id and proxy_filer_id == current_user.id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Draft expense claims are private to the user and cannot be viewed by admins or reviewers."
+            )
 
     if expense.submitter:
         expense.submitter_name = expense.submitter.full_name

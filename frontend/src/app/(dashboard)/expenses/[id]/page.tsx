@@ -235,7 +235,14 @@ export default function ExpenseDetailPage() {
           </div>
           <div>
             <p className="text-xs font-semibold text-neutral-400 uppercase">Submitter</p>
-            <p className="text-sm text-neutral-700 mt-1.5 font-medium">{expense.submitter_name || expense.submitter_email}</p>
+            <p className="text-sm text-neutral-700 mt-1.5 font-medium">
+              {expense.submitter_name || expense.submitter_email}
+              {Boolean((expense.category_details as any)?.proxy_filed_by_name) && (
+                <span className="block text-[11px] text-emerald-700 font-semibold mt-0.5">
+                  Proxy by: {(expense.category_details as any).proxy_filed_by_name}
+                </span>
+              )}
+            </p>
           </div>
         </div>
 
@@ -334,6 +341,11 @@ export default function ExpenseDetailPage() {
                   <span className="text-[11px] font-semibold px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-full">
                     Auditor View
                   </span>
+                  {Boolean((expense.category_details as any)?.proxy_filed_by_name) && (
+                    <span className="text-[11px] font-semibold px-2 py-0.5 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-full">
+                      Proxy Filed by {(expense.category_details as any).proxy_filed_by_name}
+                    </span>
+                  )}
                 </div>
                 <p className="text-xs text-neutral-500 mt-0.5">
                   Cross-verify employee claimed details against in-house OCR extracted receipt facts.
@@ -592,6 +604,67 @@ export default function ExpenseDetailPage() {
                 <Copy size={13} />
                 Insert in Review Notes
               </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Receipt Extracted Details (Employee Submitter View) */}
+      {!isAuditor && hasExtraction && (
+        <div className="bg-white border border-neutral-200/80 rounded-2xl p-6 shadow-sm space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-neutral-100">
+            <div className="flex items-center gap-2">
+              <FileSearch size={18} className="text-emerald-600" />
+              <h2 className="text-sm font-bold text-neutral-900">Receipt Extracted Facts</h2>
+              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                AI Verified
+              </span>
+            </div>
+            {Boolean((expense.category_details as any)?.proxy_filed_by_name) && (
+              <span className="text-xs px-2.5 py-0.5 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-full font-medium">
+                Filed on your behalf by {(expense.category_details as any).proxy_filed_by_name}
+              </span>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
+            <div>
+              <p className="text-neutral-400 font-semibold uppercase">Extracted Vendor</p>
+              <p className="font-bold text-neutral-900 mt-1">{extracted.merchant_name || 'N/A'}</p>
+            </div>
+            <div>
+              <p className="text-neutral-400 font-semibold uppercase">Extracted Amount</p>
+              <p className="font-bold text-neutral-900 mt-1">
+                {extracted.amount ? formatCurrency(extracted.amount, extracted.currency || expense.currency) : 'N/A'}
+              </p>
+            </div>
+            <div>
+              <p className="text-neutral-400 font-semibold uppercase">Receipt Date</p>
+              <p className="font-semibold text-neutral-800 mt-1">{extracted.expense_date || 'N/A'}</p>
+            </div>
+            <div>
+              <p className="text-neutral-400 font-semibold uppercase">Document / Txn #</p>
+              <p className="font-mono font-medium text-neutral-800 mt-1">
+                {extracted.transaction_id || extracted.receipt_number || extracted.invoice_number || 'N/A'}
+              </p>
+            </div>
+          </div>
+
+          {Array.isArray(extracted.line_items) && extracted.line_items.length > 0 && (
+            <div className="pt-2 border-t border-neutral-100 space-y-2">
+              <p className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">
+                Recognized Receipt Line Items ({extracted.line_items.length}):
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                {extracted.line_items.map((item: any, idx: number) => (
+                  <div key={idx} className="p-2.5 bg-neutral-50 rounded-lg border border-neutral-200 flex justify-between">
+                    <span className="font-medium text-neutral-800 truncate">{item.description}</span>
+                    <span className="font-bold text-neutral-900 shrink-0 ml-2">
+                      {formatCurrency(item.amount, expense.currency)}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>

@@ -36,6 +36,10 @@ services:
         value: https://*.vercel.app,http://localhost:3000
       - key: MOCK_REFUND_OUTCOME
         value: SUCCESS
+      - key: USE_GEMINI_API
+        value: "True"
+      - key: GEMINI_API_KEY
+        sync: false
 
 databases:
   - name: crs-postgres

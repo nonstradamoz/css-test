@@ -47,7 +47,9 @@ def _acquire_pdf_concurrency_slot() -> Tuple[bool, Optional[object]]:
                 return False, None
             redis_client = r
         except Exception:
-            if settings.ENVIRONMENT == "production":
+            # If Redis connection fails in production, fail closed UNLESS ALLOW_INSECURE_LOCAL_REDIS is True
+            # (which permits single-instance / Render deployments without dedicated Redis).
+            if settings.ENVIRONMENT == "production" and not settings.ALLOW_INSECURE_LOCAL_REDIS:
                 return False, None
 
     acquired_local = _pdf_semaphore.acquire(timeout=PDF_TIMEOUT_SECONDS)
