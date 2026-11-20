@@ -25,7 +25,7 @@ export const GoogleSignInButton: React.FC<GoogleSignInButtonProps> = ({
   const [scriptLoaded, setScriptLoaded] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [clientId, setClientId] = useState<string>(
-    process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '649525935317-nav17ordgvaprqafpuglnn8ibvs0djgf.apps.googleusercontent.com'
+    process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || ''
   );
 
   // 1. Resolve Client ID on mount

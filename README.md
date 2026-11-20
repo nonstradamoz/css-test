@@ -208,7 +208,7 @@ ClearSpend uses a unified configuration setup. The platform reads from `.env` in
 | `R2_PUBLIC_DOMAIN` | string | *(Optional)* | Public access CDN domain for receipts (if configured) |
 | `MOCK_REFUND_OUTCOME` | string | `SUCCESS` | Payout simulator response (`SUCCESS`, `FAILURE`, `TIMEOUT`) |
 | `CORS_ORIGINS` | string | `http://localhost:3000` | Comma-separated list of allowed CORS origins |
-| `GOOGLE_CLIENT_ID` | string | `649525935317-nav17ordgvaprqafpuglnn8ibvs0djgf...` | Google OAuth Web Client ID for authentication |
+| `GOOGLE_CLIENT_ID` | string | *(Optional)* | Google OAuth Web Client ID for authentication |
 | `GOOGLE_CLIENT_SECRET` | string | *(Optional)* | Google OAuth Web Client Secret (for code exchange) |
 | `USE_GEMINI_API` | bool | `false` | Enable cloud Gemini vision (`true`/`false`) |
 | `GEMINI_API_KEY` | string | *(Optional)* | Gemini API key (only if `USE_GEMINI_API=true`) |
@@ -218,7 +218,7 @@ ClearSpend uses a unified configuration setup. The platform reads from `.env` in
 | Variable Name | Type | Default Value | Description |
 | :--- | :---: | :--- | :--- |
 | `NEXT_PUBLIC_API_URL` | string | `http://localhost:8000/api/v1` | URL pointing to the FastAPI backend API |
-| `NEXT_PUBLIC_GOOGLE_CLIENT_ID`| string | `649525935317-nav17ordgvaprqafpuglnn8ibvs0djgf...` | Google Client ID exposed to the browser client |
+| `NEXT_PUBLIC_GOOGLE_CLIENT_ID`| string | *(Optional)* | Google Client ID exposed to the browser client |
 
 ---
 
