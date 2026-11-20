@@ -4,10 +4,9 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { Category } from '@/types';
 import {
   Settings, Save, CheckCircle2, ShieldCheck,
-  AlertTriangle, Tag, Check
+  AlertTriangle
 } from 'lucide-react';
 
 export default function SettingsPage() {
@@ -32,11 +31,6 @@ export default function SettingsPage() {
   const { data: currentSettings } = useQuery({
     queryKey: ['system-settings'],
     queryFn: () => api.settings.get()
-  });
-
-  const { data: categories = [] } = useQuery({
-    queryKey: ['categories-all'],
-    queryFn: () => api.categories.list()
   });
 
   useEffect(() => {
@@ -297,70 +291,6 @@ export default function SettingsPage() {
           </button>
         </div>
       </form>
-
-      {/* 2. Standardized Expense Categories */}
-      <div className="bg-white border border-neutral-200/80 rounded-2xl p-6 shadow-sm space-y-5">
-        <div>
-          <h2 className="text-base font-bold text-neutral-900 flex items-center gap-2">
-            <Tag size={18} className="text-emerald-600" /> Standardized Expense Categories
-          </h2>
-          <p className="text-xs text-neutral-500 mt-0.5">
-            Predefined company categories enforced across all expense submissions. Category editing is disabled to preserve audit trail consistency.
-          </p>
-        </div>
-
-        {/* Categories List */}
-        <div className="divide-y divide-neutral-100 border border-neutral-200 rounded-xl overflow-hidden">
-          {categories.map((c) => {
-            const hasSpecialRules = ['ACCOMMODATION', 'TRAINING', 'TRAVEL'].includes(c.code);
-            return (
-              <div key={c.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-neutral-50/60 transition-colors">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-sm text-neutral-900">{c.name}</span>
-                    <span className="font-mono text-[11px] px-2 py-0.5 bg-neutral-100 text-neutral-600 rounded font-medium">
-                      {c.code}
-                    </span>
-                    <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded">
-                      Standard
-                    </span>
-                    {hasSpecialRules && (
-                      <span className="text-[10px] font-semibold px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded">
-                        Mandatory Details
-                      </span>
-                    )}
-                  </div>
-                  {c.description && (
-                    <p className="text-xs text-neutral-500 mt-1">{c.description}</p>
-                  )}
-                  {c.code === 'ACCOMMODATION' && (
-                    <p className="text-[11px] text-neutral-400 mt-1 italic">
-                      Requires: Hotel Name, Check-in, Check-out, Location, and Contact Number.
-                    </p>
-                  )}
-                  {c.code === 'TRAINING' && (
-                    <p className="text-[11px] text-neutral-400 mt-1 italic">
-                      Requires: Certification Name, Platform / Institute, Enrollment Date, and Type.
-                    </p>
-                  )}
-                  {c.code === 'TRAVEL' && (
-                    <p className="text-[11px] text-neutral-400 mt-1 italic">
-                      Requires: Mode of Travel, Start Date, End Date, Boarding Point, and Arrival Point.
-                    </p>
-                  )}
-                </div>
-
-                <div className="self-end sm:self-auto">
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                    <Check size={12} />
-                    Active
-                  </span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
     </div>
   );
 }
