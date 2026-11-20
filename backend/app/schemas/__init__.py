@@ -97,6 +97,7 @@ class SystemSettingsOut(BaseModel):
     enforce_date_window: bool = False
     policy_allowed_start_date: Optional[datetime] = None
     policy_allowed_end_date: Optional[datetime] = None
+    ai_receipt_extractor_enabled: bool = True
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
@@ -112,6 +113,7 @@ class SystemSettingsUpdate(BaseModel):
     enforce_date_window: Optional[bool] = None
     policy_allowed_start_date: Optional[datetime] = None
     policy_allowed_end_date: Optional[datetime] = None
+    ai_receipt_extractor_enabled: Optional[bool] = None
 
 
 # ==================== Approval Schemas ====================

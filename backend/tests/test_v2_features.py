@@ -655,3 +655,46 @@ async def test_google_auth_endpoint_and_config(client):
     assert auth_data["user"]["email"] == google_email
     assert auth_data["user"]["full_name"] == "Google User Verified"
     assert auth_data["user"]["role"] == "EMPLOYEE"
+
+
+@pytest.mark.asyncio
+async def test_admin_toggle_ai_receipt_extractor(client):
+    """
+    Verify Admin can toggle the AI receipt extractor setting on/off:
+    1. Default is enabled (ai_receipt_extractor_enabled=True)
+    2. Admin disables extractor -> PATCH /api/v1/settings with ai_receipt_extractor_enabled=False
+    3. analyze_receipt endpoint returns 400 with 'AI receipt extraction has been disabled by the administrator.'
+    4. Admin re-enables extractor -> PATCH /api/v1/settings with ai_receipt_extractor_enabled=True
+    5. analyze_receipt endpoint succeeds again
+    """
+    admin_headers = await ensure_admin(client)
+
+    # 1. Check default settings
+    res = await client.get("/api/v1/settings", headers=admin_headers)
+    assert res.status_code == 200
+    assert res.json().get("ai_receipt_extractor_enabled") is True
+
+    # 2. Disable extractor
+    patch_res = await client.patch("/api/v1/settings", headers=admin_headers, json={
+        "ai_receipt_extractor_enabled": False
+    })
+    assert patch_res.status_code == 200
+    assert patch_res.json()["ai_receipt_extractor_enabled"] is False
+
+    # 3. Call analyze_receipt while disabled -> 400
+    fake_png = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15c4"
+    files = {"file": ("receipt.png", fake_png, "image/png")}
+    scan_res = await client.post("/api/v1/receipts/analyze", headers=admin_headers, files=files)
+    assert scan_res.status_code == 400
+    assert "disabled by the administrator" in scan_res.json()["detail"].lower()
+
+    # 4. Re-enable extractor
+    reenable_res = await client.patch("/api/v1/settings", headers=admin_headers, json={
+        "ai_receipt_extractor_enabled": True
+    })
+    assert reenable_res.status_code == 200
+    assert reenable_res.json()["ai_receipt_extractor_enabled"] is True
+
+    # 5. Call analyze_receipt -> succeeds
+    scan_res2 = await client.post("/api/v1/receipts/analyze", headers=admin_headers, files={"file": ("receipt.png", fake_png, "image/png")})
+    assert scan_res2.status_code == 200

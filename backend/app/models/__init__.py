@@ -123,6 +123,7 @@ class SystemSettings(Base):
     enforce_date_window = Column(Boolean, default=False, nullable=False)
     policy_allowed_start_date = Column(DateTime(timezone=True), nullable=True)
     policy_allowed_end_date = Column(DateTime(timezone=True), nullable=True)
+    ai_receipt_extractor_enabled = Column(Boolean, default=True, nullable=False)
     updated_by = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
 

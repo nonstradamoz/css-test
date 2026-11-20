@@ -122,8 +122,13 @@ export default function NewExpensePage() {
     }
   }, [categories, category]);
 
+  const isAiExtractorEnabled = systemSettings?.ai_receipt_extractor_enabled !== false;
+
   // Handle file drop & AI Scanning
   const runReceiptScan = async (selectedFile: File) => {
+    if (!isAiExtractorEnabled) {
+      return;
+    }
     setIsScanning(true);
     setScanError(null);
     try {
@@ -960,9 +965,15 @@ export default function NewExpensePage() {
             <div className="flex items-center gap-2 text-sm font-bold text-neutral-900">
               <Scan size={18} className="text-emerald-600" />
               <span>Receipt Uploader *</span>
-              {/* <span className="text-[11px] font-semibold px-2 py-0.5 bg-red-50 text-red-700 rounded-full border border-red-200">
-                Mandatory to submit
-              </span> */}
+              {isAiExtractorEnabled ? (
+                <span className="text-[11px] font-semibold px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-full border border-emerald-200">
+                  AI Auto-Fill Active
+                </span>
+              ) : (
+                <span className="text-[11px] font-semibold px-2 py-0.5 bg-neutral-100 text-neutral-600 rounded-full border border-neutral-200">
+                  Manual Entry Mode (AI Disabled)
+                </span>
+              )}
             </div>
             {file && (
               <span className="text-xs text-neutral-500 font-medium">
@@ -997,8 +1008,14 @@ export default function NewExpensePage() {
                   <UploadCloud size={20} />
                 </div>
                 <div>
-                  <p className="text-xs font-semibold text-neutral-700">Drop invoice / receipt image or PDF *</p>
-                  <p className="text-[11px] text-neutral-400 mt-0.5">Supports printed receipts, hotel bills, and handwritten slips (PNG, JPG, PDF)</p>
+                  <p className="text-xs font-semibold text-neutral-700">
+                    {isAiExtractorEnabled ? 'Drop invoice / receipt image or PDF *' : 'Drop receipt file to attach * (AI extraction disabled)'}
+                  </p>
+                  <p className="text-[11px] text-neutral-400 mt-0.5">
+                    {isAiExtractorEnabled
+                      ? 'Supports printed receipts, hotel bills, and handwritten slips (PNG, JPG, PDF)'
+                      : 'Receipt document will be stored and attached securely without automated field auto-fill'}
+                  </p>
                 </div>
               </div>
             )}

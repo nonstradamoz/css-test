@@ -37,6 +37,7 @@ export type SystemSettings = components["schemas"]["SystemSettingsOut"] & {
   enforce_date_window?: boolean;
   policy_allowed_start_date?: string | null;
   policy_allowed_end_date?: string | null;
+  ai_receipt_extractor_enabled?: boolean;
 };
 export type AuditLog = components["schemas"]["AuditLogOut"];
 export type PresignedUploadResponse = components["schemas"]["PresignedUploadResponse"];

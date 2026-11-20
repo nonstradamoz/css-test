@@ -38,6 +38,7 @@ def auto_migrate_schema(sync_conn):
             ("enforce_date_window", "BOOLEAN DEFAULT FALSE"),
             ("policy_allowed_start_date", "TIMESTAMP WITH TIME ZONE"),
             ("policy_allowed_end_date", "TIMESTAMP WITH TIME ZONE"),
+            ("ai_receipt_extractor_enabled", "BOOLEAN DEFAULT TRUE"),
         ],
         "reimbursements": [
             ("transaction_id", "VARCHAR(128)"),

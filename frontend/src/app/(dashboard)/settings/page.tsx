@@ -23,6 +23,7 @@ export default function SettingsPage() {
   const [enforceDateWindow, setEnforceDateWindow] = useState(false);
   const [policyAllowedStartDate, setPolicyAllowedStartDate] = useState('');
   const [policyAllowedEndDate, setPolicyAllowedEndDate] = useState('');
+  const [aiReceiptExtractorEnabled, setAiReceiptExtractorEnabled] = useState(true);
 
   const [isSaving, setIsSaving] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
@@ -42,6 +43,7 @@ export default function SettingsPage() {
       setExpenseSubmissionsEnabled(currentSettings.expense_submissions_enabled ?? true);
       setMultiTierApprovalEnabled(currentSettings.multi_tier_approval_enabled ?? true);
       setEnforceDateWindow(currentSettings.enforce_date_window ?? false);
+      setAiReceiptExtractorEnabled(currentSettings.ai_receipt_extractor_enabled ?? true);
       if (currentSettings.policy_allowed_start_date) {
         setPolicyAllowedStartDate(currentSettings.policy_allowed_start_date.split('T')[0]);
       } else {
@@ -70,7 +72,8 @@ export default function SettingsPage() {
         multi_tier_approval_enabled: multiTierApprovalEnabled,
         enforce_date_window: enforceDateWindow,
         policy_allowed_start_date: enforceDateWindow && policyAllowedStartDate ? new Date(policyAllowedStartDate).toISOString() : null,
-        policy_allowed_end_date: enforceDateWindow && policyAllowedEndDate ? new Date(policyAllowedEndDate).toISOString() : null
+        policy_allowed_end_date: enforceDateWindow && policyAllowedEndDate ? new Date(policyAllowedEndDate).toISOString() : null,
+        ai_receipt_extractor_enabled: aiReceiptExtractorEnabled
       });
       setSavedSuccess(true);
       await queryClient.invalidateQueries({ queryKey: ['system-settings'] });
@@ -212,6 +215,32 @@ export default function SettingsPage() {
             multiTierApprovalEnabled ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-neutral-100 text-neutral-600 border border-neutral-200'
           }`}>
             {multiTierApprovalEnabled ? 'Multi-Tier Active (Tier 1 & Tier 2 for high risk)' : 'Multi-Tier Disabled (Single-tier approval for all claims)'}
+          </span>
+        </div>
+
+        {/* AI Receipt Extractor Toggle */}
+        <div className="pt-4 border-t border-neutral-100">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <span className="text-sm font-bold text-neutral-900 block">AI Receipt Extractor</span>
+              <p className="text-xs text-neutral-500 mt-0.5">
+                Enable or disable automated multimodal receipt OCR, Gemini extraction, line-item itemization, and dual tax calculation across all expense creation workflows.
+              </p>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer shrink-0">
+              <input
+                type="checkbox"
+                checked={aiReceiptExtractorEnabled}
+                onChange={(e) => setAiReceiptExtractorEnabled(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-neutral-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+            </label>
+          </div>
+          <span className={`inline-block mt-2 px-2.5 py-0.5 rounded text-xs font-semibold ${
+            aiReceiptExtractorEnabled ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-neutral-100 text-neutral-600 border border-neutral-200'
+          }`}>
+            {aiReceiptExtractorEnabled ? 'Active (Gemini Vision & In-House OCR Enabled)' : 'Disabled (Receipts attached manually without auto-extraction)'}
           </span>
         </div>
 

@@ -12,7 +12,7 @@ from app.core.database import get_db
 from app.schemas import PresignedUploadRequest, PresignedUploadResponse, ReceiptAnalysisResponse
 from app.services.storage import storage_service
 from app.services.ai_receipt_scanner import AIReceiptScanner
-from app.models import User, UserRole, Expense
+from app.models import User, UserRole, Expense, SystemSettings
 from app.api.v1.deps import get_current_user
 
 router = APIRouter(prefix="/receipts", tags=["Receipts"])
@@ -114,10 +114,21 @@ def validate_receipt_upload(content: bytes, filename: str, content_type: Optiona
         )
 
 
+async def get_or_create_settings(db: AsyncSession) -> SystemSettings:
+    result = await db.execute(select(SystemSettings).where(SystemSettings.id == 1))
+    settings_obj = result.scalars().first()
+    if not settings_obj:
+        settings_obj = SystemSettings(id=1)
+        db.add(settings_obj)
+        await db.flush()
+    return settings_obj
+
+
 @router.post("/analyze", response_model=ReceiptAnalysisResponse)
 async def analyze_receipt(
     file: UploadFile = File(...),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Receipt extraction inspector.
@@ -125,6 +136,13 @@ async def analyze_receipt(
     to parse receipts and auto-fill expense details.
     Finding 7: Throttled by upload_semaphore to prevent memory exhaustion under load.
     """
+    settings_obj = await get_or_create_settings(db)
+    if not settings_obj.ai_receipt_extractor_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="AI receipt extraction has been disabled by the administrator."
+        )
+
     async with upload_semaphore:
         content = await read_stream_with_size_limit(file, MAX_RECEIPT_SIZE)
         validate_receipt_upload(content, file.filename or "receipt.jpg", file.content_type)

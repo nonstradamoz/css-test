@@ -45,7 +45,8 @@ async def update_settings(
         "allow_self_approval": settings_obj.allow_self_approval,
         "expense_submissions_enabled": settings_obj.expense_submissions_enabled,
         "multi_tier_approval_enabled": settings_obj.multi_tier_approval_enabled,
-        "enforce_date_window": settings_obj.enforce_date_window
+        "enforce_date_window": settings_obj.enforce_date_window,
+        "ai_receipt_extractor_enabled": settings_obj.ai_receipt_extractor_enabled
     }
 
     update_dict = data.model_dump(exclude_unset=True)
