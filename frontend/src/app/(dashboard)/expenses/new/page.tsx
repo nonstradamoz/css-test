@@ -965,13 +965,9 @@ export default function NewExpensePage() {
             <div className="flex items-center gap-2 text-sm font-bold text-neutral-900">
               <Scan size={18} className="text-emerald-600" />
               <span>Receipt Uploader *</span>
-              {isAiExtractorEnabled ? (
+              {isAiExtractorEnabled && (
                 <span className="text-[11px] font-semibold px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-full border border-emerald-200">
                   AI Auto-Fill Active
-                </span>
-              ) : (
-                <span className="text-[11px] font-semibold px-2 py-0.5 bg-neutral-100 text-neutral-600 rounded-full border border-neutral-200">
-                  Manual Entry Mode (AI Disabled)
                 </span>
               )}
             </div>
@@ -1009,12 +1005,10 @@ export default function NewExpensePage() {
                 </div>
                 <div>
                   <p className="text-xs font-semibold text-neutral-700">
-                    {isAiExtractorEnabled ? 'Drop invoice / receipt image or PDF *' : 'Drop receipt file to attach * (AI extraction disabled)'}
+                    Drop invoice / receipt image or PDF *
                   </p>
                   <p className="text-[11px] text-neutral-400 mt-0.5">
-                    {isAiExtractorEnabled
-                      ? 'Supports printed receipts, hotel bills, and handwritten slips (PNG, JPG, PDF)'
-                      : 'Receipt document will be stored and attached securely without automated field auto-fill'}
+                    Supports printed receipts, hotel bills, and handwritten slips (PNG, JPG, PDF)
                   </p>
                 </div>
               </div>
