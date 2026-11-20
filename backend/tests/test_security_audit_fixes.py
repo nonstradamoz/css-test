@@ -497,7 +497,7 @@ async def test_production_config_validation(monkeypatch):
     s2 = Settings(ENVIRONMENT="production", REDIS_URL="redis://localhost:6379", JWT_SECRET_KEY="change-this-secret-key-32-chars!!", GOOGLE_CLIENT_ID="valid_id")
     with pytest.raises(RuntimeError) as exc2:
         s2.validate_production_security()
-    assert "JWT_SECRET_KEY must be a cryptographically strong" in str(exc2.value)
+    assert "JWT_SECRET_KEY lacks sufficient cryptographic randomness" in str(exc2.value)
 
     # 3. Missing Google Client ID in production
     s3 = Settings(ENVIRONMENT="production", REDIS_URL="redis://localhost:6379", JWT_SECRET_KEY="X"*40, GOOGLE_CLIENT_ID="")
@@ -795,4 +795,222 @@ async def test_production_jwt_revocation_missing_redis_url(monkeypatch):
         await revoke_access_token(test_token)
     assert exc2.value.status_code == 503
     assert "Redis revocation store is required in production" in exc2.value.detail
+
+
+@pytest.mark.asyncio
+async def test_jwt_secret_entropy_and_localhost_redis_rejection():
+    """
+    Findings 2 & 8: Validate Shannon entropy calculation for JWT secret and localhost Redis rejection.
+    """
+    from app.core.config import Settings, calculate_entropy
+
+    # Low entropy secret (repetitive)
+    low_entropy_secret = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    assert calculate_entropy(low_entropy_secret) == 0.0
+
+    s_low = Settings(
+        ENVIRONMENT="production",
+        JWT_SECRET_KEY=low_entropy_secret,
+        REDIS_URL="rediss://default:secretpass@secure-redis.cloud:6379",
+        GOOGLE_CLIENT_ID="valid_id_123"
+    )
+    with pytest.raises(RuntimeError) as exc_ent:
+        s_low.validate_production_security()
+    assert "cryptographic randomness" in str(exc_ent.value)
+
+    # Localhost Redis without ALLOW_INSECURE_LOCAL_REDIS
+    s_local_redis = Settings(
+        ENVIRONMENT="production",
+        JWT_SECRET_KEY="c8f1e29a83d47b019f2e4c6b8a0d3f5e1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d",  # High entropy
+        REDIS_URL="redis://localhost:6379/0",
+        GOOGLE_CLIENT_ID="valid_id_123",
+        ALLOW_INSECURE_LOCAL_REDIS=False
+    )
+    with pytest.raises(RuntimeError) as exc_redis:
+        s_local_redis.validate_production_security()
+    assert "Default localhost Redis" in str(exc_redis.value)
+
+
+@pytest.mark.asyncio
+async def test_google_access_token_audience_validation(monkeypatch):
+    """
+    Finding 4: Google access-token authentication explicitly verifies client audience via tokeninfo.
+    """
+    from app.api.v1.auth import google_login
+    from app.schemas import GoogleAuthRequest
+    from app.core.config import settings
+    from unittest.mock import AsyncMock, MagicMock
+    from fastapi import HTTPException
+    import httpx
+
+    mock_db = AsyncMock()
+    mock_request = MagicMock()
+    monkeypatch.setattr(settings, "GOOGLE_CLIENT_ID", "corp_google_client_id_999")
+
+    class MockResp:
+        def __init__(self, data, status_code=200):
+            self._data = data
+            self.status_code = status_code
+        def json(self):
+            return self._data
+
+    # 1. Access token issued to a different client ID (mismatched audience)
+    async def mock_get(url, headers=None):
+        if "tokeninfo" in url:
+            return MockResp({
+                "aud": "attacker_different_client_id_000",
+                "expires_in": 3600,
+                "email_verified": "true"
+            })
+        return MockResp({"email": "user@example.com", "email_verified": True})
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", lambda self, url, **kwargs: mock_get(url, **kwargs))
+
+    req = GoogleAuthRequest(access_token="valid_format_but_wrong_aud_token")
+    with pytest.raises(HTTPException) as exc:
+        await google_login(req, mock_request, mock_db)
+    assert exc.value.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_storage_silent_fallback_blocked_in_production(monkeypatch):
+    """
+    Finding 9: Object storage failure in production must NOT silently fallback to local disk.
+    """
+    from app.core.config import settings
+    from app.services.storage import StorageService
+    from fastapi import HTTPException
+
+    monkeypatch.setattr(settings, "ENVIRONMENT", "production")
+    monkeypatch.setattr(settings, "ALLOW_LOCAL_STORAGE_FALLBACK", False)
+
+    storage = StorageService()
+    # Force unconfigured R2
+    storage.s3_client = None
+
+    with pytest.raises(HTTPException) as exc:
+        storage.upload_file_bytes("receipt.jpg", b"\xff\xd8\xff" + b"\x00" * 50)
+    assert exc.value.status_code == 503
+    assert "Silent local storage fallback is prohibited" in exc.value.detail
+
+
+@pytest.mark.asyncio
+async def test_receipt_ownership_ambiguous_matches_blocked(client):
+    """
+    Finding 10: Reject ambiguous receipt ownership matches across different accounts.
+    """
+    from app.services.storage import storage_service
+
+    # 1. Register bootstrap admin, User A, and User B
+    admin_email = f"admin.ambig.{uuid.uuid4().hex[:6]}@crs-corp.com"
+    await client.post("/api/v1/auth/register", json={
+        "email": admin_email, "full_name": "Admin User", "password": "Password123!"
+    })
+
+    user_a_email = f"user.a.{uuid.uuid4().hex[:6]}@crs-corp.com"
+    await client.post("/api/v1/auth/register", json={
+        "email": user_a_email, "full_name": "User Alpha", "password": "Password123!"
+    })
+    l_a = await client.post("/api/v1/auth/login", json={"email": user_a_email, "password": "Password123!"})
+    h_a = {"Authorization": f"Bearer {l_a.json()['access_token']}"}
+
+    user_b_email = f"user.b.{uuid.uuid4().hex[:6]}@crs-corp.com"
+    await client.post("/api/v1/auth/register", json={
+        "email": user_b_email, "full_name": "User Beta", "password": "Password123!"
+    })
+    l_b = await client.post("/api/v1/auth/login", json={"email": user_b_email, "password": "Password123!"})
+    h_b = {"Authorization": f"Bearer {l_b.json()['access_token']}"}
+
+    # Save physical receipt file
+    shared_key = f"shared_{uuid.uuid4().hex}.jpg"
+    storage_service.save_local_file(shared_key, b"\xff\xd8\xff" + b"\x00" * 50)
+
+    # User A creates expense with shared_key
+    await client.post("/api/v1/expenses", headers=h_a, json={
+        "title": "Expense User A",
+        "category": "MEALS",
+        "amount": 100.0,
+        "receipt_url": f"/api/v1/receipts/download?key={shared_key}",
+        "expense_date": "2026-11-20T10:00:00Z"
+    })
+
+    # User B also creates expense referencing shared_key (collision)
+    await client.post("/api/v1/expenses", headers=h_b, json={
+        "title": "Expense User B",
+        "category": "MEALS",
+        "amount": 100.0,
+        "receipt_url": f"/api/v1/receipts/download?key={shared_key}",
+        "expense_date": "2026-11-20T10:00:00Z"
+    })
+
+    # Either user attempting to download the ambiguous receipt must be rejected with 403
+    ambig_res = await client.get(f"/api/v1/receipts/download?key={shared_key}", headers=h_a)
+    assert ambig_res.status_code == 403
+    assert "Ambiguous receipt ownership" in ambig_res.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_reviewer_centre_level_isolation(client):
+    """
+    Finding 7: Enforce centre-level isolation on Reviewer/Finance roles.
+    """
+    from app.services.storage import storage_service
+
+    # 1. Register bootstrap admin
+    admin_email = f"admin.centre.{uuid.uuid4().hex[:6]}@crs-corp.com"
+    await client.post("/api/v1/auth/register", json={
+        "email": admin_email, "full_name": "Admin User", "password": "Password123!"
+    })
+
+    # 2. Register Reviewer assigned to Centre "BLR-1"
+    rev_email = f"rev.blr.{uuid.uuid4().hex[:6]}@crs-corp.com"
+    await client.post("/api/v1/auth/register", json={
+        "email": rev_email, "full_name": "Reviewer Bangalore", "password": "Password123!"
+    })
+    # Login admin to promote rev to REVIEWER and assign centre_id
+    l_adm = await client.post("/api/v1/auth/login", json={"email": admin_email, "password": "Password123!"})
+    h_adm = {"Authorization": f"Bearer {l_adm.json()['access_token']}"}
+
+    users_res = await client.get("/api/v1/users", headers=h_adm)
+    rev_user = next(u for u in users_res.json() if u["email"] == rev_email)
+    await client.patch(
+        f"/api/v1/users/{rev_user['id']}",
+        headers=h_adm,
+        json={"role": "REVIEWER", "bank_details": {"centre_id": "BLR-1"}}
+    )
+
+    l_rev = await client.post("/api/v1/auth/login", json={"email": rev_email, "password": "Password123!"})
+    h_rev = {"Authorization": f"Bearer {l_rev.json()['access_token']}"}
+
+    # 3. Save receipt and create expense assigned to Centre "DEL-1"
+    del_key = f"delhi_exp_{uuid.uuid4().hex}.jpg"
+    storage_service.save_local_file(del_key, b"\xff\xd8\xff" + b"\x00" * 50)
+
+    await client.post("/api/v1/expenses", headers=h_adm, json={
+        "title": "Delhi Office Expense",
+        "category": "SUPPLIES",
+        "amount": 500.0,
+        "receipt_url": f"/api/v1/receipts/download?key={del_key}",
+        "expense_date": "2026-11-20T10:00:00Z",
+        "category_details": {"centre_id": "DEL-1"}
+    })
+
+    # Reviewer from BLR-1 tries to download DEL-1 receipt -> 403 Forbidden
+    cross_centre_res = await client.get(f"/api/v1/receipts/download?key={del_key}", headers=h_rev)
+    assert cross_centre_res.status_code == 403
+    assert "restricted to assigned centre" in cross_centre_res.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_asgi_middleware_upload_size_limit(client):
+    """
+    Finding 5: ASGI middleware intercepts requests with content-length > 10MB
+    before multipart parsing occurs.
+    """
+    oversized_headers = {
+        "content-length": str(15 * 1024 * 1024)  # 15 MB declared length
+    }
+    res = await client.post("/api/v1/receipts/upload", headers=oversized_headers, content=b"dummy")
+    assert res.status_code == 413
+    assert "exceeds maximum allowed size" in res.json()["detail"]
 

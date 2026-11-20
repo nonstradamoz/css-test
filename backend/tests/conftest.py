@@ -6,7 +6,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sess
 from sqlalchemy.pool import StaticPool
 
 from app.core.database import Base, get_db
+from app.core.config import settings
 from app.main import app
+
+# Ensure tests default to test environment
+settings.ENVIRONMENT = "test"
 
 # In-memory SQLite async test database
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"

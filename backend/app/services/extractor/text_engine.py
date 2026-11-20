@@ -16,15 +16,29 @@ MAX_IMAGE_DIMENSION = 5000          # Maximum width/height in pixels
 MAX_IMAGE_HARD_LIMIT = 8000         # Immediate rejection threshold to prevent memory allocation attacks
 PDF_TIMEOUT_SECONDS = 5.0           # Strict timeout on PDF parsing process
 OCR_TIMEOUT_SECONDS = 10.0          # Strict timeout on image OCR subprocess
+MAX_CONCURRENT_PDF_PROCESSES = 2    # Finding 6: Bounded concurrency pool for PDF extraction
+_pdf_semaphore = multiprocessing.Semaphore(MAX_CONCURRENT_PDF_PROCESSES)
 
 
 def _isolated_pdf_worker(data: bytes, max_pages: int, conn) -> None:
     """
-    Isolated worker process for PDF parsing (Finding 3).
-    Executes in a separate OS process so any infinite loops or memory spikes
-    can be killed with proc.terminate() without destabilizing the server.
+    Isolated worker process for PDF parsing (Findings 3 & 6).
+    Executes in a separate OS process with OS-level CPU & memory limits,
+    terminable immediately via proc.terminate().
     """
     try:
+        try:
+            import resource
+            # Limit child process CPU time to 8 seconds max
+            resource.setrlimit(resource.RLIMIT_CPU, (8, 10))
+            # Limit child process virtual address space to 256MB max if supported
+            try:
+                resource.setrlimit(resource.RLIMIT_AS, (256 * 1024 * 1024, 512 * 1024 * 1024))
+            except (ValueError, OSError):
+                pass
+        except (ImportError, AttributeError):
+            pass
+
         reader = PdfReader(io.BytesIO(data))
         text_parts = []
         pages_to_process = reader.pages[:max_pages]
@@ -91,6 +105,10 @@ class DocumentTextEngine:
         if len(file_bytes) > MAX_PDF_SIZE:
             return "", "PDF_ERROR_OVERSIZED", 0.0
 
+        acquired = _pdf_semaphore.acquire(timeout=PDF_TIMEOUT_SECONDS)
+        if not acquired:
+            return "", "PDF_ERROR_CONCURRENCY_LIMIT", 0.0
+
         try:
             ctx = multiprocessing.get_context("fork" if hasattr(os, "fork") else "spawn")
             parent_conn, child_conn = ctx.Pipe(duplex=False)
@@ -125,6 +143,8 @@ class DocumentTextEngine:
             return "", "PDF_ERROR_WORKER_DIED", 0.0
         except Exception as e:
             return "", f"PDF_ERROR_{type(e).__name__}", 0.30
+        finally:
+            _pdf_semaphore.release()
 
     @classmethod
     def _extract_from_image(cls, file_bytes: bytes, filename: str) -> Tuple[str, str, float]:

@@ -1,4 +1,5 @@
 import os
+import time
 import secrets
 import httpx
 from datetime import datetime, timezone, timedelta
@@ -352,24 +353,34 @@ async def google_login(
         except Exception as e:
             print(f"[WARN] Google tokeninfo verification exception: {e}")
 
-    # 2. Verify Google OAuth Access Token via userinfo endpoint if provided
+    # 2. Verify Google OAuth Access Token with explicit audience check (Finding 4)
     if not user_email and data.access_token:
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.get(
-                    "https://www.googleapis.com/oauth2/v3/userinfo",
-                    headers={"Authorization": f"Bearer {data.access_token}"}
+                # Finding 4: Verify client audience and active expiration via Google tokeninfo
+                tokeninfo_res = await client.get(
+                    f"https://oauth2.googleapis.com/tokeninfo?access_token={data.access_token}"
                 )
-                if resp.status_code == 200:
-                    info = resp.json()
-                    is_verified = info.get("email_verified") is True or info.get("email_verified") == "true"
-                    has_email = bool(info.get("email"))
-                    # Finding 2: Require verified email
-                    if is_verified and has_email:
-                        user_email = info.get("email")
-                        user_name = info.get("name") or info.get("email", "").split("@")[0]
+                if tokeninfo_res.status_code == 200:
+                    tinfo = tokeninfo_res.json()
+                    aud = tinfo.get("aud") or tinfo.get("azp")
+                    valid_aud = (aud == settings.GOOGLE_CLIENT_ID) if settings.GOOGLE_CLIENT_ID else ((not is_prod) and bool(aud))
+                    expires_in = int(tinfo.get("expires_in", 0))
+
+                    if valid_aud and expires_in > 0:
+                        resp = await client.get(
+                            "https://www.googleapis.com/oauth2/v3/userinfo",
+                            headers={"Authorization": f"Bearer {data.access_token}"}
+                        )
+                        if resp.status_code == 200:
+                            info = resp.json()
+                            is_verified = info.get("email_verified") is True or info.get("email_verified") == "true"
+                            has_email = bool(info.get("email"))
+                            if is_verified and has_email:
+                                user_email = info.get("email")
+                                user_name = info.get("name") or info.get("email", "").split("@")[0]
         except Exception as e:
-            print(f"[WARN] Google userinfo verification exception: {e}")
+            print(f"[WARN] Google access token verification exception: {e}")
 
     # 3. Exchange Authorization Code if provided
     if not user_email and data.code and settings.GOOGLE_CLIENT_ID:

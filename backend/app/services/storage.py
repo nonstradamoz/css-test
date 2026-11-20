@@ -65,9 +65,23 @@ class StorageService:
                 signed_url = self.generate_presigned_download(key, expires_in=900)
                 return {"url": signed_url, "key": key}
             except Exception as e:
-                print(f"[WARN] Direct R2 upload failed ({e}). Falling back to local storage.")
+                print(f"[WARN] Direct R2 upload failed ({e}).")
+                if settings.ENVIRONMENT == "production" and not settings.ALLOW_LOCAL_STORAGE_FALLBACK:
+                    from fastapi import HTTPException
+                    raise HTTPException(
+                        status_code=503,
+                        detail="Object storage service (Cloudflare R2) upload failed in production. Silent local storage fallback is prohibited."
+                    )
 
-        # Local storage fallback
+        # Finding 9: Require explicit local storage fallback approval in production
+        if settings.ENVIRONMENT == "production" and not settings.ALLOW_LOCAL_STORAGE_FALLBACK:
+            from fastapi import HTTPException
+            raise HTTPException(
+                status_code=503,
+                detail="Cloudflare R2 object storage is not configured in production. Silent local storage fallback is prohibited."
+            )
+
+        # Local storage fallback (development or explicitly allowed)
         self.save_local_file(key, content)
         return {
             "url": f"/api/v1/receipts/download?key={key}",

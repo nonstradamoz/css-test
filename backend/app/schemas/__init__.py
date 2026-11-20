@@ -19,6 +19,9 @@ class BankDetails(BaseModel):
     account_number: Optional[str] = None
     ifsc_code: Optional[str] = None
     upi_id: Optional[str] = None
+    centre_id: Optional[str] = None
+
+    model_config = ConfigDict(extra="allow")
 
 
 class UserBase(BaseModel):

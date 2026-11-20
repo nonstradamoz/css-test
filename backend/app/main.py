@@ -184,7 +184,33 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from fastapi.responses import RedirectResponse
+from starlette.middleware.base import BaseHTTPMiddleware
+from fastapi.responses import JSONResponse, RedirectResponse
+
+
+class UploadSizeLimitMiddleware(BaseHTTPMiddleware):
+    """
+    Finding 5: Enforce upload size limits at the ASGI layer before
+    multipart form parsing or body buffers consume memory.
+    """
+    MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB
+
+    async def dispatch(self, request, call_next):
+        if request.method in ("POST", "PUT") and "/receipts" in request.url.path:
+            content_length = request.headers.get("content-length")
+            if content_length:
+                try:
+                    if int(content_length) > self.MAX_UPLOAD_BYTES:
+                        return JSONResponse(
+                            status_code=413,
+                            content={"detail": "File exceeds maximum allowed size of 10MB."}
+                        )
+                except ValueError:
+                    pass
+        return await call_next(request)
+
+
+app.add_middleware(UploadSizeLimitMiddleware)
 
 # Mount API Routers (Standard /api/v1)
 app.include_router(auth_router, prefix=settings.API_V1_STR)

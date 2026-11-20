@@ -227,10 +227,10 @@ async def download_file(
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="Receipt file not found on disk")
 
-    # Privileged roles (Admin, Finance, Reviewer) can view all corporate receipts for review/audit
+    # Privileged roles (Admin, Finance, Reviewer) vs Regular Employee
     if current_user.role not in [UserRole.ADMIN, UserRole.FINANCE, UserRole.REVIEWER]:
-        # Regular employee: Verify ownership with exact key matching rather than substring matching (Finding 4)
-        res = await db.execute(
+        # Finding 4 & 10: Query matching exact key and verify unique ownership
+        all_matches_res = await db.execute(
             select(Expense).where(
                 (Expense.receipt_storage_key == clean_key) |
                 (Expense.receipt_url == clean_key) |
@@ -238,8 +238,9 @@ async def download_file(
                 (Expense.receipt_url == f"receipts/{clean_key}")
             )
         )
-        expense = res.scalars().first()
-        if not expense:
+        matching_expenses = all_matches_res.scalars().all()
+
+        if not matching_expenses:
             # Fallback exact key matching using storage key extractor
             u_expenses = (await db.execute(
                 select(Expense).where(Expense.submitted_by == current_user.id)
@@ -248,20 +249,49 @@ async def download_file(
                 if exp.receipt_url:
                     extracted = storage_service.extract_key_from_url(exp.receipt_url)
                     if extracted and os.path.basename(extracted) == clean_key:
-                        expense = exp
+                        matching_expenses = [exp]
                         break
 
-        # Finding 4 & 11: Fail closed by default if no verified expense ownership exists
-        if not expense:
+        # Finding 4 & 11: Fail closed if no verified expense ownership exists
+        if not matching_expenses:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Access denied: No expense record found verifying ownership of this receipt."
             )
-        if expense.submitted_by != current_user.id:
+
+        # Finding 10: Reject ambiguous matching records across different users
+        distinct_owners = {e.submitted_by for e in matching_expenses}
+        if len(distinct_owners) > 1:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied: Ambiguous receipt ownership detected across multiple accounts."
+            )
+
+        if current_user.id not in distinct_owners:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Access denied: You do not own this receipt document."
             )
+    else:
+        # Finding 7: Enforce centre / tenant data isolation for Reviewers/Finance if centre is assigned
+        user_centre = getattr(current_user, "centre_id", None) or (current_user.bank_details or {}).get("centre_id")
+        if user_centre and current_user.role != UserRole.ADMIN:
+            exp_res = await db.execute(
+                select(Expense).where(
+                    (Expense.receipt_storage_key == clean_key) |
+                    (Expense.receipt_url == clean_key) |
+                    (Expense.receipt_url == f"/api/v1/receipts/download?key={clean_key}") |
+                    (Expense.receipt_url == f"receipts/{clean_key}")
+                )
+            )
+            exp_obj = exp_res.scalars().first()
+            if exp_obj:
+                exp_centre = (exp_obj.extracted_metadata or {}).get("centre_id") or (exp_obj.category_details or {}).get("centre_id")
+                if exp_centre and exp_centre != user_centre:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Access denied: Reviewer/Finance scope restricted to assigned centre."
+                    )
 
     media_type, _ = mimetypes.guess_type(file_path)
     return FileResponse(file_path, media_type=media_type or "application/octet-stream")

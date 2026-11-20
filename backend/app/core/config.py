@@ -1,5 +1,16 @@
-from pydantic_settings import BaseSettings, SettingsConfigDict
+import math
+from collections import Counter
 from typing import Optional
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def calculate_entropy(s: str) -> float:
+    """Calculate Shannon Entropy (bits per symbol) of a string"""
+    if not s:
+        return 0.0
+    counts = Counter(s)
+    n = len(s)
+    return -sum((c / n) * math.log2(c / n) for c in counts.values())
 
 
 class Settings(BaseSettings):
@@ -11,10 +22,12 @@ class Settings(BaseSettings):
     
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
+    ALLOW_INSECURE_LOCAL_REDIS: bool = False
     
-    # Security & Environment
-    ENVIRONMENT: str = "development"
+    # Security & Environment (Finding 1: Default to production for fail-safe deployments)
+    ENVIRONMENT: str = "production"
     ALLOW_SQLITE_FALLBACK: bool = False
+    ALLOW_LOCAL_STORAGE_FALLBACK: bool = False
     ENABLE_API_DOCS: Optional[bool] = None
     JWT_SECRET_KEY: str = "super-secret-jwt-key-for-crs-system-enterprise-32-chars-min"
     JWT_ALGORITHM: str = "HS256"
@@ -41,33 +54,51 @@ class Settings(BaseSettings):
     
     def validate_production_security(self) -> None:
         """
-        Findings 1, 2 & 5: Validate mandatory security configurations in production.
-        Fails application startup if any required parameter is missing or uses insecure defaults.
+        Findings 1, 2, 5 & 8: Validate mandatory security configurations in production.
+        Fails application startup if environment is production (or undeclared) and any
+        required parameter is missing, weak, or uses insecure defaults.
         """
-        if self.ENVIRONMENT != "production":
+        # Finding 1: Enforce production security unless explicitly set to development or test
+        if self.ENVIRONMENT in ("development", "test"):
             return
 
         errors = []
 
-        # 1. JWT Secret Key: must be strong and not use default/test placeholders
+        # Finding 8: JWT Secret Key entropy and strength verification
         secret = self.JWT_SECRET_KEY or ""
-        insecure_patterns = ["change-this", "super-secret", "default", "test", "jwt-key", "placeholder"]
-        if len(secret) < 32 or any(p in secret.lower() for p in insecure_patterns):
+        insecure_patterns = ["change-this", "super-secret", "default", "test", "jwt-key", "placeholder", "secret-key"]
+        entropy = calculate_entropy(secret)
+        unique_chars = len(set(secret))
+
+        if (
+            len(secret) < 32 or 
+            unique_chars < 14 or 
+            entropy < 3.5 or 
+            any(p in secret.lower() for p in insecure_patterns)
+        ):
             errors.append(
-                "JWT_SECRET_KEY must be a cryptographically strong random secret (min 32 characters) in production."
+                f"JWT_SECRET_KEY lacks sufficient cryptographic randomness (length={len(secret)}, "
+                f"unique_chars={unique_chars}, entropy={entropy:.2f} bits/symbol). "
+                "Production requires a high-entropy secret (min 32 chars, entropy >= 3.5) generated via e.g. 'openssl rand -hex 32'."
             )
 
-        # 2. Redis URL: strictly mandatory for distributed revocation across workers
+        # Finding 2: Redis URL verification (disallow unauthenticated localhost in production)
         redis_url = (self.REDIS_URL or "").strip()
         if not redis_url or "placeholder" in redis_url.lower():
             errors.append("REDIS_URL is mandatory in production for distributed JWT revocation across workers.")
+        elif not self.ALLOW_INSECURE_LOCAL_REDIS:
+            if "localhost" in redis_url or "127.0.0.1" in redis_url or "redis://redis:6379" in redis_url:
+                errors.append(
+                    "Default localhost Redis ('redis://localhost:6379') is prohibited in production. "
+                    "A shared Redis service with authentication/TLS is required, or explicitly set ALLOW_INSECURE_LOCAL_REDIS=True."
+                )
 
-        # 3. Database URL: default credentials prohibited
+        # Database URL: default credentials prohibited
         db_url = self.DATABASE_URL or ""
         if "postgres:postgres@" in db_url:
             errors.append("Default database credentials detected. Custom strong credentials are required in production.")
 
-        # 4. Google Client ID: mandatory in production for OAuth validation
+        # Google Client ID: mandatory in production for OAuth validation
         google_id = (self.GOOGLE_CLIENT_ID or "").strip()
         if not google_id or "placeholder" in google_id.lower() or "your_" in google_id.lower():
             errors.append("GOOGLE_CLIENT_ID is mandatory in production for secure federated authentication.")
