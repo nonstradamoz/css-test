@@ -28,15 +28,27 @@ async def test_gemini_receipt_scanner_markdown_fences():
     """Verify Gemini Vision parser correctly strips markdown fences and maps all fields"""
     mock_gemini_json = {
         "merchant_name": "Taj Vivanta Hotel",
+        "vendor_location": "Bangalore, India",
         "amount": 14250.00,
+        "subtotal_amount": 12000.00,
         "currency": "INR",
         "expense_date": "2026-11-18",
         "suggested_category": "ACCOMMODATION",
-        "tax_amount": 2565.00,
+        "tax_amount": 2250.00,
+        "cgst_amount": 1125.00,
+        "sgst_amount": 1125.00,
+        "igst_amount": 0.00,
+        "is_itc_eligible": True,
         "line_items": [
             {"description": "Deluxe Room (1 Night)", "amount": 12000.00, "flagged": False, "reason": None},
             {"description": "Room Service Dinner", "amount": 2250.00, "flagged": False, "reason": None}
         ],
+        "category_logistics": {
+            "hotel_name": "Taj Vivanta",
+            "hotel_location": "MG Road, Bangalore",
+            "check_in": "2026-11-18",
+            "check_out": "2026-11-19"
+        },
         "confidence_score": 0.98,
         "is_handwritten": False,
         "handwritten_notes": None,
@@ -74,13 +86,22 @@ async def test_gemini_receipt_scanner_markdown_fences():
 
         assert result is not None
         assert result["merchant_name"] == "Taj Vivanta Hotel"
+        assert result["vendor_location"] == "Bangalore, India"
         assert result["amount"] == 14250.00
+        assert result["subtotal_amount"] == 12000.00
+        assert result["tax_amount"] == 2250.00
+        assert result["cgst_amount"] == 1125.00
+        assert result["sgst_amount"] == 1125.00
+        assert result["is_itc_eligible"] is True
         assert result["suggested_category"] == "ACCOMMODATION"
         assert result["is_synthetic_invoice"] is False
         assert result["verification_status"] == "VERIFIED"
         assert len(result["line_items"]) == 2
         assert result["transaction_id"] == "UPI-883920194821"
         assert result["gstin"] == "29AABCT1332L1Z5"
+        assert result["math_check_passed"] is True
+        assert result["math_discrepancy_amount"] == 0.0
+        assert result["category_logistics"]["hotel_name"] == "Taj Vivanta"
 
 
 @pytest.mark.asyncio

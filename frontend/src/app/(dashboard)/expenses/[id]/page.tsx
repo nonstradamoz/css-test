@@ -391,7 +391,10 @@ export default function ExpenseDetailPage() {
                   <td className="py-3 px-3 font-semibold text-neutral-900">Merchant / Establishment</td>
                   <td className="py-3 px-3 text-neutral-700 font-medium">{expense.title}</td>
                   <td className="py-3 px-3 text-neutral-900 font-bold">
-                    {extracted.merchant_name || 'Not detected'}
+                    <div>{extracted.merchant_name || 'Not detected'}</div>
+                    {extracted.vendor_location && (
+                      <div className="text-[11px] text-neutral-500 font-normal">{extracted.vendor_location}</div>
+                    )}
                   </td>
                   <td className="py-3 px-3">
                     <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-neutral-100 text-neutral-700">
@@ -433,7 +436,19 @@ export default function ExpenseDetailPage() {
                   <td className="py-3 px-3 font-semibold text-neutral-900">Expense Date</td>
                   <td className="py-3 px-3 text-neutral-700">{formatDate(expense.expense_date)}</td>
                   <td className="py-3 px-3 text-neutral-900 font-medium">
-                    {extractedDateStr ? formatDate(extractedDateStr) : 'Not detected'}
+                    <div className="flex items-center gap-2">
+                      <span>{extractedDateStr ? formatDate(extractedDateStr) : 'Not detected'}</span>
+                      {extracted.is_future_date && (
+                        <span className="px-1.5 py-0.2 bg-red-100 text-red-800 rounded font-bold text-[10px]">
+                          Future Dated
+                        </span>
+                      )}
+                      {extracted.is_stale_receipt && (
+                        <span className="px-1.5 py-0.2 bg-amber-100 text-amber-800 rounded font-bold text-[10px]">
+                          Stale (&gt;90d)
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="py-3 px-3">
                     {isDateMatch ? (
@@ -484,12 +499,81 @@ export default function ExpenseDetailPage() {
                       {extracted.gstin && (
                         <span><strong className="text-neutral-900">GSTIN:</strong> {extracted.gstin}</span>
                       )}
-                      {extracted.tax_amount ? (
-                        <span><strong className="text-neutral-900">Tax/GST:</strong> ₹{extracted.tax_amount}</span>
-                      ) : null}
                     </div>
                   </td>
                 </tr>
+
+                {/* 5b. Subtotal & Dual Tax Breakdown */}
+                {(extracted.subtotal_amount || extracted.tax_amount || extracted.cgst_amount || extracted.sgst_amount || extracted.igst_amount || extracted.is_itc_eligible !== undefined) && (
+                  <tr>
+                    <td className="py-3 px-3 font-semibold text-neutral-900">Tax & Financial Breakdown</td>
+                    <td className="py-3 px-3 text-neutral-500 italic">Self-declared in total</td>
+                    <td className="py-3 px-3 text-neutral-800" colSpan={2}>
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+                        {extracted.subtotal_amount ? (
+                          <span><strong className="text-neutral-900">Subtotal:</strong> ₹{extracted.subtotal_amount}</span>
+                        ) : null}
+                        {extracted.tax_amount ? (
+                          <span><strong className="text-neutral-900">Total Tax:</strong> ₹{extracted.tax_amount}</span>
+                        ) : null}
+                        {extracted.cgst_amount ? (
+                          <span><strong className="text-neutral-900">CGST:</strong> ₹{extracted.cgst_amount}</span>
+                        ) : null}
+                        {extracted.sgst_amount ? (
+                          <span><strong className="text-neutral-900">SGST:</strong> ₹{extracted.sgst_amount}</span>
+                        ) : null}
+                        {extracted.igst_amount ? (
+                          <span><strong className="text-neutral-900">IGST:</strong> ₹{extracted.igst_amount}</span>
+                        ) : null}
+                        {extracted.is_itc_eligible !== undefined && (
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded font-semibold text-[11px] ${
+                            extracted.is_itc_eligible ? 'bg-emerald-100 text-emerald-800' : 'bg-neutral-100 text-neutral-600'
+                          }`}>
+                            {extracted.is_itc_eligible ? '✓ ITC Eligible (Company GSTIN)' : 'Standard ITC'}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                )}
+
+                {/* 5c. Mathematical Sanity Check */}
+                {extracted.math_check_passed !== undefined && (
+                  <tr>
+                    <td className="py-3 px-3 font-semibold text-neutral-900">Line-Item Sum Reconciliation</td>
+                    <td className="py-3 px-3 text-neutral-500 italic">Line items total</td>
+                    <td className="py-3 px-3 text-neutral-800" colSpan={2}>
+                      {extracted.math_check_passed ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded font-semibold text-[11px]">
+                          <CheckCircle2 size={12} /> Line items sum matches total receipt value
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-red-100 text-red-800 rounded font-semibold text-[11px]">
+                          <AlertTriangle size={12} /> Discrepancy: items sum differs by ₹{extracted.math_discrepancy_amount}
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                )}
+
+                {/* 5d. Deep Category Logistics */}
+                {extracted.category_logistics && Object.keys(extracted.category_logistics).length > 0 && (
+                  <tr>
+                    <td className="py-3 px-3 font-semibold text-neutral-900">Category Logistics</td>
+                    <td className="py-3 px-3 text-neutral-500 italic">Invoice specifics</td>
+                    <td className="py-3 px-3 text-neutral-800" colSpan={2}>
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+                        {Object.entries(extracted.category_logistics)
+                          .filter(([_, val]) => Boolean(val))
+                          .map(([key, val]) => (
+                            <span key={key}>
+                              <strong className="text-neutral-900 capitalize">{key.replace(/_/g, ' ')}:</strong> {String(val)}
+                            </span>
+                          ))}
+                      </div>
+                    </td>
+                  </tr>
+                )}
 
                 {/* 6. Transaction ID / Payment Reference */}
                 <tr>
@@ -631,24 +715,90 @@ export default function ExpenseDetailPage() {
             <div>
               <p className="text-neutral-400 font-semibold uppercase">Extracted Vendor</p>
               <p className="font-bold text-neutral-900 mt-1">{extracted.merchant_name || 'N/A'}</p>
+              {extracted.vendor_location && (
+                <p className="text-[11px] text-neutral-500 mt-0.5">{extracted.vendor_location}</p>
+              )}
             </div>
             <div>
               <p className="text-neutral-400 font-semibold uppercase">Extracted Amount</p>
               <p className="font-bold text-neutral-900 mt-1">
                 {extracted.amount ? formatCurrency(extracted.amount, extracted.currency || expense.currency) : 'N/A'}
               </p>
+              {extracted.subtotal_amount ? (
+                <p className="text-[11px] text-neutral-500 mt-0.5">Subtotal: ₹{extracted.subtotal_amount}</p>
+              ) : null}
             </div>
             <div>
               <p className="text-neutral-400 font-semibold uppercase">Receipt Date</p>
-              <p className="font-semibold text-neutral-800 mt-1">{extracted.expense_date || 'N/A'}</p>
+              <div className="flex items-center gap-1.5 mt-1">
+                <span className="font-semibold text-neutral-800">{extracted.expense_date || 'N/A'}</span>
+                {extracted.is_future_date && (
+                  <span className="px-1.5 py-0.2 bg-red-100 text-red-800 rounded font-bold text-[10px]">
+                    Future
+                  </span>
+                )}
+                {extracted.is_stale_receipt && (
+                  <span className="px-1.5 py-0.2 bg-amber-100 text-amber-800 rounded font-bold text-[10px]">
+                    &gt;90d
+                  </span>
+                )}
+              </div>
             </div>
             <div>
               <p className="text-neutral-400 font-semibold uppercase">Document / Txn #</p>
               <p className="font-mono font-medium text-neutral-800 mt-1">
                 {extracted.transaction_id || extracted.receipt_number || extracted.invoice_number || 'N/A'}
               </p>
+              {extracted.gstin && (
+                <p className="text-[11px] text-neutral-500 mt-0.5 font-mono">GSTIN: {extracted.gstin}</p>
+              )}
             </div>
           </div>
+
+          {/* Tax Breakdown, ITC & Mathematical Check Badges */}
+          <div className="pt-2 border-t border-neutral-100 flex flex-wrap items-center gap-2 text-xs">
+            {extracted.tax_amount ? (
+              <span className="px-2 py-0.5 bg-neutral-100 text-neutral-700 rounded font-medium">
+                Tax: ₹{extracted.tax_amount}
+                {extracted.cgst_amount ? ` (CGST: ₹${extracted.cgst_amount}` : ''}
+                {extracted.sgst_amount ? `, SGST: ₹${extracted.sgst_amount}` : ''}
+                {extracted.igst_amount ? `, IGST: ₹${extracted.igst_amount}` : ''}
+                {extracted.cgst_amount || extracted.sgst_amount || extracted.igst_amount ? ')' : ''}
+              </span>
+            ) : null}
+            {extracted.is_itc_eligible !== undefined && (
+              <span className={`px-2 py-0.5 rounded font-semibold text-[11px] ${
+                extracted.is_itc_eligible ? 'bg-emerald-100 text-emerald-800' : 'bg-neutral-100 text-neutral-600'
+              }`}>
+                {extracted.is_itc_eligible ? '✓ Corporate ITC Eligible' : 'Standard ITC'}
+              </span>
+            )}
+            {extracted.math_check_passed !== undefined && (
+              <span className={`px-2 py-0.5 rounded font-semibold text-[11px] ${
+                extracted.math_check_passed ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+              }`}>
+                {extracted.math_check_passed ? '✓ Items Sum Verified' : `Discrepancy: ₹${extracted.math_discrepancy_amount}`}
+              </span>
+            )}
+          </div>
+
+          {/* Category Logistics (if any) */}
+          {extracted.category_logistics && Object.keys(extracted.category_logistics).length > 0 && (
+            <div className="p-3 bg-neutral-50 rounded-xl border border-neutral-200/80 text-xs">
+              <span className="font-semibold text-neutral-700 uppercase tracking-wider text-[11px] block mb-1.5">
+                Extracted Logistics:
+              </span>
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-neutral-600">
+                {Object.entries(extracted.category_logistics)
+                  .filter(([_, val]) => Boolean(val))
+                  .map(([key, val]) => (
+                    <span key={key}>
+                      <strong className="text-neutral-800 capitalize">{key.replace(/_/g, ' ')}:</strong> {String(val)}
+                    </span>
+                  ))}
+              </div>
+            </div>
+          )}
 
           {Array.isArray(extracted.line_items) && extracted.line_items.length > 0 && (
             <div className="pt-2 border-t border-neutral-100 space-y-2">

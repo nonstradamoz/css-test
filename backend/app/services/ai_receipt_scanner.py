@@ -101,16 +101,32 @@ class AIReceiptScanner:
         b64_data = base64.b64encode(file_bytes).decode("utf-8")
 
         prompt = """
-        You are an enterprise accounting AI auditor. Inspect this receipt, invoice, or voucher thoroughly.
-        Analyze all printed and handwritten text, stamps, signatures, totals, taxes, and individual line items.
-        Return ONLY a valid JSON object matching this exact schema:
+        You are an enterprise accounting AI auditor. Inspect this receipt, tax invoice, ticket, or voucher thoroughly.
+        Analyze all printed and handwritten text, stamps, signatures, totals, taxes, vendor info, and line items.
+        Return ONLY a valid JSON object matching this exact 5-section corporate accounting schema:
         {
           "merchant_name": "string (name of establishment, airline, hotel, or vendor)",
-          "amount": float (final total amount paid/due),
+          "vendor_location": "string or null (city, branch, or street location of vendor)",
+          "mobile_number": "string or null (merchant contact phone or mobile number)",
+          "gstin": "string or null (15-character Indian GSTIN or business tax registration number)",
+
+          "invoice_number": "string or null (Tax Invoice #)",
+          "receipt_number": "string or null (Receipt # or slip #)",
+          "bill_number": "string or null (Cash memo or counter bill #)",
+          "transaction_id": "string or null (UPI UTR / RRN / bank transaction reference number)",
+          "payment_mode": "string or null (e.g. UPI, CARD, CASH, NETBANKING)",
+
+          "amount": float (final gross total amount paid/due),
+          "subtotal_amount": float or null (taxable value / net amount before taxes),
+          "tax_amount": float or null (total tax/GST amount),
+          "cgst_amount": float or null (Central GST amount),
+          "sgst_amount": float or null (State GST amount),
+          "igst_amount": float or null (Integrated GST amount),
           "currency": "string (3 letter currency code, e.g. INR, USD, EUR, default INR)",
+          "is_itc_eligible": boolean (true if company/buyer GSTIN or corporate entity name is printed as customer/recipient),
+
           "expense_date": "string or null (YYYY-MM-DD format if visible)",
           "suggested_category": "string (one of: TRAVEL, MEALS, SUPPLIES, SOFTWARE, TRAINING, ACCOMMODATION, HARDWARE, OTHER)",
-          "tax_amount": float or null (GST / VAT / sales tax),
           "line_items": [
             {
               "description": "string",
@@ -119,16 +135,29 @@ class AIReceiptScanner:
               "reason": "string or null"
             }
           ],
+
+          "category_logistics": {
+            "travel_mode": "string or null (Flight, Train, Bus, Cab / Taxi, Personal Vehicle, Other)",
+            "boarding_point": "string or null (departure origin station/airport/city)",
+            "arrival_point": "string or null (destination station/airport/city)",
+            "travel_start_date": "string or null (YYYY-MM-DD)",
+            "travel_end_date": "string or null (YYYY-MM-DD)",
+
+            "hotel_name": "string or null",
+            "hotel_location": "string or null (city/address)",
+            "check_in": "string or null (YYYY-MM-DD or datetime format)",
+            "check_out": "string or null (YYYY-MM-DD or datetime format)",
+            "contact_number": "string or null",
+
+            "certification_name": "string or null",
+            "institute": "string or null (Coursera, Udemy, AWS, etc.)",
+            "enrollment_date": "string or null",
+            "certification_type": "string or null"
+          },
+
           "confidence_score": float (between 0.85 and 1.0),
           "is_handwritten": boolean (true if bill or total or notes are written by hand),
-          "handwritten_notes": "string or null (any handwritten marginalia, tips, or manual alterations detected)",
-          "invoice_number": "string or null",
-          "receipt_number": "string or null",
-          "bill_number": "string or null",
-          "transaction_id": "string or null (UPI UTR / transaction / bank reference number if visible)",
-          "mobile_number": "string or null (merchant or contact telephone / mobile number if visible)",
-          "payment_mode": "string or null (e.g. UPI, CARD, CASH, NETBANKING)",
-          "gstin": "string or null (15-character Indian GSTIN or business tax registration number)"
+          "handwritten_notes": "string or null (any handwritten marginalia, tips, or manual alterations detected)"
         }
         """
 
@@ -267,7 +296,9 @@ class AIReceiptScanner:
 
     @classmethod
     def _post_process_extraction(cls, data: Dict[str, Any], filename: str = "receipt.jpg") -> Dict[str, Any]:
-        """Validate, normalize and sanitize AI output to conform with ReceiptAnalysisResponse"""
+        """Validate, normalize and sanitize AI output to conform with 5-section ReceiptAnalysisResponse"""
+        from datetime import datetime, date
+
         line_items = data.get("line_items", [])
         clean_items = []
         for item in line_items:
@@ -293,7 +324,14 @@ class AIReceiptScanner:
             })
 
         amount = float(data.get("amount", 0.0) or 0.0)
+        subtotal = float(data.get("subtotal_amount")) if data.get("subtotal_amount") is not None else None
+        tax = float(data.get("tax_amount")) if data.get("tax_amount") is not None else None
+        cgst = float(data.get("cgst_amount")) if data.get("cgst_amount") is not None else None
+        sgst = float(data.get("sgst_amount")) if data.get("sgst_amount") is not None else None
+        igst = float(data.get("igst_amount")) if data.get("igst_amount") is not None else None
+
         merchant = str(data.get("merchant_name") or "Verified Commercial Vendor").strip()
+        vendor_loc = str(data.get("vendor_location") or "").strip() or None
         category = str(data.get("suggested_category") or "OTHER").upper().strip()
         expense_date = data.get("expense_date")
         if expense_date and isinstance(expense_date, str) and not re.match(r"^\d{4}-\d{2}-\d{2}$", expense_date.strip()):
@@ -303,24 +341,83 @@ class AIReceiptScanner:
         if confidence < 0.85:
             confidence = 0.92
 
+        # Section 5: Category logistics clean mapping
+        raw_logistics = data.get("category_logistics") or {}
+        clean_logistics = {}
+        for k, v in raw_logistics.items():
+            if v is not None and str(v).strip():
+                clean_logistics[k] = str(v).strip()
+
+        # Section 6: Mathematical & Temporal Sanity Engine
+        line_sum = sum(item["amount"] for item in clean_items)
+        expected_total = None
+        if line_sum > 0:
+            expected_total = line_sum
+        elif subtotal is not None and tax is not None:
+            expected_total = subtotal + tax
+
+        math_check_passed = True
+        math_discrepancy = 0.0
+        if expected_total is not None and amount > 0:
+            math_discrepancy = round(abs(amount - expected_total), 2)
+            if math_discrepancy > 2.0:
+                math_check_passed = False
+
+        is_future = False
+        is_stale = False
+        if expense_date:
+            try:
+                exp_d = datetime.strptime(expense_date, "%Y-%m-%d").date()
+                today = date.today()
+                if exp_d > today:
+                    is_future = True
+                elif (today - exp_d).days > 90:
+                    is_stale = True
+            except Exception:
+                pass
+
         return {
+            # Section 1: Vendor & Legal Identity
             "merchant_name": merchant,
-            "amount": amount,
-            "currency": str(data.get("currency") or "INR").upper().strip()[:3],
-            "expense_date": expense_date,
-            "suggested_category": category,
-            "tax_amount": float(data.get("tax_amount")) if data.get("tax_amount") is not None else None,
-            "line_items": clean_items,
-            "confidence_score": confidence,
-            "is_handwritten": bool(data.get("is_handwritten", False)),
-            "handwritten_notes": data.get("handwritten_notes"),
+            "vendor_location": vendor_loc,
+            "mobile_number": data.get("mobile_number"),
+            "gstin": data.get("gstin"),
+
+            # Section 2: Document & Identifiers
             "invoice_number": data.get("invoice_number"),
             "receipt_number": data.get("receipt_number"),
             "bill_number": data.get("bill_number"),
             "transaction_id": data.get("transaction_id"),
-            "mobile_number": data.get("mobile_number"),
             "payment_mode": data.get("payment_mode"),
-            "gstin": data.get("gstin"),
+
+            # Section 3: Financials, Tax & ITC
+            "amount": amount,
+            "subtotal_amount": subtotal,
+            "tax_amount": tax,
+            "cgst_amount": cgst,
+            "sgst_amount": sgst,
+            "igst_amount": igst,
+            "currency": str(data.get("currency") or "INR").upper().strip()[:3],
+            "is_itc_eligible": bool(data.get("is_itc_eligible", False)),
+
+            # Section 4: Categorization & Line Items
+            "suggested_category": category,
+            "line_items": clean_items,
+
+            # Section 5: Category Logistics
+            "category_logistics": clean_logistics if clean_logistics else None,
+
+            # Section 6: Mathematical & Temporal Sanity
+            "math_check_passed": math_check_passed,
+            "math_discrepancy_amount": math_discrepancy,
+            "is_future_date": is_future,
+            "is_stale_receipt": is_stale,
+            "is_handwritten": bool(data.get("is_handwritten", False)),
+            "handwritten_notes": data.get("handwritten_notes"),
+
+            # Metrics
+            "confidence_score": confidence,
+            "expense_date": expense_date,
             "is_synthetic_invoice": False,
             "date_found_in_bill": bool(expense_date),
             "date_verified": bool(expense_date),

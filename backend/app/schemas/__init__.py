@@ -232,23 +232,47 @@ class ExtractedLineItem(BaseModel):
 
 
 class ReceiptAnalysisResponse(BaseModel):
+    # Section 1: Vendor & Legal Identity
     merchant_name: str
-    amount: float
-    currency: str = "INR"
-    expense_date: Optional[str] = None
-    suggested_category: str
-    tax_amount: Optional[float] = None
-    line_items: List[ExtractedLineItem] = []
-    confidence_score: float = 0.95
-    is_handwritten: bool = False
-    handwritten_notes: Optional[str] = None
+    vendor_location: Optional[str] = None
+    mobile_number: Optional[str] = None
+    gstin: Optional[str] = None
+
+    # Section 2: Document & Transaction Identifiers
     invoice_number: Optional[str] = None
     receipt_number: Optional[str] = None
     bill_number: Optional[str] = None
     transaction_id: Optional[str] = None
-    mobile_number: Optional[str] = None
     payment_mode: Optional[str] = None
-    gstin: Optional[str] = None
+
+    # Section 3: Financials & Dual Tax / ITC Model
+    amount: float
+    subtotal_amount: Optional[float] = None
+    tax_amount: Optional[float] = None
+    cgst_amount: Optional[float] = None
+    sgst_amount: Optional[float] = None
+    igst_amount: Optional[float] = None
+    currency: str = "INR"
+    is_itc_eligible: Optional[bool] = False
+
+    # Section 4: Categorization & Line Items
+    suggested_category: str
+    line_items: List[ExtractedLineItem] = []
+
+    # Section 5: Deep Category Logistics
+    category_logistics: Optional[Dict[str, Any]] = None
+
+    # Section 6: Mathematical & Temporal Sanity Engine
+    math_check_passed: Optional[bool] = True
+    math_discrepancy_amount: Optional[float] = 0.0
+    is_future_date: Optional[bool] = False
+    is_stale_receipt: Optional[bool] = False
+    is_handwritten: bool = False
+    handwritten_notes: Optional[str] = None
+
+    # Verification & Confidence Metrics
+    confidence_score: float = 0.95
+    expense_date: Optional[str] = None
     is_synthetic_invoice: Optional[bool] = False
     date_found_in_bill: Optional[bool] = False
     date_verified: Optional[bool] = False

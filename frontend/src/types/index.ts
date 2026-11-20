@@ -54,12 +54,27 @@ export type CategoryCreate = components["schemas"]["CategoryCreate"];
 export type CategoryUpdate = components["schemas"]["CategoryUpdate"];
 
 export type ReceiptAnalysisResponse = components["schemas"]["ReceiptAnalysisResponse"] & {
+  vendor_location?: string | null;
   mobile_number?: string | null;
   payment_mode?: string | null;
   transaction_id?: string | null;
   bill_number?: string | null;
   receipt_number?: string | null;
   gstin?: string | null;
+  subtotal_amount?: number | null;
+  cgst_amount?: number | null;
+  sgst_amount?: number | null;
+  igst_amount?: number | null;
+  is_itc_eligible?: boolean;
+  category_logistics?: Record<string, any> | null;
+  math_check_passed?: boolean;
+  math_discrepancy_amount?: number;
+  is_future_date?: boolean;
+  is_stale_receipt?: boolean;
+  verification_status?: string | null;
+  is_synthetic_invoice?: boolean;
+  date_found_in_bill?: boolean;
+  date_verified?: boolean;
 };
 export type ExtractedLineItem = components["schemas"]["ExtractedLineItem"];
 export type ForensicsPreviewResponse = components["schemas"]["ForensicsPreviewResponse"];

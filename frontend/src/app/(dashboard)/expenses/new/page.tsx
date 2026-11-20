@@ -171,11 +171,35 @@ export default function NewExpensePage() {
       setExpenseDate(scanResult.expense_date);
     }
 
-    // Auto-populate category-specific fields if available
+    // Auto-populate category-specific fields from category_logistics or fields
     const targetCat = scanResult.suggested_category || category;
+    const logistics = scanResult.category_logistics || {};
+
     if (targetCat === 'ACCOMMODATION') {
-      if (!hotelName && scanResult.merchant_name) setHotelName(scanResult.merchant_name);
-      if (!hotelContact && (scanResult as any).mobile_number) setHotelContact((scanResult as any).mobile_number);
+      const hName = logistics.hotel_name || scanResult.merchant_name;
+      if (hName) setHotelName(hName);
+      const hLoc = logistics.hotel_location || scanResult.vendor_location;
+      if (hLoc) setHotelLocation(hLoc);
+      if (logistics.check_in) {
+        setCheckIn(logistics.check_in.includes('T') ? logistics.check_in : `${logistics.check_in}T14:00`);
+      }
+      if (logistics.check_out) {
+        setCheckOut(logistics.check_out.includes('T') ? logistics.check_out : `${logistics.check_out}T11:00`);
+      }
+      const hContact = logistics.contact_number || (scanResult as any).mobile_number;
+      if (hContact) setHotelContact(hContact);
+    } else if (targetCat === 'TRAVEL') {
+      if (logistics.travel_mode) setTravelMode(logistics.travel_mode);
+      if (logistics.boarding_point) setBoardingPoint(logistics.boarding_point);
+      if (logistics.arrival_point) setArrivalPoint(logistics.arrival_point);
+      if (logistics.travel_start_date) setTravelStartDate(logistics.travel_start_date);
+      if (logistics.travel_end_date) setTravelEndDate(logistics.travel_end_date);
+      else if (scanResult.expense_date) setTravelStartDate(scanResult.expense_date);
+    } else if (targetCat === 'TRAINING') {
+      if (logistics.certification_name) setCertName(logistics.certification_name);
+      if (logistics.institute) setCertInstitute(logistics.institute);
+      if (logistics.enrollment_date) setCertEnrollDate(logistics.enrollment_date);
+      if (logistics.certification_type) setCertType(logistics.certification_type);
     }
 
     const descParts: string[] = [];
@@ -326,21 +350,34 @@ export default function NewExpensePage() {
         on_behalf_of_user_id: isProxyFiling ? onBehalfOfUserId : undefined,
         extracted_metadata: scanResult ? {
           merchant_name: scanResult.merchant_name,
-          amount: scanResult.amount,
-          currency: scanResult.currency,
-          expense_date: scanResult.expense_date,
-          suggested_category: scanResult.suggested_category,
-          confidence_score: scanResult.confidence_score,
-          is_handwritten: scanResult.is_handwritten,
-          handwritten_notes: scanResult.handwritten_notes,
-          line_items: scanResult.line_items,
+          vendor_location: scanResult.vendor_location,
+          mobile_number: (scanResult as any).mobile_number,
+          gstin: scanResult.gstin,
           invoice_number: scanResult.invoice_number,
           receipt_number: scanResult.receipt_number,
           bill_number: scanResult.bill_number,
           transaction_id: scanResult.transaction_id,
-          mobile_number: (scanResult as any).mobile_number,
           payment_mode: (scanResult as any).payment_mode,
-          gstin: scanResult.gstin
+          amount: scanResult.amount,
+          subtotal_amount: scanResult.subtotal_amount,
+          tax_amount: scanResult.tax_amount,
+          cgst_amount: scanResult.cgst_amount,
+          sgst_amount: scanResult.sgst_amount,
+          igst_amount: scanResult.igst_amount,
+          currency: scanResult.currency,
+          is_itc_eligible: scanResult.is_itc_eligible,
+          expense_date: scanResult.expense_date,
+          suggested_category: scanResult.suggested_category,
+          line_items: scanResult.line_items,
+          category_logistics: scanResult.category_logistics,
+          math_check_passed: scanResult.math_check_passed,
+          math_discrepancy_amount: scanResult.math_discrepancy_amount,
+          is_future_date: scanResult.is_future_date,
+          is_stale_receipt: scanResult.is_stale_receipt,
+          confidence_score: scanResult.confidence_score,
+          is_handwritten: scanResult.is_handwritten,
+          handwritten_notes: scanResult.handwritten_notes,
+          verification_status: scanResult.verification_status
         } : undefined
       }, effectiveSubmitNow);
 
@@ -1033,8 +1070,50 @@ export default function NewExpensePage() {
                 </button>
               </div>
 
-              {/* Extracted Metadata Badges: Transaction ID, Mode of Payment, Mobile Number */}
+              {/* Extracted Metadata Badges: Tax, ITC, Sanity, Location, Identifiers */}
               <div className="flex flex-wrap items-center gap-2 text-xs pt-1">
+                {scanResult.vendor_location && (
+                  <div className="inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-emerald-200 rounded-lg text-emerald-900">
+                    <span className="text-[10px] uppercase font-bold text-emerald-700">Location:</span>
+                    <span className="font-medium">{scanResult.vendor_location}</span>
+                  </div>
+                )}
+                {scanResult.gstin && (
+                  <div className="inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-emerald-200 rounded-lg text-emerald-900">
+                    <span className="text-[10px] uppercase font-bold text-emerald-700">GSTIN:</span>
+                    <span className="font-mono font-semibold">{scanResult.gstin}</span>
+                  </div>
+                )}
+                {scanResult.tax_amount !== undefined && scanResult.tax_amount !== null && (
+                  <div className="inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-emerald-200 rounded-lg text-emerald-900">
+                    <span className="text-[10px] uppercase font-bold text-emerald-700">Tax/GST:</span>
+                    <span className="font-semibold">₹{scanResult.tax_amount.toLocaleString()}</span>
+                  </div>
+                )}
+                {scanResult.is_itc_eligible && (
+                  <div className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-md font-bold text-[10px]">
+                    ✓ ITC Eligible (Company GSTIN on Bill)
+                  </div>
+                )}
+                {scanResult.math_check_passed !== undefined && (
+                  <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-bold text-[10px] ${
+                    scanResult.math_check_passed
+                      ? 'bg-emerald-100 text-emerald-800'
+                      : 'bg-amber-100 text-amber-800'
+                  }`}>
+                    {scanResult.math_check_passed ? '✓ Math Reconciled' : `⚠️ Variance ±₹${scanResult.math_discrepancy_amount}`}
+                  </div>
+                )}
+                {scanResult.is_stale_receipt && (
+                  <div className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-100 text-amber-800 rounded-md font-bold text-[10px]">
+                    ⚠️ Stale Receipt (&gt;90 days)
+                  </div>
+                )}
+                {scanResult.is_future_date && (
+                  <div className="inline-flex items-center gap-1 px-2 py-0.5 bg-red-100 text-red-800 rounded-md font-bold text-[10px]">
+                    ⚠️ Future Date Detected
+                  </div>
+                )}
                 {scanResult.transaction_id && (
                   <div className="inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-emerald-200 rounded-lg text-emerald-900">
                     <span className="text-[10px] uppercase font-bold text-emerald-700">Txn / UTR:</span>
