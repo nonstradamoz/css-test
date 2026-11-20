@@ -486,16 +486,32 @@ async def refresh_token(
 
 @router.post("/logout", status_code=status.HTTP_200_OK)
 async def logout(
+    request: Request,
     data: RefreshTokenRequest,
     db: AsyncSession = Depends(get_db)
 ):
-    """Revoke refresh token on logout"""
+    """
+    Revoke database refresh token and blacklist active access token in Redis.
+    """
+    from app.core.token_blocklist import revoke_access_token
+
     incoming_hash = hash_token(data.refresh_token)
     result = await db.execute(select(RefreshToken).where(RefreshToken.token_hash == incoming_hash))
     db_token = result.scalars().first()
 
     if db_token and db_token.revoked_at is None:
         db_token.revoked_at = datetime.now(timezone.utc)
+
+    # Blacklist access token
+    auth_header = request.headers.get("Authorization", "")
+    access_token = None
+    if auth_header.startswith("Bearer "):
+        access_token = auth_header.split("Bearer ")[1].strip()
+    elif "access_token" in request.cookies:
+        access_token = request.cookies.get("access_token")
+
+    if access_token:
+        await revoke_access_token(access_token, expires_in_seconds=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60)
 
     return {"message": "Logged out successfully"}
 

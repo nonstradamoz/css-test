@@ -12,9 +12,10 @@ class Settings(BaseSettings):
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
     
-    # Security
+    # Security & Environment
     ENVIRONMENT: str = "development"
     ALLOW_SQLITE_FALLBACK: bool = False
+    ENABLE_API_DOCS: Optional[bool] = None
     JWT_SECRET_KEY: str = "super-secret-jwt-key-for-crs-system-enterprise-32-chars-min"
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15

@@ -143,13 +143,16 @@ async def lifespan(app: FastAPI):
     await db_module.engine.dispose()
 
 
+is_prod = settings.ENVIRONMENT == "production"
+docs_enabled = settings.ENABLE_API_DOCS if settings.ENABLE_API_DOCS is not None else not is_prod
+
 app = FastAPI(
     title="ClearSpend API",
     version="2.0.0",
     description="ClearSpend Expense & Refund Management System API",
-    openapi_url="/openapi.json",
-    docs_url="/docs",
-    redoc_url="/redoc",
+    openapi_url="/openapi.json" if docs_enabled else None,
+    docs_url="/docs" if docs_enabled else None,
+    redoc_url="/redoc" if docs_enabled else None,
     lifespan=lifespan
 )
 

@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Any
 from fastapi import Depends, HTTPException, Security, status, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -47,6 +47,15 @@ async def get_current_user(
     if not user.is_active:
         raise HTTPException(status_code=403, detail="User account is deactivated.")
 
+    # Check JWT access token revocation / blacklist in Redis
+    from app.core.token_blocklist import is_token_revoked
+    if await is_token_revoked(token):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has been revoked. Please log in again.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     return user
 
 
@@ -62,6 +71,30 @@ def require_role(allowed_roles: List[UserRole]):
     return _role_checker
 
 
+SENSITIVE_AUDIT_KEYS = {
+    "password", "hashed_password", "token", "secret", "access_token",
+    "refresh_token", "jwt", "client_secret", "credential"
+}
+
+
+def sanitize_audit_data(data: Any) -> Any:
+    """Recursively scrub credentials and mask PII (bank accounts) from audit trails"""
+    if isinstance(data, dict):
+        sanitized = {}
+        for k, v in data.items():
+            k_lower = str(k).lower()
+            if any(s in k_lower for s in SENSITIVE_AUDIT_KEYS):
+                sanitized[k] = "[REDACTED]"
+            elif k_lower in ["account_number", "acc_no"]:
+                sanitized[k] = f"****{str(v)[-4:]}" if len(str(v)) > 4 else "****"
+            else:
+                sanitized[k] = sanitize_audit_data(v)
+        return sanitized
+    elif isinstance(data, list):
+        return [sanitize_audit_data(item) for item in data]
+    return data
+
+
 async def log_audit_event(
     db: AsyncSession,
     actor_id: Optional[str],
@@ -72,14 +105,17 @@ async def log_audit_event(
     new_values: Optional[dict] = None,
     ip_address: Optional[str] = None
 ) -> AuditLog:
-    """Helper to record an immutable audit log record"""
+    """Helper to record an immutable audit log record with sanitized payloads"""
+    clean_old = sanitize_audit_data(old_values) if old_values is not None else None
+    clean_new = sanitize_audit_data(new_values) if new_values is not None else None
+
     log_entry = AuditLog(
         actor_id=actor_id,
         entity_type=entity_type,
         entity_id=entity_id,
         action=action,
-        old_values=jsonable_encoder(old_values) if old_values is not None else None,
-        new_values=jsonable_encoder(new_values) if new_values is not None else None,
+        old_values=jsonable_encoder(clean_old) if clean_old is not None else None,
+        new_values=jsonable_encoder(clean_new) if clean_new is not None else None,
         ip_address=ip_address
     )
     db.add(log_entry)

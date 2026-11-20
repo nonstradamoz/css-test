@@ -57,12 +57,10 @@ class StorageService:
                     Body=content,
                     ContentType=content_type
                 )
-                public_url = (
-                    f"{settings.R2_PUBLIC_DOMAIN}/{key}"
-                    if settings.R2_PUBLIC_DOMAIN
-                    else f"https://{self.bucket}.r2.cloudflarestorage.com/{key}"
-                )
-                return {"url": public_url, "key": key}
+                # Security: Receipts are confidential financial documents and must NEVER be exposed
+                # via public unauthenticated CDN URLs. Generate a pre-signed time-limited download URL.
+                signed_url = self.generate_presigned_download(key, expires_in=86400)
+                return {"url": signed_url, "key": key}
             except Exception as e:
                 print(f"[WARN] Direct R2 upload failed ({e}). Falling back to local storage.")
 
@@ -119,16 +117,13 @@ class StorageService:
             ExpiresIn=3600  # 1 hour
         )
 
-        public_url = (
-            f"{settings.R2_PUBLIC_DOMAIN}/{key}"
-            if settings.R2_PUBLIC_DOMAIN
-            else upload_url.split("?")[0]
-        )
+        # Security: Always use pre-signed time-limited download URLs rather than public bucket domains
+        signed_download_url = self.generate_presigned_download(key, expires_in=86400)
 
         return {
             "upload_url": upload_url,
             "key": key,
-            "public_url": public_url,
+            "public_url": signed_download_url,
             "fields": None
         }
 

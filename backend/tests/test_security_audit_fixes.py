@@ -158,3 +158,59 @@ async def test_finding_10_reimbursement_rbac_enforcement(client):
     b_reimb = await client.get("/api/v1/reimbursements", headers=h_b)
     assert b_reimb.status_code == 200
     assert len(b_reimb.json()) == 0
+
+
+@pytest.mark.asyncio
+async def test_jwt_access_token_blacklist_on_logout(client):
+    """
+    Security Architecture: Access tokens must be revoked in Redis upon logout.
+    Attempting to use a revoked access token must return 401.
+    """
+    user_email = f"jwt.test.{uuid.uuid4().hex[:6]}@crs-corp.com"
+    await client.post("/api/v1/auth/register", json={
+        "email": user_email, "full_name": "JWT Revoke User", "password": "Password123!"
+    })
+    login_res = await client.post("/api/v1/auth/login", json={"email": user_email, "password": "Password123!"})
+    tokens = login_res.json()
+    access_token = tokens["access_token"]
+    refresh_token = tokens["refresh_token"]
+    headers = {"Authorization": f"Bearer {access_token}"}
+
+    # 1. Access token works initially
+    me_res = await client.get("/api/v1/auth/me", headers=headers)
+    assert me_res.status_code == 200
+
+    # 2. User logs out
+    logout_res = await client.post("/api/v1/auth/logout", headers=headers, json={"refresh_token": refresh_token})
+    assert logout_res.status_code == 200
+
+    # 3. Access token is now blacklisted -> 401
+    me_revoked = await client.get("/api/v1/auth/me", headers=headers)
+    assert me_revoked.status_code == 401
+    assert "revoked" in me_revoked.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_audit_logs_sensitive_data_sanitization(client):
+    """
+    Security Architecture: Sensitive information (passwords, tokens, bank accounts)
+    must never be stored in plain text within audit logs.
+    """
+    from app.api.v1.deps import sanitize_audit_data
+
+    raw_payload = {
+        "email": "user@example.com",
+        "password": "SuperSecretPassword123!",
+        "token": "sensitive_jwt_token_bytes",
+        "bank_details": {
+            "account_number": "987654321098",
+            "ifsc_code": "HDFC0001234"
+        }
+    }
+
+    sanitized = sanitize_audit_data(raw_payload)
+    assert sanitized["password"] == "[REDACTED]"
+    assert sanitized["token"] == "[REDACTED]"
+    assert sanitized["bank_details"]["account_number"] == "****1098"
+    assert sanitized["email"] == "user@example.com"
+
