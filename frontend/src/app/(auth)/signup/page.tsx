@@ -36,16 +36,16 @@ export default function SignupPage() {
   };
 
   return (
-    <div className="min-h-screen bg-neutral-950 bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(16,185,129,0.15),rgba(255,255,255,0))] flex flex-col justify-between p-6 text-neutral-100 selection:bg-emerald-500 selection:text-white">
+    <div className="min-h-screen bg-neutral-950 bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(76,130,195,0.22),rgba(255,255,255,0))] flex flex-col justify-between p-6 text-neutral-100 selection:bg-brand-500 selection:text-white">
       {/* Top Brand Header */}
       <header className="max-w-md mx-auto w-full flex items-center justify-center pt-6 pb-2">
         <Link href="/" className="flex items-center gap-2.5 group transition-transform active:scale-95">
-          <div className="p-2.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-2xl shadow-inner group-hover:bg-emerald-500/20 transition-all">
+          <div className="p-2.5 bg-brand-500/15 text-brand-400 border border-brand-500/30 rounded-2xl shadow-inner group-hover:bg-brand-500/25 transition-all">
             <ShieldCheck size={24} className="stroke-[2.2]" />
           </div>
           <div>
             <span className="font-extrabold text-white text-lg tracking-tight">ClearSpend</span>
-            <span className="text-[11px] text-emerald-400/80 font-medium ml-2 px-1.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
+            <span className="text-[11px] text-brand-300 font-medium ml-2 px-1.5 py-0.5 rounded-full bg-brand-500/15 border border-brand-500/30">
               Registration
             </span>
           </div>
@@ -147,7 +147,7 @@ export default function SignupPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-semibold rounded-xl text-sm shadow-lg shadow-emerald-900/30 disabled:opacity-50 transition-all flex items-center justify-center gap-2 mt-2"
+              className="w-full py-3 bg-brand-500 hover:bg-brand-600 active:bg-brand-700 text-white font-semibold rounded-xl text-sm shadow-lg shadow-brand-900/40 disabled:opacity-50 transition-all flex items-center justify-center gap-2 mt-2"
             >
               {loading ? (
                 <>
@@ -163,7 +163,7 @@ export default function SignupPage() {
           {/* Footer Link */}
           <div className="pt-4 border-t border-neutral-800 text-center text-xs text-neutral-400">
             Already have an account?{' '}
-            <Link href="/login" className="text-emerald-400 hover:text-emerald-300 hover:underline font-semibold transition-colors">
+            <Link href="/login" className="text-brand-400 hover:text-brand-300 hover:underline font-semibold transition-colors">
               Sign In
             </Link>
           </div>

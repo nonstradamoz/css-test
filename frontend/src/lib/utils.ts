@@ -95,41 +95,41 @@ export function getStatusBadgeInfo(status: ExpenseStatus | ReimbursementStatus):
 } {
   switch (status) {
     case 'DRAFT':
-      return { label: 'Draft', className: 'bg-slate-100 text-slate-700 border-slate-200' };
+      return { label: 'Draft', className: 'bg-neutral-100 text-neutral-700 border-neutral-200' };
     case 'SUBMITTED':
-      return { label: 'Submitted (Tier 1)', className: 'bg-blue-50 text-blue-700 border-blue-200' };
+      return { label: 'Submitted (Tier 1)', className: 'bg-brand-50 text-brand-700 border-brand-200' };
     case 'UNDER_REVIEW':
-      return { label: 'Under Review (Tier 2)', className: 'bg-indigo-50 text-indigo-700 border-indigo-200' };
+      return { label: 'Under Review (Tier 2)', className: 'bg-gold-100 text-gold-900 border-gold-300 font-semibold' };
     case 'CHANGES_REQUESTED':
-      return { label: 'Changes Requested', className: 'bg-amber-50 text-amber-700 border-amber-200' };
+      return { label: 'Changes Requested', className: 'bg-gold-100 text-gold-900 border-gold-300 font-semibold' };
     case 'APPROVED':
-      return { label: 'Approved', className: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
+      return { label: 'Approved', className: 'bg-brand-50 text-brand-800 border-brand-200 font-semibold' };
     case 'REJECTED':
-      return { label: 'Rejected', className: 'bg-rose-50 text-rose-700 border-rose-200' };
+      return { label: 'Rejected', className: 'bg-crimson-50 text-crimson-800 border-crimson-200 font-semibold' };
     case 'REIMBURSED':
     case 'COMPLETED':
-      return { label: 'Reimbursed', className: 'bg-teal-50 text-teal-700 border-teal-200' };
+      return { label: 'Reimbursed', className: 'bg-brand-100 text-brand-900 border-brand-300 font-semibold' };
     case 'INITIATED':
     case 'PROCESSING':
-      return { label: 'Processing Payout', className: 'bg-cyan-50 text-cyan-700 border-cyan-200' };
+      return { label: 'Processing Payout', className: 'bg-gold-50 text-gold-800 border-gold-200' };
     case 'FAILED':
-      return { label: 'Disbursement Failed', className: 'bg-red-50 text-red-700 border-red-200 font-semibold' };
+      return { label: 'Disbursement Failed', className: 'bg-crimson-100 text-crimson-900 border-crimson-300 font-bold' };
     default:
-      return { label: status as string, className: 'bg-gray-100 text-gray-700 border-gray-200' };
+      return { label: status as string, className: 'bg-neutral-100 text-neutral-700 border-neutral-200' };
   }
 }
 
 export function getRoleBadgeInfo(role: Role): { label: string; className: string } {
   switch (role) {
     case 'ADMIN':
-      return { label: 'Admin', className: 'bg-purple-100 text-purple-800 border-purple-200' };
+      return { label: 'Admin', className: 'bg-brand-100 text-brand-900 border-brand-300 font-semibold' };
     case 'FINANCE':
-      return { label: 'Finance', className: 'bg-emerald-100 text-emerald-800 border-emerald-200' };
+      return { label: 'Finance', className: 'bg-gold-100 text-gold-900 border-gold-300 font-semibold' };
     case 'REVIEWER':
-      return { label: 'Reviewer', className: 'bg-blue-100 text-blue-800 border-blue-200' };
+      return { label: 'Reviewer', className: 'bg-brand-50 text-brand-800 border-brand-200 font-semibold' };
     case 'EMPLOYEE':
-      return { label: 'Employee', className: 'bg-slate-100 text-slate-800 border-slate-200' };
+      return { label: 'Employee', className: 'bg-neutral-100 text-neutral-800 border-neutral-200' };
     default:
-      return { label: role as string, className: 'bg-gray-100 text-gray-800 border-gray-200' };
+      return { label: role as string, className: 'bg-neutral-100 text-neutral-800 border-neutral-200' };
   }
 }

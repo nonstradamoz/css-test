@@ -50,12 +50,12 @@ export const Badge: React.FC<BadgeProps> = ({
   }
 
   const variants = {
-    default: 'bg-slate-100 text-slate-800 border-slate-200',
-    outline: 'border border-slate-300 text-slate-700 bg-white',
-    success: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-    warning: 'bg-amber-50 text-amber-700 border-amber-200',
-    danger: 'bg-red-50 text-red-700 border-red-200',
-    info: 'bg-blue-50 text-blue-700 border-blue-200'
+    default: 'bg-neutral-100 text-neutral-800 border-neutral-200',
+    outline: 'border border-neutral-300 text-neutral-700 bg-white',
+    success: 'bg-brand-50 text-brand-800 border-brand-200 font-semibold',
+    warning: 'bg-gold-50 text-gold-900 border-gold-200 font-semibold',
+    danger: 'bg-crimson-50 text-crimson-800 border-crimson-200 font-semibold',
+    info: 'bg-brand-50 text-brand-700 border-brand-200'
   };
 
   return (

@@ -5,10 +5,10 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import { Menu, ShieldCheck } from 'lucide-react';
 
 const ROLE_BADGE: Record<string, { label: string; color: string; bg: string }> = {
-  ADMIN:    { label: 'Admin',    color: '#1a7a4a', bg: '#e8f5ee' },
-  FINANCE:  { label: 'Finance',  color: '#c47f17', bg: '#fdf6e3' },
-  REVIEWER: { label: 'Reviewer', color: '#2c7eb8', bg: '#edf6fd' },
-  EMPLOYEE: { label: 'Employee', color: '#6b7280', bg: '#f3f4f6' }
+  ADMIN:    { label: 'Admin',    color: '#4c82c3', bg: '#edf4fc' },
+  FINANCE:  { label: 'Finance',  color: '#b87e04', bg: '#fff9e6' },
+  REVIEWER: { label: 'Reviewer', color: '#3b6fae', bg: '#edf4fc' },
+  EMPLOYEE: { label: 'Employee', color: '#666c7a', bg: '#f6f5f0' }
 };
 
 function greet() {
@@ -35,7 +35,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleMobileMenu }) => {
           type="button"
           onClick={onToggleMobileMenu}
           aria-label="Toggle navigation menu"
-          className="md:hidden p-2 -ml-1 text-neutral-700 hover:text-neutral-900 hover:bg-neutral-100 rounded-xl transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500/30 shrink-0"
+          className="md:hidden p-2 -ml-1 text-neutral-700 hover:text-neutral-900 hover:bg-neutral-100 rounded-xl transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500/30 shrink-0"
         >
           <Menu size={22} />
         </button>

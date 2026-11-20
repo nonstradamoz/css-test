@@ -52,7 +52,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   if (!user) return null;
 
   return (
-    <div className="flex h-screen overflow-hidden bg-neutral-50">
+    <div className="flex h-screen overflow-hidden bg-[var(--bg)]">
       <Sidebar mobileOpen={mobileMenuOpen} onCloseMobile={() => setMobileMenuOpen(false)} />
       <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
         <Navbar onToggleMobileMenu={() => setMobileMenuOpen(prev => !prev)} />

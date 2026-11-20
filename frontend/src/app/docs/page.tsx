@@ -15,9 +15,9 @@ const ARCHITECTURE_SECTIONS = [
     icon: Users,
     description: 'Direct three-tier permission matrix governing actions across the financial lifecycle.',
     details: [
-      { role: 'ADMIN', color: '#8b5cf6', desc: 'Full control over users, settings, thresholds, audit trails, and approvals.' },
-      { role: 'REVIEWER', color: '#10b981', desc: 'Authorizes Tier-1 & Tier-2 reviews, requests changes, and executes verified reimbursements.' },
-      { role: 'EMPLOYEE', color: '#6b7280', desc: 'Creates claims, uploads receipts, manages bank profile, and tracks payouts.' }
+      { role: 'ADMIN', color: '#4c82c3', desc: 'Full control over users, settings, thresholds, audit trails, and approvals.' },
+      { role: 'REVIEWER', color: '#3b6fae', desc: 'Authorizes Tier-1 & Tier-2 reviews, requests changes, and executes verified reimbursements.' },
+      { role: 'EMPLOYEE', color: '#666c7a', desc: 'Creates claims, uploads receipts, manages bank profile, and tracks payouts.' }
     ]
   },
   {

@@ -98,7 +98,7 @@ export default function DashboardPage() {
           )}
           <Link
             href="/expenses/new"
-            className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs sm:text-sm font-medium hover:bg-emerald-500 transition-colors shadow-sm"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-brand-500 text-white rounded-xl text-xs sm:text-sm font-medium hover:bg-brand-600 transition-colors shadow-sm"
           >
             <PlusCircle size={16} />
             Submit Expense
@@ -113,28 +113,28 @@ export default function DashboardPage() {
           value={formatCurrency(totalSpend)}
           note="Approved & processed for Reimbursement"
           icon={IndianRupee}
-          iconColor="#1a7a4a"
+          iconColor="#4c82c3"
         />
         <Stat
           label="Pending Review"
           value={formatCurrency(pendingAmt)}
           note={`${pending.length} claims awaiting approval`}
           icon={Clock}
-          iconColor="#c47f17"
+          iconColor="#fdba11"
         />
         <Stat
           label="Ready for Payout"
           value={formatCurrency(approvedAmt)}
           note={`${approved.length} approved for disbursement`}
           icon={CheckCircle2}
-          iconColor="#2c7eb8"
+          iconColor="#3b6fae"
         />
         <Stat
           label="Completed Disbursements"
           value={formatCurrency(reimbursedAmt)}
           note={`${reimbursed.length} payouts settled`}
           icon={CreditCard}
-          iconColor="#7c3aed"
+          iconColor="#4c82c3"
         />
       </div>
 
@@ -142,7 +142,7 @@ export default function DashboardPage() {
       <div className="bg-white rounded-xl border border-neutral-200/80 shadow-sm overflow-hidden">
         <div className="px-6 py-4 border-b border-neutral-200 flex items-center justify-between">
           <h2 className="text-base font-bold text-neutral-900">Recent Expense Claims</h2>
-          <Link href="/expenses" className="text-xs font-semibold text-emerald-600 hover:text-emerald-700 flex items-center gap-1">
+          <Link href="/expenses" className="text-xs font-semibold text-brand-600 hover:text-brand-700 flex items-center gap-1">
             View All <ArrowUpRight size={14} />
           </Link>
         </div>

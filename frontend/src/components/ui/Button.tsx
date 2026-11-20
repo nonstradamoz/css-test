@@ -28,13 +28,13 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       'inline-flex items-center justify-center font-medium rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed select-none';
 
     const variants = {
-      primary: 'bg-primary-600 hover:bg-primary-700 text-white focus:ring-primary-500 shadow-sm',
-      secondary: 'bg-slate-100 hover:bg-slate-200 text-slate-800 focus:ring-slate-400',
+      primary: 'bg-brand-500 hover:bg-brand-600 active:bg-brand-700 text-white focus:ring-brand-400 shadow-sm',
+      secondary: 'bg-neutral-100 hover:bg-neutral-200 text-neutral-800 focus:ring-neutral-400',
       outline:
-        'border border-slate-300 hover:bg-slate-50 text-slate-700 focus:ring-primary-500 bg-white shadow-xs',
-      danger: 'bg-red-600 hover:bg-red-700 text-white focus:ring-red-500 shadow-sm',
-      success: 'bg-emerald-600 hover:bg-emerald-700 text-white focus:ring-emerald-500 shadow-sm',
-      ghost: 'hover:bg-slate-100 text-slate-700 focus:ring-slate-400'
+        'border border-neutral-300 hover:bg-neutral-50 text-neutral-700 focus:ring-brand-400 bg-white shadow-2xs',
+      danger: 'bg-crimson-500 hover:bg-crimson-600 active:bg-crimson-700 text-white focus:ring-crimson-400 shadow-sm',
+      success: 'bg-brand-600 hover:bg-brand-700 text-white focus:ring-brand-400 shadow-sm',
+      ghost: 'hover:bg-neutral-100 text-neutral-700 focus:ring-neutral-400'
     };
 
     const sizes = {

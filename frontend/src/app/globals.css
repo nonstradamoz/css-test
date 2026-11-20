@@ -6,26 +6,26 @@
 
 /* ─── Design Tokens ────────────────────────────────────── */
 :root {
-  --bg:          #f4f3f0;
-  --bg-dim:      #eceae5;
+  --bg:          #f6f5f0;
+  --bg-dim:      #edebe4;
   --surface:     #ffffff;
-  --surface-alt: #faf9f7;
-  --rail:        #131210;
-  --rail-dim:    #1e1c19;
-  --rail-border: rgba(255,255,255,0.05);
-  --ink:         rgba(24,22,18,0.5);
-  --ink-heavy:   #181612;
-  --ink-muted:   #8b8680;
-  --ink-faint:   #c5c1ba;
-  --accent:      #1a7a4a;
-  --accent-light:#e8f5ee;
-  --accent-mid:  #2fa866;
-  --amber:       #c47f17;
-  --amber-bg:    #fdf6e3;
-  --red:         #b94040;
-  --red-bg:      #fdf0f0;
-  --sky:         #2c7eb8;
-  --sky-bg:      #edf6fd;
+  --surface-alt: #faf9f6;
+  --rail:        #151922;
+  --rail-dim:    #1e2430;
+  --rail-border: rgba(255,255,255,0.06);
+  --ink:         rgba(28,31,38,0.55);
+  --ink-heavy:   #1c1f26;
+  --ink-muted:   #666c7a;
+  --ink-faint:   #c0c4cc;
+  --accent:      #4c82c3;
+  --accent-light:#edf4fc;
+  --accent-mid:  #3b6fae;
+  --amber:       #fdba11;
+  --amber-bg:    #fff9e6;
+  --red:         #b22d1b;
+  --red-bg:      #fdf1f0;
+  --sky:         #4c82c3;
+  --sky-bg:      #edf4fc;
 }
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -176,7 +176,7 @@ body {
 .field::placeholder { color: var(--ink-faint); }
 .field:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(26,122,74,0.12);
+  box-shadow: 0 0 0 3px rgba(76,130,195,0.15);
 }
 
 /* ─── Skeleton ───────────────────────────────────────────── */

@@ -140,7 +140,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen = false, onCloseMob
                 : "text-neutral-400 hover:text-white hover:bg-neutral-800/60"
             )}
           >
-            <Icon size={18} className={active ? "text-emerald-400" : "text-neutral-400"} />
+            <Icon size={18} className={active ? "text-brand-400" : "text-neutral-400"} />
             {item.label}
           </Link>
         );
@@ -158,11 +158,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen = false, onCloseMob
           }}
           className="flex items-center gap-2.5 overflow-hidden group hover:opacity-90 transition-opacity"
         >
-          <div className="w-8 h-8 rounded-full bg-emerald-700 text-white flex items-center justify-center font-bold text-xs shrink-0 group-hover:ring-2 group-hover:ring-emerald-400">
+          <div className="w-8 h-8 rounded-full bg-brand-600 text-white flex items-center justify-center font-bold text-xs shrink-0 group-hover:ring-2 group-hover:ring-brand-400">
             {initials}
           </div>
           <div className="truncate">
-            <p className="text-sm font-medium text-white truncate leading-tight group-hover:text-emerald-400 transition-colors">
+            <p className="text-sm font-medium text-white truncate leading-tight group-hover:text-brand-400 transition-colors">
               {displayName}
             </p>
             <p className="text-xs text-neutral-400 truncate">{user?.email}</p>
@@ -171,7 +171,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen = false, onCloseMob
         <button
           onClick={() => logout()}
           title="Log Out"
-          className="p-1.5 text-neutral-400 hover:text-red-400 hover:bg-neutral-800 rounded-lg transition-colors ml-1 focus:outline-none"
+          className="p-1.5 text-neutral-400 hover:text-crimson-400 hover:bg-neutral-800 rounded-lg transition-colors ml-1 focus:outline-none"
         >
           <LogOut size={16} />
         </button>
@@ -186,7 +186,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen = false, onCloseMob
         <div>
           {/* Brand */}
           <div className="flex items-center gap-3 px-2 py-4 mb-4 border-b border-neutral-800">
-            <div className="p-2 bg-emerald-500/10 text-emerald-400 rounded-xl">
+            <div className="p-2 bg-brand-500/15 text-brand-400 rounded-xl">
               <ShieldCheck size={22} />
             </div>
             <div>
@@ -227,7 +227,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen = false, onCloseMob
           {/* Header with Close Button */}
           <div className="flex items-center justify-between px-2 py-4 mb-4 border-b border-neutral-800">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-emerald-500/10 text-emerald-400 rounded-xl">
+              <div className="p-2 bg-brand-500/15 text-brand-400 rounded-xl">
                 <ShieldCheck size={22} />
               </div>
               <div>
@@ -267,11 +267,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen = false, onCloseMob
               className={cn(
                 "flex flex-col items-center justify-center py-1 px-2 rounded-lg text-[10px] font-medium transition-colors",
                 active
-                  ? "text-emerald-600 font-bold"
+                  ? "text-brand-500 font-bold"
                   : "text-neutral-500 hover:text-neutral-900"
               )}
             >
-              <Icon size={20} className={active ? "text-emerald-600 mb-0.5" : "text-neutral-400 mb-0.5"} />
+              <Icon size={20} className={active ? "text-brand-500 mb-0.5" : "text-neutral-400 mb-0.5"} />
               <span>{item.label}</span>
             </Link>
           );
