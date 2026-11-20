@@ -98,32 +98,9 @@ flowchart TD
 
 ---
 
-## 3. Role-Based Access Control (RBAC) Matrix
+## 3. Key Functional Modules
 
-ClearSpend implements a 4-tier Role-Based Access Control model enforced at both the FastAPI dependency layer (`get_current_user`, `require_role`) and the frontend routing navigation:
-
-| Permission / Operation | EMPLOYEE | REVIEWER | FINANCE | ADMIN |
-| :--- | :---: | :---: | :---: | :---: |
-| **Submit Own Expense Claims** | ✅ | ✅ | ✅ | ✅ |
-| **Proxy Filing (Submit on behalf of others)** | ❌ | ✅ | ❌ | ✅ |
-| **View Own Private Drafts** | ✅ | ✅ (Own) | ✅ (Own) | ✅ (Own) |
-| **View All Company Claims** | ❌ | ✅ | ✅ | ✅ |
-| **Tier-1 Approval (< Threshold)** | ❌ | ✅ | ❌ | ✅ |
-| **Tier-2 Approval ($\ge$ Threshold)** | ❌ | ❌ | ✅ | ✅ |
-| **Request Changes / Reject Claims** | ❌ | ✅ | ✅ | ✅ |
-| **Disburse Reimbursements** | ❌ | ✅ | ✅ | ✅ |
-| **Delete Own Unaccepted Claims** | ✅ | ✅ | ✅ | ✅ |
-| **Admin Delete Any Expense (Cascade + R2 Purge)** | ❌ | ❌ | ❌ | ✅ |
-| **Export Formatted Excel (.xlsx)** | ❌ | ✅ | ✅ | ✅ |
-| **Manage Users & Role Assignments** | ❌ | ❌ | ❌ | ✅ |
-| **System Settings & Policy Controls** | ❌ | ❌ | ❌ | ✅ |
-| **View Forensic Audit Logs** | ❌ | ❌ | ✅ | ✅ |
-
----
-
-## 4. Key Functional Modules
-
-### 4.1 In-House OCR & Financial Extraction Engine
+### 3.1 In-House OCR & Financial Extraction Engine
 Built directly into the backend (`backend/app/services/extractor/`):
 - **Zero API Dependency**: Eliminates external cloud billing; operates offline using `pypdf` for digital PDFs and `Pillow` + `pytesseract` for scanned images.
 - **Accounting Field Extraction**:
@@ -137,7 +114,7 @@ Built directly into the backend (`backend/app/services/extractor/`):
   - **Mobile / Contact Number** (Indian 10-digit mobile `[6-9]\d{9}` and labeled phone numbers).
 - **Auto-Fill Integration**: One-click form population in the submission UI for all authenticated users.
 
-### 4.2 AI Forensics & Compliance Inspector
+### 3.2 AI Forensics & Compliance Inspector
 Every uploaded receipt and claim is evaluated by the `ForensicsEngine` across multiple risk vectors:
 - **Risk Score (0–100)**: Categorized as `LOW`, `MEDIUM`, or `HIGH`.
 - **Threshold Smurfing Evasion**: Detects multiple submissions within a 48-hour window deliberately kept just under the corporate approval threshold (e.g. ₹24,999 vs ₹25,000).
@@ -146,7 +123,7 @@ Every uploaded receipt and claim is evaluated by the `ForensicsEngine` across mu
 - **Weekend Anomalies**: Flags expenses incurred on Saturdays or Sundays for corporate review.
 - **Mandatory Audit Exemption**: Reviewers cannot approve a `HIGH` risk claim without entering an explicit compliance justification stored permanently in the audit trail.
 
-### 4.3 Mandatory Category-Specific Details
+### 3.3 Mandatory Category-Specific Details
 Enforces statutory corporate compliance rules depending on the chosen category:
 1. **Hotel & Lodging (`ACCOMMODATION`)**:
    - Hotel Name
@@ -164,7 +141,7 @@ Enforces statutory corporate compliance rules depending on the chosen category:
    - Start Date & End Date
    - Boarding Point & Arrival Point
 
-### 4.4 Financial State Machine Lifecycle
+### 3.4 Financial State Machine Lifecycle
 ```mermaid
 stateDiagram-v2
     [*] --> DRAFT : User Creates Claim
@@ -196,22 +173,22 @@ stateDiagram-v2
     REJECTED --> [*]
 ```
 
-### 4.5 Disbursement Protection & Bank Verification
+### 3.5 Disbursement Protection & Bank Verification
 - **Submission Guard**: Submitting a claim is strictly gated on the user having configured valid bank details (Account Number + IFSC or UPI ID) in their profile. If missing, the claim is safely preserved as a private `DRAFT`.
 - **Payout Settlement**: Payouts require entering the actual financial bank transfer reference (`transfer_txn_id` e.g., IMPS UTR or UPI Ref ID).
 - **Idempotency Locks**: Redis atomic locking on claim IDs prevents duplicate bank disbursements during network retries.
 
-### 4.6 File Lifecycle & Cascading Deletion
+### 3.6 File Lifecycle & Cascading Deletion
 - Receipts uploaded to Cloudflare R2 are automatically tracked with their storage keys.
 - When an expense is deleted (by its submitter prior to approval, or by an Admin override), the associated file in the storage bucket is automatically deleted, preventing orphaned storage accumulation.
 
 ---
 
-## 5. Environment Variables Catalog
+## 4. Environment Variables Catalog
 
 ClearSpend uses a unified configuration setup. The platform reads from `.env` in the root and respective `.env` files in `backend/` and `frontend/`.
 
-### 5.1 Backend Environment Variables (`backend/.env`)
+### 4.1 Backend Environment Variables (`backend/.env`)
 
 | Variable Name | Type | Default Value | Description |
 | :--- | :---: | :--- | :--- |
@@ -236,7 +213,7 @@ ClearSpend uses a unified configuration setup. The platform reads from `.env` in
 | `USE_GEMINI_API` | bool | `false` | Enable cloud Gemini vision (`true`/`false`) |
 | `GEMINI_API_KEY` | string | *(Optional)* | Gemini API key (only if `USE_GEMINI_API=true`) |
 
-### 5.2 Frontend Environment Variables (`frontend/.env.local`)
+### 4.2 Frontend Environment Variables (`frontend/.env.local`)
 
 | Variable Name | Type | Default Value | Description |
 | :--- | :---: | :--- | :--- |
@@ -245,7 +222,7 @@ ClearSpend uses a unified configuration setup. The platform reads from `.env` in
 
 ---
 
-## 6. Step-by-Step Execution & Deployment Guide
+## 5. Step-by-Step Execution & Deployment Guide
 
 ### Prerequisites
 - **Python**: 3.11 or 3.12
@@ -347,7 +324,7 @@ npm --prefix frontend run build
 
 ---
 
-## 7. REST API Endpoints Catalog
+## 6. REST API Endpoints Catalog
 
 ### Authentication (`/api/v1/auth`)
 - `POST /register`: Create a new corporate user account.
@@ -399,7 +376,7 @@ npm --prefix frontend run build
 
 ---
 
-## 8. Admin User Provisioning
+## 7. Admin User Provisioning
 
 To prevent insecure default credentials from being committed or automatically seeded, initial admin users are provisioned via CLI, direct database SQL queries, or initial self-registration.
 
@@ -441,7 +418,7 @@ When the database contains 0 registered users, registering the very first accoun
 
 ---
 
-## 9. Security & Compliance Highlights
+## 8. Security & Compliance Highlights
 
 1. **Password Hashing**: Utilizes **Argon2id**, the winner of the Password Hashing Competition, with high memory and time cost factors.
 2. **Token Security**: Dual-token pattern with short-lived JWTs (15 min) and hashed refresh tokens stored in PostgreSQL with immediate revocation upon logout.
