@@ -53,6 +53,7 @@ def auto_migrate_schema(sync_conn):
             ("forensic_flags", "JSON"),
             ("audit_exemption_reason", "TEXT"),
             ("receipt_hash", "VARCHAR(64)"),
+            ("receipt_storage_key", "VARCHAR(255)"),
         ],
     }
 
@@ -70,6 +71,9 @@ def auto_migrate_schema(sync_conn):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Findings 1, 2 & 5: Fail application startup if required production security config is missing
+    settings.validate_production_security()
+
     import app.core.database as db_module
 
     # Startup: Ensure database tables are created & updated

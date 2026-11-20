@@ -21,6 +21,7 @@ from app.schemas import (
 from app.services.duplicate_detector import DuplicateDetector
 from app.services.forensics_engine import ForensicsEngine
 from app.services.state_machine import ExpenseStateMachine, StateMachineError
+from app.services.storage import storage_service
 from app.api.v1.deps import get_current_user, require_role, log_audit_event
 
 router = APIRouter(prefix="/expenses", tags=["Expenses"])
@@ -270,7 +271,6 @@ async def create_expense(
     if not extracted_meta and data.receipt_url and "key=" in data.receipt_url:
         try:
             key = data.receipt_url.split("key=")[-1]
-            from app.services.storage import storage_service
             local_path = storage_service.get_local_file_path(key)
             if os.path.exists(local_path):
                 with open(local_path, "rb") as f:
@@ -337,6 +337,10 @@ async def create_expense(
     if submit_now:
         validate_category_mandatory_details(data.category, data.category_details)
 
+    # Extract exact storage key from receipt URL (Finding 4)
+    storage_key = storage_service.extract_key_from_url(data.receipt_url) if data.receipt_url else None
+    clean_storage_key = os.path.basename(storage_key) if storage_key else None
+
     new_expense = Expense(
         submitted_by=submitter_user.id,
         title=data.title,
@@ -346,6 +350,7 @@ async def create_expense(
         currency=data.currency or settings_obj.default_currency,
         expense_date=data.expense_date,
         receipt_url=data.receipt_url,
+        receipt_storage_key=clean_storage_key,
         receipt_hash=data.receipt_hash,
         risk_score=forensic_eval["risk_score"],
         risk_level=forensic_eval["risk_level"],
@@ -673,6 +678,11 @@ async def update_expense(
     update_dict = data.model_dump(exclude_unset=True)
     for field, val in update_dict.items():
         setattr(expense, field, val)
+
+    if "receipt_url" in update_dict:
+        new_url = update_dict["receipt_url"]
+        storage_key = storage_service.extract_key_from_url(new_url) if new_url else None
+        expense.receipt_storage_key = os.path.basename(storage_key) if storage_key else None
 
     await db.flush()
 

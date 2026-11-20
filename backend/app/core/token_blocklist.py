@@ -25,8 +25,8 @@ async def revoke_access_token(token: str, expires_in_seconds: int = 900) -> None
     """
     Revoke an active access token by storing its SHA-256 fingerprint
     in Redis with an automatic TTL matching the token's lifetime.
-    Finding 1 & 2: In production, requires shared Redis and fails closed if unavailable.
-    Finding 3: In development, stores in memory with expiration timestamp.
+    Finding 1: In production, requires REDIS_URL and fails closed (HTTP 503) if missing or unreachable.
+    In-memory fallback is strictly disabled in production.
     """
     if not token or not token.strip():
         return
@@ -34,21 +34,35 @@ async def revoke_access_token(token: str, expires_in_seconds: int = 900) -> None
     token_hash = _get_token_hash(token.strip())
     is_prod = settings.ENVIRONMENT == "production"
 
-    try:
-        import redis.asyncio as aioredis
-        client = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
-        async with client:
-            await client.set(f"token_blocklist:{token_hash}", "revoked", ex=max(60, expires_in_seconds))
-            return
-    except Exception as e:
-        if is_prod:
-            # Finding 1 & 2: Fail closed in production if persistent revocation store is unavailable
+    if is_prod:
+        if not settings.REDIS_URL or not settings.REDIS_URL.strip():
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Redis revocation store is required in production. Token revocation rejected."
+            )
+        try:
+            import redis.asyncio as aioredis
+            client = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
+            async with client:
+                await client.set(f"token_blocklist:{token_hash}", "revoked", ex=max(60, expires_in_seconds))
+                return
+        except Exception as e:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="Token revocation service temporarily unavailable. Revocation cannot be guaranteed across workers."
             )
 
-    # Development / testing fallback with automatic expiration
+    # Development / testing fallback (in-memory with automatic expiration)
+    try:
+        if settings.REDIS_URL:
+            import redis.asyncio as aioredis
+            client = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
+            async with client:
+                await client.set(f"token_blocklist:{token_hash}", "revoked", ex=max(60, expires_in_seconds))
+                return
+    except Exception:
+        pass
+
     _cleanup_expired_in_memory()
     _in_memory_revoked[token_hash] = time.time() + max(60, expires_in_seconds)
 
@@ -56,9 +70,8 @@ async def revoke_access_token(token: str, expires_in_seconds: int = 900) -> None
 async def is_token_revoked(token: str) -> bool:
     """
     Check if an access token has been revoked / blacklisted.
-    Finding 1: In production, fails closed (HTTP 503) if Redis is unavailable.
-    Finding 2: Shared revocation store across workers is mandatory in production.
-    Finding 3: Memory entries expire automatically.
+    Finding 1: In production, requires REDIS_URL and fails closed (HTTP 503) if missing or unreachable.
+    In-memory fallback is strictly disabled in production.
     """
     if not token or not token.strip():
         return True
@@ -66,6 +79,25 @@ async def is_token_revoked(token: str) -> bool:
     token_hash = _get_token_hash(token.strip())
     is_prod = settings.ENVIRONMENT == "production"
 
+    if is_prod:
+        if not settings.REDIS_URL or not settings.REDIS_URL.strip():
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Redis revocation store is required in production."
+            )
+        try:
+            import redis.asyncio as aioredis
+            client = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
+            async with client:
+                val = await client.get(f"token_blocklist:{token_hash}")
+                return val is not None
+        except Exception:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Token revocation verification service temporarily unavailable."
+            )
+
+    # In development/test mode: check memory first, then Redis
     _cleanup_expired_in_memory()
     if token_hash in _in_memory_revoked:
         return True
@@ -76,11 +108,5 @@ async def is_token_revoked(token: str) -> bool:
         async with client:
             val = await client.get(f"token_blocklist:{token_hash}")
             return val is not None
-    except Exception as err:
-        if is_prod:
-            # Finding 1: Fail closed in production rather than accepting potentially revoked tokens
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Token revocation verification service temporarily unavailable."
-            )
+    except Exception:
         return False

@@ -1,5 +1,6 @@
 import os
 import mimetypes
+import asyncio
 from typing import Optional
 from fastapi import APIRouter, Depends, File, UploadFile, Request, Query, HTTPException, status
 from fastapi.responses import FileResponse
@@ -17,6 +18,8 @@ from app.api.v1.deps import get_current_user
 router = APIRouter(prefix="/receipts", tags=["Receipts"])
 
 MAX_RECEIPT_SIZE = 10 * 1024 * 1024  # 10 MB limit
+MAX_CONCURRENT_UPLOADS = 10          # Finding 7: Protects against memory exhaustion under burst traffic
+upload_semaphore = asyncio.Semaphore(MAX_CONCURRENT_UPLOADS)
 
 
 async def read_stream_with_size_limit(upload: UploadFile, max_size: int = MAX_RECEIPT_SIZE) -> bytes:
@@ -120,15 +123,17 @@ async def analyze_receipt(
     Receipt extraction inspector.
     Available to all authenticated personnel (Employee, Admin, Reviewer, Finance)
     to parse receipts and auto-fill expense details.
+    Finding 7: Throttled by upload_semaphore to prevent memory exhaustion under load.
     """
-    content = await read_stream_with_size_limit(file, MAX_RECEIPT_SIZE)
-    validate_receipt_upload(content, file.filename or "receipt.jpg", file.content_type)
-    res = await AIReceiptScanner.analyze_receipt(
-        file_bytes=content,
-        filename=file.filename or "receipt.jpg",
-        content_type=file.content_type or "image/jpeg"
-    )
-    return res
+    async with upload_semaphore:
+        content = await read_stream_with_size_limit(file, MAX_RECEIPT_SIZE)
+        validate_receipt_upload(content, file.filename or "receipt.jpg", file.content_type)
+        res = await AIReceiptScanner.analyze_receipt(
+            file_bytes=content,
+            filename=file.filename or "receipt.jpg",
+            content_type=file.content_type or "image/jpeg"
+        )
+        return res
 
 
 @router.post("/upload")
@@ -140,20 +145,21 @@ async def direct_upload_receipt(
     """
     Direct multipart/form-data upload handler.
     Stores directly in Cloudflare R2 if configured, or saves to local disk.
-    Guarantees no CORS or localhost:8000 URL mismatch issues.
+    Finding 7: Throttled by upload_semaphore to prevent memory exhaustion under load.
     """
-    content = await read_stream_with_size_limit(file, MAX_RECEIPT_SIZE)
-    content_type = file.content_type or "image/jpeg"
-    validate_receipt_upload(content, file.filename or "receipt.jpg", content_type)
-    res = storage_service.upload_file_bytes(
-        filename=file.filename or "receipt.jpg",
-        content=content,
-        content_type=content_type
-    )
-    if res["url"].startswith("/"):
-        base_url = str(request.base_url).rstrip("/")
-        res["url"] = f"{base_url}{res['url']}"
-    return res
+    async with upload_semaphore:
+        content = await read_stream_with_size_limit(file, MAX_RECEIPT_SIZE)
+        content_type = file.content_type or "image/jpeg"
+        validate_receipt_upload(content, file.filename or "receipt.jpg", content_type)
+        res = storage_service.upload_file_bytes(
+            filename=file.filename or "receipt.jpg",
+            content=content,
+            content_type=content_type
+        )
+        if res["url"].startswith("/"):
+            base_url = str(request.base_url).rstrip("/")
+            res["url"] = f"{base_url}{res['url']}"
+        return res
 
 
 @router.post("/presigned-upload", response_model=PresignedUploadResponse)
@@ -190,15 +196,17 @@ async def local_upload(
     """
     Finding 2 Fix: Authenticated upload handler for local storage.
     Guards against path traversal and validates content.
+    Finding 7: Throttled by upload_semaphore.
     """
     clean_key = os.path.basename(key)
     if ".." in key or clean_key != key:
         raise HTTPException(status_code=400, detail="Invalid receipt key.")
 
-    content = await read_request_body_with_size_limit(request, MAX_RECEIPT_SIZE)
-    validate_receipt_upload(content, clean_key, "application/octet-stream")
-    storage_service.save_local_file(clean_key, content)
-    return {"message": "File uploaded successfully", "key": clean_key}
+    async with upload_semaphore:
+        content = await read_request_body_with_size_limit(request, MAX_RECEIPT_SIZE)
+        validate_receipt_upload(content, clean_key, "application/octet-stream")
+        storage_service.save_local_file(clean_key, content)
+        return {"message": "File uploaded successfully", "key": clean_key}
 
 
 @router.get("/download")
@@ -208,8 +216,8 @@ async def download_file(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Finding 2 & 11 Fix: Serve locally stored receipt file with strict authentication,
-    ownership verification, and path traversal defense.
+    Finding 4 & 11 Fix: Serve locally stored receipt file with strict authentication,
+    exact storage-key ownership verification, and path traversal defense.
     """
     clean_key = os.path.basename(key)
     if ".." in key or clean_key != key:
@@ -221,14 +229,29 @@ async def download_file(
 
     # Privileged roles (Admin, Finance, Reviewer) can view all corporate receipts for review/audit
     if current_user.role not in [UserRole.ADMIN, UserRole.FINANCE, UserRole.REVIEWER]:
-        # Regular employee: Verify ownership of the expense associated with this receipt
+        # Regular employee: Verify ownership with exact key matching rather than substring matching (Finding 4)
         res = await db.execute(
             select(Expense).where(
-                Expense.receipt_url.like(f"%{clean_key}%")
+                (Expense.receipt_storage_key == clean_key) |
+                (Expense.receipt_url == clean_key) |
+                (Expense.receipt_url == f"/api/v1/receipts/download?key={clean_key}") |
+                (Expense.receipt_url == f"receipts/{clean_key}")
             )
         )
         expense = res.scalars().first()
-        # Finding 11: Fail closed by default if no expense record exists or not owned by current employee
+        if not expense:
+            # Fallback exact key matching using storage key extractor
+            u_expenses = (await db.execute(
+                select(Expense).where(Expense.submitted_by == current_user.id)
+            )).scalars().all()
+            for exp in u_expenses:
+                if exp.receipt_url:
+                    extracted = storage_service.extract_key_from_url(exp.receipt_url)
+                    if extracted and os.path.basename(extracted) == clean_key:
+                        expense = exp
+                        break
+
+        # Finding 4 & 11: Fail closed by default if no verified expense ownership exists
         if not expense:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,

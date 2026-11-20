@@ -138,6 +138,7 @@ class Expense(Base):
     amount = Column(Numeric(12, 2), nullable=False)
     currency = Column(String(3), default="INR", nullable=False)
     receipt_url = Column(String(1024), nullable=True)
+    receipt_storage_key = Column(String(255), nullable=True, index=True)
     receipt_hash = Column(String(64), nullable=True, index=True)
     status = Column(Enum(ExpenseStatus), default=ExpenseStatus.DRAFT, nullable=False, index=True)
     approval_tier_required = Column(Integer, default=1, nullable=False)  # 1 or 2

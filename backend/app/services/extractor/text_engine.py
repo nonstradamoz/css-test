@@ -1,20 +1,43 @@
 import io
 import os
 import re
+import multiprocessing
 import concurrent.futures
 from typing import Tuple, Optional
 from pypdf import PdfReader
 from PIL import Image, ImageEnhance, ImageFilter
 
-# Security: Sandboxing & Resource Limits for Document Processing (Findings 6 & 7)
+# Security: Sandboxing & Resource Limits for Document Processing (Findings 3, 6, 7 & 9)
 Image.MAX_IMAGE_PIXELS = 25_000_000  # Decompression bomb defense
 MAX_PDF_PAGES = 10                  # Prevent PDF bomb denial of service
-MAX_PDF_SIZE = 5 * 1024 * 1024      # Finding 7: 5MB maximum file size for PDFs
-MAX_IMAGE_FILE_SIZE = 10 * 1024 * 1024  # Finding 6: 10MB maximum file size for images
+MAX_PDF_SIZE = 5 * 1024 * 1024      # 5MB maximum file size for PDFs
+MAX_IMAGE_FILE_SIZE = 10 * 1024 * 1024  # 10MB maximum file size for images
 MAX_IMAGE_DIMENSION = 5000          # Maximum width/height in pixels
 MAX_IMAGE_HARD_LIMIT = 8000         # Immediate rejection threshold to prevent memory allocation attacks
-PDF_TIMEOUT_SECONDS = 5.0           # Finding 7: 5s timeout on PDF parsing
-OCR_TIMEOUT_SECONDS = 10.0          # Finding 6: 10s timeout on image OCR
+PDF_TIMEOUT_SECONDS = 5.0           # Strict timeout on PDF parsing process
+OCR_TIMEOUT_SECONDS = 10.0          # Strict timeout on image OCR subprocess
+
+
+def _isolated_pdf_worker(data: bytes, max_pages: int, conn) -> None:
+    """
+    Isolated worker process for PDF parsing (Finding 3).
+    Executes in a separate OS process so any infinite loops or memory spikes
+    can be killed with proc.terminate() without destabilizing the server.
+    """
+    try:
+        reader = PdfReader(io.BytesIO(data))
+        text_parts = []
+        pages_to_process = reader.pages[:max_pages]
+        for page in pages_to_process:
+            page_text = page.extract_text()
+            if page_text:
+                text_parts.append(page_text)
+        full_text = "\n".join(text_parts).strip()
+        conn.send(("SUCCESS", full_text))
+    except Exception as exc:
+        conn.send(("ERROR", f"PDF_ERROR_{type(exc).__name__}"))
+    finally:
+        conn.close()
 
 try:
     import pytesseract
@@ -59,7 +82,8 @@ class DocumentTextEngine:
     def _extract_from_pdf(cls, file_bytes: bytes) -> Tuple[str, str, float]:
         """
         Extract digital text layers from a PDF document.
-        Finding 7: Validates file size ceiling, enforces parser timeout, and safely handles malformed PDFs.
+        Finding 3: Moves PDF parsing into an isolated worker process.
+        Terminates and kills the process if timeout is exceeded, reclaiming memory and CPU.
         """
         if not file_bytes:
             return "", "PDF_EMPTY", 0.0
@@ -67,28 +91,38 @@ class DocumentTextEngine:
         if len(file_bytes) > MAX_PDF_SIZE:
             return "", "PDF_ERROR_OVERSIZED", 0.0
 
-        def _do_parse() -> str:
-            reader = PdfReader(io.BytesIO(file_bytes))
-            text_parts = []
-            # Resource limit: only process first MAX_PDF_PAGES to prevent DoS
-            pages_to_process = reader.pages[:MAX_PDF_PAGES]
-            for page in pages_to_process:
-                page_text = page.extract_text()
-                if page_text:
-                    text_parts.append(page_text)
-            return "\n".join(text_parts).strip()
-
         try:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(_do_parse)
-                full_text = future.result(timeout=PDF_TIMEOUT_SECONDS)
+            ctx = multiprocessing.get_context("fork" if hasattr(os, "fork") else "spawn")
+            parent_conn, child_conn = ctx.Pipe(duplex=False)
+            proc = ctx.Process(
+                target=_isolated_pdf_worker,
+                args=(file_bytes, MAX_PDF_PAGES, child_conn)
+            )
+            proc.start()
+            child_conn.close()
 
-            if full_text and len(full_text) > 10:
-                return full_text, "PDF_STREAM", 0.98
+            proc.join(timeout=PDF_TIMEOUT_SECONDS)
 
-            return "", "PDF_SCANNED_NO_OCR", 0.50
-        except concurrent.futures.TimeoutError:
-            return "", "PDF_ERROR_TIMEOUT", 0.0
+            if proc.is_alive():
+                # Finding 3: Forcibly kill worker process when timeout exceeded
+                proc.terminate()
+                proc.join(timeout=0.5)
+                if proc.is_alive():
+                    proc.kill()
+                parent_conn.close()
+                return "", "PDF_ERROR_TIMEOUT", 0.0
+
+            if parent_conn.poll():
+                status_code, payload = parent_conn.recv()
+                parent_conn.close()
+                if status_code == "SUCCESS":
+                    if payload and len(payload) > 10:
+                        return payload, "PDF_STREAM", 0.98
+                    return "", "PDF_SCANNED_NO_OCR", 0.50
+                return "", payload, 0.30
+
+            parent_conn.close()
+            return "", "PDF_ERROR_WORKER_DIED", 0.0
         except Exception as e:
             return "", f"PDF_ERROR_{type(e).__name__}", 0.30
 
@@ -96,8 +130,8 @@ class DocumentTextEngine:
     def _extract_from_image(cls, file_bytes: bytes, filename: str) -> Tuple[str, str, float]:
         """
         Process image with Pillow and run Tesseract OCR.
-        Finding 6: Validates file size, lazy dimension limits, pixel count limits,
-        and thread execution timeout to prevent resource exhaustion attacks.
+        Findings 6 & 9: Validates file size, lazy dimensions, decompression bombs,
+        and malformed byte streams with resource isolation.
         """
         if not file_bytes:
             return "", "IMAGE_EMPTY", 0.0
@@ -108,8 +142,26 @@ class DocumentTextEngine:
         try:
             # Open lazily without decoding all pixel arrays immediately
             stream = io.BytesIO(file_bytes)
-            with Image.open(stream) as img_probe:
+            try:
+                img_probe = Image.open(stream)
+            except Image.DecompressionBombError:
+                return "", "IMAGE_ERROR_DECOMPRESSION_BOMB", 0.0
+            except Exception as probe_err:
+                return "", f"IMAGE_ERROR_MALFORMED_{type(probe_err).__name__}", 0.0
+
+            with img_probe:
                 width, height = img_probe.size
+                total_pixels = width * height
+
+                # Finding 9: Pre-decode dimension and pixel limit checks
+                if total_pixels > Image.MAX_IMAGE_PIXELS:
+                    return "", "IMAGE_ERROR_DECOMPRESSION_BOMB", 0.0
+
+                if width > MAX_IMAGE_HARD_LIMIT or height > MAX_IMAGE_HARD_LIMIT:
+                    return "", "IMAGE_ERROR_DIMENSION_LIMIT", 0.0
+
+                # Copy image buffer for manipulation
+                image = img_probe.copy()
                 total_pixels = width * height
 
                 # Finding 6: Pre-decode dimension and pixel limit checks

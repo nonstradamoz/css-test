@@ -71,34 +71,74 @@ def require_role(allowed_roles: List[UserRole]):
     return _role_checker
 
 
-SENSITIVE_AUDIT_KEYS = {
-    "password", "hashed_password", "token", "secret", "access_token",
-    "refresh_token", "jwt", "client_secret", "credential", "cvv",
-    "cvc", "pin", "api_key", "apikey", "auth_header", "bearer",
-    "authorization", "private_key", "cookie"
+import re
+
+# Exact normalized sensitive keys to redact completely (Finding 8)
+EXACT_REDACT_KEYS = {
+    # Passwords & Hashes
+    "password", "hashed_password", "pass_hash", "password_hash", "passwd", "pwd",
+    "user_password", "current_password", "new_password",
+    # Tokens & JWTs
+    "token", "access_token", "refresh_token", "id_token", "jwt", "jwt_token",
+    "auth_token", "session_token", "bearer_token", "raw_refresh_token",
+    # Secrets & Keys
+    "secret", "client_secret", "jwt_secret", "jwt_secret_key", "secret_key",
+    "api_key", "apikey", "private_key", "priv_key", "secret_access_key", "app_secret",
+    # Credentials & Auth
+    "credential", "credentials", "auth_header", "authorization", "bearer", "cookie", "cookies",
+    # Card Security Codes
+    "cvv", "cvc", "cvv2", "security_code", "card_pin", "pin", "mpin"
 }
 
-MASKED_PII_KEYS = {
-    "account_number", "acc_no", "account_no", "bank_account", "iban",
-    "routing_number", "ifsc", "ifsc_code", "upi_id", "upi",
-    "card_number", "credit_card", "pan", "pan_number", "aadhaar",
-    "aadhaar_number", "ssn", "tax_id", "national_id", "phone",
-    "mobile", "phone_number"
+# Exact normalized PII & Financial keys to mask (Finding 8)
+EXACT_MASK_KEYS = {
+    # Bank & Financial accounts
+    "account_number", "acc_no", "account_no", "acc_num", "bank_account",
+    "bank_account_number", "bank_acc_no", "iban", "routing_number",
+    # Payment codes & UPI
+    "ifsc", "ifsc_code", "upi_id", "upi", "vpa",
+    # Payment cards
+    "card_number", "credit_card", "debit_card", "card_no", "card_num", "cc_number",
+    # Government IDs & Tax Numbers
+    "pan", "pan_number", "pan_no", "aadhaar", "aadhaar_number", "aadhaar_no",
+    "ssn", "tax_id", "national_id", "social_security_number",
+    # Personal Phone / Mobile
+    "phone", "mobile", "phone_number", "mobile_number", "contact_number", "telephone", "cell_phone"
 }
+
+
+def _is_sensitive_key(k_norm: str) -> bool:
+    """Check exact normalized key or standard sensitive suffix"""
+    if k_norm in EXACT_REDACT_KEYS:
+        return True
+    suffixes = ("_password", "_secret", "_token", "_jwt", "_api_key", "_private_key", "_cvv", "_pin", "_credential")
+    return any(k_norm.endswith(sfx) for sfx in suffixes)
+
+
+def _is_masked_pii_key(k_norm: str) -> bool:
+    """Check exact normalized key or standard PII suffix"""
+    if k_norm in EXACT_MASK_KEYS:
+        return True
+    suffixes = (
+        "_account_number", "_acc_no", "_account_no", "_ifsc", "_ifsc_code",
+        "_upi_id", "_pan", "_aadhaar", "_ssn", "_card_number", "_phone", "_mobile"
+    )
+    return any(k_norm.endswith(sfx) for sfx in suffixes)
 
 
 def sanitize_audit_data(data: Any) -> Any:
     """
-    Finding 4: Recursively scrub credentials, API keys, tokens, and mask PII
-    (bank accounts, IFSC, UPI, PAN, Aadhaar, SSN, phone numbers) from audit trails.
+    Finding 8: Normalized exact-field matching with comprehensive sensitive fields
+    and composite alias support. Prevents false positive substring matches (e.g. 'company', 'expand')
+    while guaranteeing full redaction/masking of deeply nested sensitive payloads.
     """
     if isinstance(data, dict):
         sanitized = {}
         for k, v in data.items():
-            k_lower = str(k).lower()
-            if any(s in k_lower for s in SENSITIVE_AUDIT_KEYS):
+            k_norm = re.sub(r"[^a-z0-9]+", "_", str(k).lower().strip()).strip("_")
+            if _is_sensitive_key(k_norm):
                 sanitized[k] = "[REDACTED]"
-            elif any(p == k_lower or p in k_lower for p in MASKED_PII_KEYS):
+            elif _is_masked_pii_key(k_norm):
                 val_str = str(v) if v is not None else ""
                 if len(val_str) > 4:
                     sanitized[k] = f"****{val_str[-4:]}"

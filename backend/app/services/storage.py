@@ -8,6 +8,9 @@ from app.core.config import settings
 UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "uploads")
 
 
+MAX_PRESIGNED_EXPIRATION_SECONDS = 900  # Finding 6: 15-minute hard ceiling
+
+
 class StorageService:
     """
     Cloudflare R2 Object Storage Service (S3-Compatible)
@@ -114,11 +117,11 @@ class StorageService:
                 "Key": key,
                 "ContentType": content_type
             },
-            ExpiresIn=3600  # 1 hour
+            ExpiresIn=MAX_PRESIGNED_EXPIRATION_SECONDS
         )
 
-        # Security Finding 5: Generate short-lived presigned download URLs (15 minutes / 900s)
-        signed_download_url = self.generate_presigned_download(key, expires_in=900)
+        # Security Finding 5 & 6: Generate short-lived presigned download URLs (clamped to 900s)
+        signed_download_url = self.generate_presigned_download(key, expires_in=MAX_PRESIGNED_EXPIRATION_SECONDS)
 
         return {
             "upload_url": upload_url,
@@ -128,7 +131,12 @@ class StorageService:
         }
 
     def generate_presigned_download(self, key: str, expires_in: int = 900) -> str:
-        """Generate pre-signed GET URL for downloading receipt (Finding 5: 15-minute default TTL)"""
+        """
+        Generate pre-signed GET URL for downloading receipt.
+        Finding 6: Enforces a strict ceiling of 900 seconds (15 minutes),
+        regardless of caller-supplied value.
+        """
+        safe_expires = min(max(60, expires_in), MAX_PRESIGNED_EXPIRATION_SECONDS)
         if not self.is_configured():
             return f"http://localhost:8000/api/v1/receipts/download?key={key}"
 
@@ -138,7 +146,7 @@ class StorageService:
                 "Bucket": self.bucket,
                 "Key": key
             },
-            ExpiresIn=expires_in
+            ExpiresIn=safe_expires
         )
 
     def extract_key_from_url(self, file_url_or_key: str) -> Optional[str]:

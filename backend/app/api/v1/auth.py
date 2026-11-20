@@ -299,10 +299,19 @@ async def google_login(
     """
     Authenticate via Google OAuth / Google Identity Services ID Token / Access Token.
     Verifies token with Google servers, provisions user if new, and returns active JWT session.
+    Finding 2: Mandatory GOOGLE_CLIENT_ID in production, strict audience, signature,
+    issuer, expiry, and email_verified validation.
     """
     token = data.id_token or data.credential
     user_email = None
     user_name = None
+    is_prod = settings.ENVIRONMENT == "production"
+
+    if is_prod and not settings.GOOGLE_CLIENT_ID:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Google Client ID must be configured in production."
+        )
 
     # Development/testing mock token support (STRICTLY disabled in production)
     is_non_prod = settings.ENVIRONMENT in ["development", "test"]
@@ -319,10 +328,25 @@ async def google_login(
                     info = resp.json()
                     is_verified = info.get("email_verified") is True or info.get("email_verified") == "true"
                     valid_iss = info.get("iss") in ["accounts.google.com", "https://accounts.google.com"]
-                    valid_aud = (not settings.GOOGLE_CLIENT_ID) or (info.get("aud") == settings.GOOGLE_CLIENT_ID)
+
+                    # Finding 2: Strict audience validation against configured GOOGLE_CLIENT_ID
+                    aud = info.get("aud")
+                    if settings.GOOGLE_CLIENT_ID:
+                        valid_aud = (aud == settings.GOOGLE_CLIENT_ID)
+                    else:
+                        valid_aud = (not is_prod) and bool(aud)
+
+                    # Finding 2: Expiration verification
+                    exp_val = info.get("exp")
+                    now_ts = time.time()
+                    try:
+                        is_not_expired = float(exp_val) > now_ts if exp_val else False
+                    except (TypeError, ValueError):
+                        is_not_expired = False
+
                     has_email = bool(info.get("email"))
-                    # Finding 12: Strict conjunction (AND) across signature/status, iss, aud, email_verified, and email
-                    if is_verified and valid_iss and valid_aud and has_email:
+                    # Finding 2: Strict conjunction across signature, issuer, audience, expiry, and verified email
+                    if is_verified and valid_iss and valid_aud and is_not_expired and has_email:
                         user_email = info.get("email")
                         user_name = info.get("name") or info.get("email", "").split("@")[0]
         except Exception as e:
@@ -340,7 +364,7 @@ async def google_login(
                     info = resp.json()
                     is_verified = info.get("email_verified") is True or info.get("email_verified") == "true"
                     has_email = bool(info.get("email"))
-                    # Finding 12: Require verified email
+                    # Finding 2: Require verified email
                     if is_verified and has_email:
                         user_email = info.get("email")
                         user_name = info.get("name") or info.get("email", "").split("@")[0]
