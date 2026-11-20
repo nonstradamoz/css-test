@@ -154,7 +154,7 @@ async def google_oauth_login(request: Request):
             detail="Google Authentication Client ID is not configured on the backend server."
         )
     base_url = str(request.base_url).rstrip("/")
-    redirect_uri = f"{base_url}/api/v1/auth/google/callback"
+    redirect_uri = settings.GOOGLE_REDIRECT_URI or os.getenv("GOOGLE_REDIRECT_URI") or f"{base_url}/api/v1/auth/google/callback"
     scope = "openid%20email%20profile"
     oauth_state = secrets.token_urlsafe(32)
     auth_url = (
@@ -204,7 +204,7 @@ async def google_oauth_callback(
     client_id = settings.GOOGLE_CLIENT_ID or os.getenv("GOOGLE_CLIENT_ID", "")
     client_secret = settings.GOOGLE_CLIENT_SECRET or os.getenv("GOOGLE_CLIENT_SECRET", "")
     base_url = str(request.base_url).rstrip("/")
-    redirect_uri = f"{base_url}/api/v1/auth/google/callback"
+    redirect_uri = settings.GOOGLE_REDIRECT_URI or os.getenv("GOOGLE_REDIRECT_URI") or f"{base_url}/api/v1/auth/google/callback"
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:

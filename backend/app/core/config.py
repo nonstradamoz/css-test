@@ -53,6 +53,7 @@ class Settings(BaseSettings):
     # Google OAuth Authentication
     GOOGLE_CLIENT_ID: Optional[str] = None
     GOOGLE_CLIENT_SECRET: Optional[str] = None
+    GOOGLE_REDIRECT_URI: Optional[str] = None
     
     def validate_production_security(self) -> None:
         """
