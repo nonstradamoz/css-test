@@ -72,13 +72,21 @@ def auto_migrate_schema(sync_conn):
 async def lifespan(app: FastAPI):
     import app.core.database as db_module
 
-    # Startup: Ensure database tables are created & updated (with graceful SQLite fallback if Postgres is down)
+    # Startup: Ensure database tables are created & updated
     try:
         async with db_module.engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
             await conn.run_sync(auto_migrate_schema)
     except Exception as exc:
-        print(f"[STARTUP WARN] Primary DB connection/migration failed: {exc}. Switching to SQLite fallback...")
+        # Security: Production MUST fail closed when primary database is unreachable.
+        # Silent SQLite fallback is strictly prohibited in production.
+        if settings.ENVIRONMENT == "production" and not settings.ALLOW_SQLITE_FALLBACK:
+            print(f"[FATAL ERROR] Primary database connection failed in production: {exc}")
+            raise RuntimeError(
+                f"Primary database connection failed in production: {exc}. "
+                "Silent SQLite fallback is prohibited in production."
+            )
+        print(f"[STARTUP WARN] Primary DB connection/migration failed: {exc}. Switching to SQLite fallback (development only)...")
         db_module.switch_to_sqlite_fallback()
         async with db_module.engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
@@ -145,7 +153,8 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS Middleware
+# CORS Middleware: Explicitly allowlist verified origins.
+# Broad cloud wildcard patterns (*.vercel.app, *.onrender.com) are strictly prohibited.
 origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
@@ -154,12 +163,16 @@ origins = [
 if settings.CORS_ORIGINS:
     origins.extend([o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()])
 
+cors_regex = None
+if settings.ENVIRONMENT == "development":
+    cors_regex = r"^http://(localhost|127\.0\.0\.1)(:\d+)?$"
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-    allow_origin_regex=r"https://.*\.vercel\.app|https://.*\.onrender\.com|http://localhost:\d+|http://127\.0\.0\.1:\d+",
+    allow_origin_regex=cors_regex,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 

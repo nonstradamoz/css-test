@@ -10,19 +10,26 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.models import User, UserRole, AuditLog
 
-security_scheme = HTTPBearer(auto_error=True)
+security_scheme = HTTPBearer(auto_error=False)
 
 
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Security(security_scheme),
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Security(security_scheme),
     db: AsyncSession = Depends(get_db)
 ) -> User:
-    token = credentials.credentials
+    token = credentials.credentials if credentials else None
+    if not token:
+        # Finding 4: Secure cookie fallback for HttpOnly session authentication
+        token = request.cookies.get("access_token")
+
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    if not token:
+        raise credentials_exception
     try:
         payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
         user_id: str = payload.get("sub")

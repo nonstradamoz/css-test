@@ -5,13 +5,18 @@ from app.models import UserRole
 
 
 async def ensure_admin(client):
-    """Ensure at least one admin is registered so subsequent users default to requested roles."""
+    """Ensure at least one admin is registered and return admin headers."""
     await client.post("/api/v1/auth/register", json={
         "email": "root.admin@crs-corp.com",
         "full_name": "Root Admin",
         "password": "Password123!",
         "role": "ADMIN"
     })
+    l_res = await client.post("/api/v1/auth/login", json={
+        "email": "root.admin@crs-corp.com",
+        "password": "Password123!"
+    })
+    return {"Authorization": f"Bearer {l_res.json()['access_token']}"}
 
 
 @pytest.mark.asyncio
@@ -121,9 +126,9 @@ async def test_feature2_admin_reviewer_export_csv_with_links(client):
 @pytest.mark.asyncio
 async def test_feature3_reviewer_disburse_and_reviews(client):
     """Feature 3: Reviewer role has full review and payout disbursement capability."""
-    await ensure_admin(client)
-    # Register Reviewer
-    await client.post("/api/v1/auth/register", json={
+    admin_headers = await ensure_admin(client)
+    # Admin provisions Reviewer via /users
+    await client.post("/api/v1/users", headers=admin_headers, json={
         "email": "finance.reviewer@crs-corp.com",
         "full_name": "Finance Reviewer",
         "password": "Password123!",
@@ -224,7 +229,7 @@ async def test_feature7_google_authentication(client):
     """Feature 7: Google Authentication via POST /api/v1/auth/google."""
     await ensure_admin(client)
     google_payload = {
-        "email": "sarah.connor@enterprisegoogle.com",
+        "id_token": "mock_google_id_token_sarah.connor@enterprisegoogle.com",
         "full_name": "Sarah Connor"
     }
     res = await client.post("/api/v1/auth/google", json=google_payload)

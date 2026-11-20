@@ -7,10 +7,11 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Error: POSTGRES_PASSWORD must be provided in .env}
       POSTGRES_DB: ${POSTGRES_DB:-crs_db}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      # Bound to loopback interface only to prevent exposure on public network
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -24,7 +25,8 @@ services:
     container_name: crs-redis
     restart: unless-stopped
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      # Bound to loopback interface only to prevent exposure on public network
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -42,9 +44,9 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-crs_db}
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?Error: POSTGRES_PASSWORD must be provided}@postgres:5432/${POSTGRES_DB:-crs_db}
       - REDIS_URL=redis://redis:6379/0
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-change-this-in-production-super-secret-jwt-key-min-32-bytes}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:?Error: JWT_SECRET_KEY must be provided in .env}
       - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
       - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES:-15}
       - REFRESH_TOKEN_EXPIRE_DAYS=${REFRESH_TOKEN_EXPIRE_DAYS:-7}
@@ -71,7 +73,7 @@ services:
     command: celery -A app.workers.celery_app worker --loglevel=info
     restart: unless-stopped
     environment:
-      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-crs_db}
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?Error: POSTGRES_PASSWORD must be provided}@postgres:5432/${POSTGRES_DB:-crs_db}
       - REDIS_URL=redis://redis:6379/0
       - MOCK_REFUND_OUTCOME=${MOCK_REFUND_OUTCOME:-SUCCESS}
     depends_on:

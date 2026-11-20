@@ -43,9 +43,18 @@ async def list_reimbursements(
         selectinload(Reimbursement.expense).selectinload(Expense.submitter)
     )
 
-    # RBAC filtering: Employees only view their own claims' reimbursements
-    if current_user.role == UserRole.EMPLOYEE:
+    # Finding 10 Security Fix: Restrict enterprise-wide reimbursement access explicitly to ADMIN, FINANCE, and REVIEWER.
+    # Regular EMPLOYEE accounts are strictly scoped to their own claims.
+    # Any other/unrecognized roles fail closed with 403 Forbidden.
+    if current_user.role in [UserRole.ADMIN, UserRole.FINANCE, UserRole.REVIEWER]:
+        pass
+    elif current_user.role == UserRole.EMPLOYEE:
         query = query.where(Expense.submitted_by == current_user.id)
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied: You do not have permission to view reimbursement records."
+        )
 
     if status_filter:
         query = query.where(Reimbursement.status == status_filter)

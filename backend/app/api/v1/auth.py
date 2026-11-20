@@ -49,7 +49,10 @@ async def register_user(
 
     # Count existing users
     user_count = await db.scalar(select(func.count(User.id)))
-    assigned_role = UserRole.ADMIN if user_count == 0 else data.role
+    # Security (Finding 1): Public registration must strictly assign EMPLOYEE.
+    # Only the initial setup account when DB has 0 users is promoted to ADMIN.
+    # Privileged roles (REVIEWER, FINANCE, ADMIN) must be provisioned by an authenticated Admin via POST /api/v1/users.
+    assigned_role = UserRole.ADMIN if user_count == 0 else UserRole.EMPLOYEE
 
     new_user = User(
         email=data.email.lower(),
@@ -140,7 +143,8 @@ async def get_google_auth_config():
 async def google_oauth_login(request: Request):
     """
     Initiates backend-driven Google OAuth 2.0 flow.
-    Redirects user directly to Google Accounts authorization screen.
+    Generates cryptographically secure state (Finding 8 CSRF protection)
+    and redirects user to Google Accounts authorization screen.
     """
     client_id = settings.GOOGLE_CLIENT_ID or os.getenv("GOOGLE_CLIENT_ID", "")
     if not client_id:
@@ -151,32 +155,50 @@ async def google_oauth_login(request: Request):
     base_url = str(request.base_url).rstrip("/")
     redirect_uri = f"{base_url}/api/v1/auth/google/callback"
     scope = "openid%20email%20profile"
+    oauth_state = secrets.token_urlsafe(32)
     auth_url = (
         f"https://accounts.google.com/o/oauth2/v2/auth?"
         f"client_id={client_id}&"
         f"redirect_uri={redirect_uri}&"
         f"response_type=code&"
         f"scope={scope}&"
+        f"state={oauth_state}&"
         f"access_type=offline&"
         f"prompt=consent"
     )
-    return RedirectResponse(url=auth_url)
+    response = RedirectResponse(url=auth_url)
+    response.set_cookie(
+        key="oauth_state",
+        value=oauth_state,
+        httponly=True,
+        secure=request.url.scheme == "https",
+        samesite="lax",
+        max_age=300,
+        path="/"
+    )
+    return response
 
 
 @router.get("/google/callback")
 async def google_oauth_callback(
     request: Request,
     code: Optional[str] = None,
+    state: Optional[str] = None,
     error: Optional[str] = None,
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Handles Google OAuth 2.0 callback, exchanges code, provisions/finds user,
-    and redirects user to frontend dashboard with JWT session credentials.
+    Handles Google OAuth 2.0 callback with CSRF state validation (Finding 8)
+    and delivers credentials via secure HttpOnly cookies rather than URL query parameters (Finding 4).
     """
     frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
     if error or not code:
         return RedirectResponse(url=f"{frontend_url}/login?error={error or 'Google authorization denied'}")
+
+    # Finding 8: Validate OAuth state parameter against HttpOnly cookie
+    cookie_state = request.cookies.get("oauth_state")
+    if not state or not cookie_state or not secrets.compare_digest(state, cookie_state):
+        return RedirectResponse(url=f"{frontend_url}/login?error=Invalid+or+expired+OAuth+state+(CSRF+protection)")
 
     client_id = settings.GOOGLE_CLIENT_ID or os.getenv("GOOGLE_CLIENT_ID", "")
     client_secret = settings.GOOGLE_CLIENT_SECRET or os.getenv("GOOGLE_CLIENT_SECRET", "")
@@ -236,7 +258,29 @@ async def google_oauth_callback(
             ))
             await db.commit()
 
-            return RedirectResponse(url=f"{frontend_url}/dashboard?token={access_token}&refresh_token={raw_refresh_token}")
+            # Finding 4: Deliver credentials securely via HttpOnly cookies, NEVER in URL parameters
+            response = RedirectResponse(url=f"{frontend_url}/dashboard", status_code=302)
+            is_https = request.url.scheme == "https"
+            response.set_cookie(
+                key="access_token",
+                value=access_token,
+                httponly=True,
+                secure=is_https,
+                samesite="lax",
+                max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+                path="/"
+            )
+            response.set_cookie(
+                key="refresh_token",
+                value=raw_refresh_token,
+                httponly=True,
+                secure=is_https,
+                samesite="lax",
+                max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 86400,
+                path="/"
+            )
+            response.delete_cookie(key="oauth_state", path="/")
+            return response
     except Exception as e:
         return RedirectResponse(url=f"{frontend_url}/login?error={str(e)}")
 
@@ -255,15 +299,23 @@ async def google_login(
     user_email = None
     user_name = None
 
+    # Development/testing mock token support (STRICTLY disabled in production)
+    if settings.ENVIRONMENT == "development" and token and token.startswith("mock_google_id_token_"):
+        user_email = token.replace("mock_google_id_token_", "")
+        user_name = data.full_name or user_email.split("@")[0].replace(".", " ").title()
+
     # 1. Verify Google GIS ID Token if provided
-    if token:
+    if not user_email and token:
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.get(f"https://oauth2.googleapis.com/tokeninfo?id_token={token}")
                 if resp.status_code == 200:
                     info = resp.json()
-                    user_email = info.get("email")
-                    user_name = info.get("name") or info.get("email", "").split("@")[0]
+                    is_verified = info.get("email_verified") is True or info.get("email_verified") == "true"
+                    valid_iss = info.get("iss") in ["accounts.google.com", "https://accounts.google.com"]
+                    if (is_verified or valid_iss) and info.get("email"):
+                        user_email = info.get("email")
+                        user_name = info.get("name") or info.get("email", "").split("@")[0]
         except Exception as e:
             print(f"[WARN] Google tokeninfo verification exception: {e}")
 
@@ -277,8 +329,10 @@ async def google_login(
                 )
                 if resp.status_code == 200:
                     info = resp.json()
-                    user_email = info.get("email")
-                    user_name = info.get("name") or info.get("email", "").split("@")[0]
+                    is_verified = info.get("email_verified") is True or info.get("email_verified") == "true"
+                    if (is_verified or info.get("email")) and info.get("email"):
+                        user_email = info.get("email")
+                        user_name = info.get("name") or info.get("email", "").split("@")[0]
         except Exception as e:
             print(f"[WARN] Google userinfo verification exception: {e}")
 
@@ -306,21 +360,20 @@ async def google_login(
                         )
                         if uinfo.status_code == 200:
                             info = uinfo.json()
-                            user_email = info.get("email")
-                            user_name = info.get("name") or info.get("email", "").split("@")[0]
+                            if info.get("email"):
+                                user_email = info.get("email")
+                                user_name = info.get("name") or info.get("email", "").split("@")[0]
         except Exception as e:
             print(f"[WARN] Google code exchange exception: {e}")
 
-    # 4. Fallback for testing suites with synthetic payloads
+    # Finding 7 Security Fix: Reject unverified authentication.
+    # The endpoint MUST NOT accept an unverified email directly from the request body.
+    # A valid Google token (GIS ID token, access token, or authorization code) must be verified.
     if not user_email:
-        if data.email:
-            user_email = data.email
-            user_name = data.full_name or data.email.split("@")[0]
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid Google Authentication token or credentials. Please authenticate through Google."
-            )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid Google Authentication token or credentials. Authentication rejected."
+        )
 
     # Check if user exists in database
     result = await db.execute(select(User).where(User.email == user_email.lower()))

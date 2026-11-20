@@ -492,7 +492,8 @@ async def test_drafts_privacy_from_admins_and_reviewers(client):
     # 1. Login Admin, Reviewer, and Employee
     admin_headers = await ensure_admin(client)
 
-    await client.post("/api/v1/auth/register", json={
+    # Admin provisions Reviewer via /users
+    await client.post("/api/v1/users", headers=admin_headers, json={
         "email": "v2.reviewer.draft@crs-corp.com",
         "full_name": "V2 Reviewer Draft",
         "password": "Password123!",
@@ -644,7 +645,7 @@ async def test_google_auth_endpoint_and_config(client):
     # 3. Valid synthetic payload for testing provisions new Google employee
     google_email = f"emp.google.{uuid.uuid4().hex[:6]}@company.com"
     auth_res = await client.post("/api/v1/auth/google", json={
-        "email": google_email,
+        "id_token": f"mock_google_id_token_{google_email}",
         "full_name": "Google User Verified"
     })
     assert auth_res.status_code == 200
