@@ -18,6 +18,8 @@ from app.api.v1.settings import router as settings_router
 from app.api.v1.audit_logs import router as audit_logs_router
 from app.api.v1.receipts import router as receipts_router
 from app.api.v1.categories import router as categories_router
+from app.api.v1.notifications import router as notifications_router
+from app.api.v1.vendors import router as vendors_router
 
 
 def auto_migrate_schema(sync_conn):
@@ -55,6 +57,7 @@ def auto_migrate_schema(sync_conn):
             ("audit_exemption_reason", "TEXT"),
             ("receipt_hash", "VARCHAR(64)"),
             ("receipt_storage_key", "VARCHAR(255)"),
+            ("vendor_id", "VARCHAR(36)"),
         ],
     }
 
@@ -260,6 +263,8 @@ app.include_router(settings_router, prefix=settings.API_V1_STR)
 app.include_router(audit_logs_router, prefix=settings.API_V1_STR)
 app.include_router(receipts_router, prefix=settings.API_V1_STR)
 app.include_router(categories_router, prefix=settings.API_V1_STR)
+app.include_router(notifications_router, prefix=settings.API_V1_STR)
+app.include_router(vendors_router, prefix=settings.API_V1_STR)
 
 # Resilient route aliases (/auth and /api/*) to avoid 404s when frontend or proxy omits /v1
 app.include_router(auth_router, prefix="", include_in_schema=False)
@@ -271,6 +276,8 @@ app.include_router(users_router, prefix="/api", include_in_schema=False)
 app.include_router(settings_router, prefix="/api", include_in_schema=False)
 app.include_router(receipts_router, prefix="/api", include_in_schema=False)
 app.include_router(categories_router, prefix="/api", include_in_schema=False)
+app.include_router(notifications_router, prefix="/api", include_in_schema=False)
+app.include_router(vendors_router, prefix="/api", include_in_schema=False)
 
 
 @app.get("/", include_in_schema=False)

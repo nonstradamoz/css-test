@@ -46,6 +46,8 @@ export default function ExpenseDetailPage() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['expenses-list'] }),
         queryClient.invalidateQueries({ queryKey: ['approvals-list'] }),
+        queryClient.invalidateQueries({ queryKey: ['pending-reviews'] }),
+        queryClient.invalidateQueries({ queryKey: ['notifications-list'] }),
         queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] })
       ]);
       router.push('/expenses');
@@ -76,6 +78,8 @@ export default function ExpenseDetailPage() {
         refetch(),
         queryClient.invalidateQueries({ queryKey: ['expenses-list'] }),
         queryClient.invalidateQueries({ queryKey: ['approvals-list'] }),
+        queryClient.invalidateQueries({ queryKey: ['pending-reviews'] }),
+        queryClient.invalidateQueries({ queryKey: ['notifications-list'] }),
         queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] })
       ]);
     } catch (err: any) {
@@ -123,6 +127,8 @@ export default function ExpenseDetailPage() {
         refetch(),
         queryClient.invalidateQueries({ queryKey: ['expenses-list'] }),
         queryClient.invalidateQueries({ queryKey: ['approvals-list'] }),
+        queryClient.invalidateQueries({ queryKey: ['pending-reviews'] }),
+        queryClient.invalidateQueries({ queryKey: ['notifications-list'] }),
         queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] })
       ]);
     } catch (err: any) {
@@ -148,7 +154,7 @@ export default function ExpenseDetailPage() {
   const isAccepted = ['APPROVED', 'REIMBURSED'].includes(expense.status);
   const canDelete = role === 'ADMIN' || (isOwner && !isAccepted);
   const canReviewTier1 = ['ADMIN', 'REVIEWER'].includes(role || '') && expense.status === 'SUBMITTED';
-  const canReviewTier2 = ['ADMIN', 'REVIEWER', 'FINANCE'].includes(role || '') && expense.status === 'UNDER_REVIEW';
+  const canReviewTier2 = ['ADMIN', 'FINANCE'].includes(role || '') && expense.status === 'UNDER_REVIEW';
   const canDisburse = ['ADMIN', 'REVIEWER', 'FINANCE'].includes(role || '') && expense.status === 'APPROVED';
 
   // Cross-verification & audit metrics for reviewing personnel
@@ -908,7 +914,7 @@ export default function ExpenseDetailPage() {
       {(canReviewTier1 || canReviewTier2) && (
         <div className="bg-white border border-neutral-200/80 rounded-2xl p-6 shadow-sm space-y-4">
           <h2 className="text-sm font-bold text-neutral-900">
-            {canReviewTier1 ? 'Tier 1 Review (Reviewer / Admin)' : 'Tier 2 Secondary Review (Finance / Admin)'}
+            {canReviewTier1 ? 'Tier 1 Review (Reviewer)' : 'Tier 2 Final Approval (Admin)'}
           </h2>
 
           {/* Mandatory Audit Exemption input for HIGH risk */}

@@ -16,6 +16,7 @@ from app.models import (
 )
 from app.schemas import ApprovalActionRequest, ExpenseOut, ExpenseApprovalOut
 from app.services.state_machine import ExpenseStateMachine, StateMachineError
+from app.services.notification_service import notify_reviewer_action, notify_admin_action
 from app.api.v1.deps import get_current_user, require_role, log_audit_event
 
 router = APIRouter(prefix="/approvals", tags=["Approvals"])
@@ -25,6 +26,7 @@ router = APIRouter(prefix="/approvals", tags=["Approvals"])
 async def list_pending_approvals(
     search: Optional[str] = Query(None),
     category_filter: Optional[str] = Query(None, alias="category"),
+    tier: Optional[int] = Query(None, ge=1, le=2),
     sort_by: Optional[str] = Query("created_at"),
     sort_order: Optional[str] = Query("desc"),
     current_user: User = Depends(require_role([UserRole.ADMIN, UserRole.REVIEWER, UserRole.FINANCE])),
@@ -32,9 +34,8 @@ async def list_pending_approvals(
 ):
     """
     List expense claims awaiting approval matching the reviewer's permission level:
-    - REVIEWER: Tier-1 pending claims (status SUBMITTED, current_approval_tier 0)
-    - FINANCE: Tier-2 secondary approval claims (status UNDER_REVIEW, current_approval_tier 1)
-    - ADMIN: All pending claims across Tier 1 and Tier 2
+    - REVIEWER: Tier-1 pending claims (status SUBMITTED)
+    - FINANCE / ADMIN: Tier-2 pending claims (status UNDER_REVIEW) or filtered by tier
     """
     query = select(Expense).join(
         User, Expense.submitted_by == User.id, isouter=True
@@ -44,7 +45,13 @@ async def list_pending_approvals(
         selectinload(Expense.reimbursement)
     )
 
-    if current_user.role in (UserRole.REVIEWER, UserRole.FINANCE, UserRole.ADMIN):
+    if tier == 1:
+        query = query.where(Expense.status == ExpenseStatus.SUBMITTED)
+    elif tier == 2:
+        query = query.where(Expense.status == ExpenseStatus.UNDER_REVIEW)
+    elif current_user.role == UserRole.REVIEWER:
+        query = query.where(Expense.status == ExpenseStatus.SUBMITTED)
+    else:
         query = query.where(
             Expense.status.in_([ExpenseStatus.SUBMITTED, ExpenseStatus.UNDER_REVIEW])
         )
@@ -174,6 +181,11 @@ async def review_expense(
         },
         ip_address=request.client.host if request.client else None
     )
+
+    if tier_recorded == 1:
+        await notify_reviewer_action(db, expense, current_user, action.decision, action.comments)
+    else:
+        await notify_admin_action(db, expense, current_user, action.decision, action.comments)
 
     if expense.submitter:
         expense.submitter_name = expense.submitter.full_name

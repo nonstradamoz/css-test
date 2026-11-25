@@ -17,7 +17,12 @@ import {
   CategoryUpdate,
   ReceiptAnalysisResponse,
   ForensicsPreviewResponse,
-  BankDetails
+  BankDetails,
+  NotificationItem,
+  NotificationListResponse,
+  Vendor,
+  VendorCreate,
+  VendorUpdate
 } from '../types';
 
 function getNormalizedApiBase(): string {
@@ -190,6 +195,8 @@ class ApiClient {
     list: async (params?: {
       status?: ExpenseStatus;
       category?: string;
+      vendor_only?: boolean;
+      vendor_id?: string;
       search?: string;
       sort_by?: string;
       sort_order?: string;
@@ -197,6 +204,8 @@ class ApiClient {
       const query = new URLSearchParams();
       if (params?.status) query.set('status', params.status);
       if (params?.category) query.set('category', params.category);
+      if (params?.vendor_only) query.set('vendor_only', 'true');
+      if (params?.vendor_id) query.set('vendor_id', params.vendor_id);
       if (params?.search) query.set('search', params.search);
       if (params?.sort_by) query.set('sort_by', params.sort_by);
       if (params?.sort_order) query.set('sort_order', params.sort_order);
@@ -329,12 +338,14 @@ class ApiClient {
     listPending: async (params?: {
       search?: string;
       category?: string;
+      tier?: number;
       sort_by?: string;
       sort_order?: string;
     }): Promise<Expense[]> => {
       const query = new URLSearchParams();
       if (params?.search) query.set('search', params.search);
       if (params?.category) query.set('category', params.category);
+      if (params?.tier) query.set('tier', String(params.tier));
       if (params?.sort_by) query.set('sort_by', params.sort_by);
       if (params?.sort_order) query.set('sort_order', params.sort_order);
       const qs = query.toString();
@@ -348,6 +359,64 @@ class ApiClient {
       return this.request<Expense>(`/approvals/${expenseId}/review`, {
         method: 'POST',
         body: JSON.stringify(action)
+      });
+    }
+  };
+
+  // ==================== NOTIFICATIONS ====================
+  public notifications = {
+    list: async (limit = 30): Promise<NotificationListResponse> => {
+      return this.request<NotificationListResponse>(`/notifications?limit=${limit}`);
+    },
+
+    getUnreadCount: async (): Promise<{ unread_count: number }> => {
+      return this.request<{ unread_count: number }>('/notifications/unread-count');
+    },
+
+    markAsRead: async (notificationId: string): Promise<NotificationItem> => {
+      return this.request<NotificationItem>(`/notifications/${notificationId}/read`, {
+        method: 'PATCH'
+      });
+    },
+
+    markAllAsRead: async (): Promise<{ unread_count: number }> => {
+      return this.request<{ unread_count: number }>('/notifications/mark-all-read', {
+        method: 'POST'
+      });
+    }
+  };
+
+  // ==================== VENDORS ====================
+  public vendors = {
+    list: async (params?: { search?: string; active_only?: boolean }): Promise<Vendor[]> => {
+      const query = new URLSearchParams();
+      if (params?.search) query.set('search', params.search);
+      if (params?.active_only) query.set('active_only', 'true');
+      const qs = query.toString();
+      return this.request<Vendor[]>(`/vendors${qs ? `?${qs}` : ''}`);
+    },
+
+    get: async (vendorId: string): Promise<Vendor> => {
+      return this.request<Vendor>(`/vendors/${vendorId}`);
+    },
+
+    create: async (data: VendorCreate): Promise<Vendor> => {
+      return this.request<Vendor>('/vendors', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      });
+    },
+
+    update: async (vendorId: string, data: VendorUpdate): Promise<Vendor> => {
+      return this.request<Vendor>(`/vendors/${vendorId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data)
+      });
+    },
+
+    delete: async (vendorId: string): Promise<void> => {
+      return this.request<void>(`/vendors/${vendorId}`, {
+        method: 'DELETE'
       });
     }
   };

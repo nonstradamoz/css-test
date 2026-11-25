@@ -13,7 +13,7 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.models import Expense, ExpenseStatus, ExpenseCategory, ExpenseCategoryModel, User, UserRole, SystemSettings
+from app.models import Expense, ExpenseStatus, ExpenseCategory, ExpenseCategoryModel, User, UserRole, SystemSettings, Vendor
 from app.schemas import (
     ExpenseCreate, ExpenseUpdate, ExpenseOut,
     ForensicsPreviewRequest, ForensicsPreviewResponse
@@ -22,6 +22,7 @@ from app.services.duplicate_detector import DuplicateDetector
 from app.services.forensics_engine import ForensicsEngine
 from app.services.state_machine import ExpenseStateMachine, StateMachineError
 from app.services.storage import storage_service
+from app.services.notification_service import notify_claim_submitted
 from app.api.v1.deps import get_current_user, require_role, log_audit_event
 
 router = APIRouter(prefix="/expenses", tags=["Expenses"])
@@ -123,10 +124,40 @@ async def get_or_create_system_settings(db: AsyncSession) -> SystemSettings:
     return settings_obj
 
 
+def _enrich_expense_out(exp: Expense, current_user: User) -> None:
+    """Populate submitter/vendor display metadata and privacy-scoped banking details."""
+    if exp.vendor:
+        exp.vendor_id = exp.vendor.id
+        exp.vendor_name = exp.vendor.name
+        exp.submitter_name = f"Vendor: {exp.vendor.name}"
+        exp.submitter_email = exp.vendor.email or (exp.submitter.email if exp.submitter else None)
+        v_bd = exp.vendor.bank_details or {}
+        has_vbd = bool((v_bd.get("account_number") and (v_bd.get("ifsc_code") or v_bd.get("bank_name"))) or v_bd.get("upi_id"))
+        exp.submitter_has_bank_details = has_vbd
+        if current_user.role in (UserRole.ADMIN, UserRole.REVIEWER, UserRole.FINANCE):
+            exp.submitter_bank_details = v_bd if has_vbd else None
+        else:
+            exp.submitter_bank_details = None
+    elif exp.submitter:
+        exp.submitter_name = exp.submitter.full_name
+        exp.submitter_email = exp.submitter.email
+        bd = exp.submitter.bank_details or {}
+        has_bd = bool((bd.get("account_number") and (bd.get("ifsc_code") or bd.get("bank_name"))) or bd.get("upi_id"))
+        exp.submitter_has_bank_details = has_bd
+        if current_user.role in (UserRole.ADMIN, UserRole.REVIEWER, UserRole.FINANCE):
+            exp.submitter_bank_details = bd if has_bd else None
+        else:
+            exp.submitter_bank_details = None
+    if current_user.role == UserRole.EMPLOYEE and exp.submitted_by != current_user.id:
+        exp.extracted_metadata = None
+
+
 @router.get("", response_model=List[ExpenseOut])
 async def list_expenses(
     status_filter: Optional[ExpenseStatus] = Query(None, alias="status"),
     category_filter: Optional[str] = Query(None, alias="category"),
+    vendor_only: Optional[bool] = Query(None),
+    vendor_id: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
     sort_by: Optional[str] = Query("created_at"),
     sort_order: Optional[str] = Query("desc"),
@@ -143,6 +174,7 @@ async def list_expenses(
         User, Expense.submitted_by == User.id, isouter=True
     ).options(
         selectinload(Expense.submitter),
+        selectinload(Expense.vendor),
         selectinload(Expense.approvals),
         selectinload(Expense.reimbursement)
     )
@@ -165,6 +197,12 @@ async def list_expenses(
 
     if category_filter and category_filter != "ALL":
         query = query.where(Expense.category == category_filter.upper())
+
+    if vendor_only:
+        query = query.where(Expense.vendor_id.isnot(None))
+
+    if vendor_id:
+        query = query.where(Expense.vendor_id == vendor_id)
 
     if search and search.strip():
         search_fmt = f"%{search.strip()}%"
@@ -196,20 +234,9 @@ async def list_expenses(
     result = await db.execute(query)
     expenses = result.scalars().all()
 
-    # Populate submitter metadata and enforce extraction privacy for employees
+    # Populate submitter/vendor metadata and enforce extraction privacy for employees
     for exp in expenses:
-        if exp.submitter:
-            exp.submitter_name = exp.submitter.full_name
-            exp.submitter_email = exp.submitter.email
-            bd = exp.submitter.bank_details or {}
-            has_bd = bool((bd.get("account_number") and (bd.get("ifsc_code") or bd.get("bank_name"))) or bd.get("upi_id"))
-            exp.submitter_has_bank_details = has_bd
-            if current_user.role in (UserRole.ADMIN, UserRole.REVIEWER, UserRole.FINANCE):
-                exp.submitter_bank_details = bd if has_bd else None
-            else:
-                exp.submitter_bank_details = None
-        if current_user.role == UserRole.EMPLOYEE and exp.submitted_by != current_user.id:
-            exp.extracted_metadata = None
+        _enrich_expense_out(exp, current_user)
 
     return expenses
 
@@ -256,8 +283,30 @@ async def create_expense(
             raise HTTPException(status_code=404, detail="Designated employee account not found.")
         submitter_user = target_user
 
-    # Mandatory bank details check upon submission for target employee
-    if submit_now and submitter_user.role == UserRole.EMPLOYEE:
+    # Vendor bill validation (Admin only)
+    target_vendor: Optional[Vendor] = None
+    if data.vendor_id:
+        if current_user.role != UserRole.ADMIN:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only Admins can submit vendor bills."
+            )
+        v_res = await db.execute(select(Vendor).where(Vendor.id == data.vendor_id))
+        target_vendor = v_res.scalars().first()
+        if not target_vendor:
+            raise HTTPException(status_code=404, detail="Selected vendor profile not found.")
+        if not target_vendor.is_active:
+            raise HTTPException(status_code=400, detail="Selected vendor profile is inactive.")
+        v_bd = target_vendor.bank_details or {}
+        has_vbd = bool((v_bd.get("account_number") and (v_bd.get("ifsc_code") or v_bd.get("bank_name"))) or v_bd.get("upi_id"))
+        if submit_now and not has_vbd:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Submission locked: Banking details are required for vendor '{target_vendor.name}' before submitting a bill."
+            )
+
+    # Mandatory bank details check upon submission for target employee (skipped for vendor bills)
+    if submit_now and not target_vendor and submitter_user.role == UserRole.EMPLOYEE:
         bd = submitter_user.bank_details or {}
         has_bd = bool((bd.get("account_number") and (bd.get("ifsc_code") or bd.get("bank_name"))) or bd.get("upi_id"))
         if not has_bd:
@@ -365,18 +414,24 @@ async def create_expense(
         forensic_flags=forensic_eval["flags"],
         extracted_metadata=extracted_meta,
         category_details=category_details,
+        vendor_id=target_vendor.id if target_vendor else None,
         status=ExpenseStatus.DRAFT
     )
 
     if submit_now:
-        ExpenseStateMachine.transition_to_submitted(
-            new_expense,
-            threshold=settings_obj.tier2_approval_threshold,
-            multi_tier_enabled=settings_obj.multi_tier_approval_enabled
-        )
-        # If forensics flagged smurfing, policy violations, or out-of-window date, escalate to Tier 2 (if multi-tier enabled)
-        if forensic_eval["will_escalate_tier2"] and settings_obj.multi_tier_approval_enabled:
+        if target_vendor and data.auto_approve_vendor_bill:
             new_expense.approval_tier_required = 2
+            new_expense.current_approval_tier = 2
+            new_expense.status = ExpenseStatus.APPROVED
+        else:
+            ExpenseStateMachine.transition_to_submitted(
+                new_expense,
+                threshold=settings_obj.tier2_approval_threshold,
+                multi_tier_enabled=settings_obj.multi_tier_approval_enabled
+            )
+            # If forensics flagged smurfing, policy violations, or out-of-window date, escalate to Tier 2 (if multi-tier enabled)
+            if forensic_eval["will_escalate_tier2"] and settings_obj.multi_tier_approval_enabled:
+                new_expense.approval_tier_required = 2
 
     db.add(new_expense)
     await db.flush()
@@ -384,20 +439,17 @@ async def create_expense(
     # Re-fetch with relationships
     result = await db.execute(
         select(Expense)
-        .options(selectinload(Expense.submitter), selectinload(Expense.approvals), selectinload(Expense.reimbursement))
+        .options(
+            selectinload(Expense.submitter),
+            selectinload(Expense.vendor),
+            selectinload(Expense.approvals),
+            selectinload(Expense.reimbursement)
+        )
         .where(Expense.id == new_expense.id)
     )
     created = result.scalars().first()
-    if created and created.submitter:
-        created.submitter_name = created.submitter.full_name
-        created.submitter_email = created.submitter.email
-        bd = created.submitter.bank_details or {}
-        has_bd = bool((bd.get("account_number") and (bd.get("ifsc_code") or bd.get("bank_name"))) or bd.get("upi_id"))
-        created.submitter_has_bank_details = has_bd
-        if current_user.role in (UserRole.ADMIN, UserRole.REVIEWER, UserRole.FINANCE):
-            created.submitter_bank_details = bd if has_bd else None
-        else:
-            created.submitter_bank_details = None
+    if created:
+        _enrich_expense_out(created, current_user)
 
     await log_audit_event(
         db=db,
@@ -408,6 +460,9 @@ async def create_expense(
         new_values={"title": new_expense.title, "amount": str(new_expense.amount), "status": new_expense.status.value},
         ip_address=request.client.host if request.client else None
     )
+
+    if submit_now and created and created.status == ExpenseStatus.SUBMITTED:
+        await notify_claim_submitted(db, created, created.submitter or current_user)
 
     return created
 
@@ -611,6 +666,7 @@ async def get_expense(
         select(Expense)
         .options(
             selectinload(Expense.submitter),
+            selectinload(Expense.vendor),
             selectinload(Expense.approvals),
             selectinload(Expense.reimbursement)
         )
@@ -634,19 +690,7 @@ async def get_expense(
                 detail="Draft expense claims are private to the user and cannot be viewed by admins or reviewers."
             )
 
-    if expense.submitter:
-        expense.submitter_name = expense.submitter.full_name
-        expense.submitter_email = expense.submitter.email
-        bd = expense.submitter.bank_details or {}
-        has_bd = bool((bd.get("account_number") and (bd.get("ifsc_code") or bd.get("bank_name"))) or bd.get("upi_id"))
-        expense.submitter_has_bank_details = has_bd
-        if current_user.role in (UserRole.ADMIN, UserRole.REVIEWER, UserRole.FINANCE):
-            expense.submitter_bank_details = bd if has_bd else None
-        else:
-            expense.submitter_bank_details = None
-
-    if current_user.role == UserRole.EMPLOYEE and expense.submitted_by != current_user.id:
-        expense.extracted_metadata = None
+    _enrich_expense_out(expense, current_user)
 
     return expense
 
@@ -843,6 +887,8 @@ async def submit_expense(
         },
         ip_address=request.client.host if request.client else None
     )
+
+    await notify_claim_submitted(db, expense, expense.submitter or current_user)
 
     return await get_expense(expense_id, current_user, db)
 

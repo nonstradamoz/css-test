@@ -22,7 +22,7 @@ def make_expense(amount: float, status: ExpenseStatus = ExpenseStatus.DRAFT) -> 
 
 def test_transition_to_submitted_single_tier():
     exp = make_expense(5000.00)
-    ExpenseStateMachine.transition_to_submitted(exp, threshold=Decimal("25000.00"))
+    ExpenseStateMachine.transition_to_submitted(exp, threshold=Decimal("25000.00"), multi_tier_enabled=False)
     assert exp.status == ExpenseStatus.SUBMITTED
     assert exp.approval_tier_required == 1
     assert exp.current_approval_tier == 0
@@ -30,7 +30,7 @@ def test_transition_to_submitted_single_tier():
 
 def test_transition_to_submitted_multi_tier():
     exp = make_expense(35000.00)
-    ExpenseStateMachine.transition_to_submitted(exp, threshold=Decimal("25000.00"))
+    ExpenseStateMachine.transition_to_submitted(exp, threshold=Decimal("25000.00"), multi_tier_enabled=True)
     assert exp.status == ExpenseStatus.SUBMITTED
     assert exp.approval_tier_required == 2
     assert exp.current_approval_tier == 0
@@ -38,7 +38,7 @@ def test_transition_to_submitted_multi_tier():
 
 def test_single_tier_approval_flow():
     exp = make_expense(5000.00)
-    ExpenseStateMachine.transition_to_submitted(exp, threshold=Decimal("25000.00"))
+    ExpenseStateMachine.transition_to_submitted(exp, threshold=Decimal("25000.00"), multi_tier_enabled=False)
     
     # Reviewer approves Tier 1
     new_status, tier = ExpenseStateMachine.evaluate_approval(
@@ -53,7 +53,7 @@ def test_single_tier_approval_flow():
 
 def test_multi_tier_approval_flow():
     exp = make_expense(50000.00)
-    ExpenseStateMachine.transition_to_submitted(exp, threshold=Decimal("25000.00"))
+    ExpenseStateMachine.transition_to_submitted(exp, threshold=Decimal("25000.00"), multi_tier_enabled=True)
     assert exp.approval_tier_required == 2
 
     # Tier 1 approval by Reviewer
@@ -66,18 +66,24 @@ def test_multi_tier_approval_flow():
     assert tier1 == 1
     assert exp.current_approval_tier == 1
 
-    # Tier 2 attempt by unauthorized role (EMPLOYEE) must fail
+    # Tier 2 attempt by unauthorized roles (EMPLOYEE or REVIEWER) must fail
     with pytest.raises(StateMachineError):
         ExpenseStateMachine.evaluate_approval(
             exp,
             reviewer_role=UserRole.EMPLOYEE,
             decision=ApprovalDecision.APPROVED
         )
+    with pytest.raises(StateMachineError):
+        ExpenseStateMachine.evaluate_approval(
+            exp,
+            reviewer_role=UserRole.REVIEWER,
+            decision=ApprovalDecision.APPROVED
+        )
 
-    # Tier 2 approval by Reviewer / Finance succeeds
+    # Tier 2 final approval by Admin succeeds
     status2, tier2 = ExpenseStateMachine.evaluate_approval(
         exp,
-        reviewer_role=UserRole.REVIEWER,
+        reviewer_role=UserRole.ADMIN,
         decision=ApprovalDecision.APPROVED
     )
     assert status2 == ExpenseStatus.APPROVED

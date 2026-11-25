@@ -7,7 +7,7 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import {
   LayoutDashboard, Receipt, PlusCircle, CheckSquare,
   CreditCard, Users, ScrollText, Settings,
-  ShieldCheck, LogOut, User, X
+  ShieldCheck, LogOut, User, X, ClipboardCheck, Building2
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Role } from '@/types';
@@ -23,7 +23,7 @@ const NAV_ITEMS: Record<string, { label: string; href: string; icon: any }[]> = 
   REVIEWER: [
     { label: 'Dashboard',       href: '/dashboard',      icon: LayoutDashboard },
     { label: 'All Expenses',    href: '/expenses',       icon: Receipt },
-    { label: 'Approvals Queue', href: '/approvals',      icon: CheckSquare },
+    { label: 'Review Queue',    href: '/reviews',        icon: ClipboardCheck },
     { label: 'Reimbursements',  href: '/reimbursements', icon: CreditCard },
     { label: 'My Profile',      href: '/profile',        icon: User }
   ],
@@ -38,6 +38,8 @@ const NAV_ITEMS: Record<string, { label: string; href: string; icon: any }[]> = 
   ADMIN: [
     { label: 'Dashboard',       href: '/dashboard',      icon: LayoutDashboard },
     { label: 'Expenses',        href: '/expenses',       icon: Receipt },
+    { label: 'Vendor Bills',    href: '/vendors',        icon: Building2 },
+    { label: 'Review Queue',    href: '/reviews',        icon: ClipboardCheck },
     { label: 'Approvals Queue', href: '/approvals',      icon: CheckSquare },
     { label: 'Reimbursements',  href: '/reimbursements', icon: CreditCard },
     { label: 'User Management', href: '/users',          icon: Users },
@@ -59,7 +61,7 @@ const MOBILE_BOTTOM_NAV: Record<string, { label: string; href: string; icon: any
   REVIEWER: [
     { label: 'Home',      href: '/dashboard',      icon: LayoutDashboard },
     { label: 'Expenses',  href: '/expenses',       icon: Receipt },
-    { label: 'Approvals', href: '/approvals',      icon: CheckSquare },
+    { label: 'Reviews',   href: '/reviews',        icon: ClipboardCheck },
     { label: 'Payouts',   href: '/reimbursements', icon: CreditCard },
     { label: 'Profile',   href: '/profile',        icon: User }
   ],

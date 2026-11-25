@@ -7,7 +7,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Error: POSTGRES_PASSWORD must be provided in .env}
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Error: POSTGRES_PASSWORD must be provided in .env}"
       POSTGRES_DB: ${POSTGRES_DB:-crs_db}
     # Security: Database port is strictly isolated to internal container network (not published to host)
     expose:
@@ -15,7 +15,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-crs_db}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-crs_db}" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -24,14 +24,14 @@ services:
     image: redis:7-alpine
     container_name: crs-redis
     restart: unless-stopped
-    command: redis-server --requirepass ${REDIS_PASSWORD:?Error: REDIS_PASSWORD must be provided in .env}
+    command: "redis-server --requirepass ${REDIS_PASSWORD:?Error: REDIS_PASSWORD must be provided in .env}"
     # Security: Redis port is strictly isolated to internal container network (not published to host)
     expose:
       - "6379"
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:?Error: REDIS_PASSWORD required}", "ping"]
+      test: [ "CMD", "redis-cli", "-a", "${REDIS_PASSWORD:?Error: REDIS_PASSWORD required}", "ping" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -45,9 +45,9 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?Error: POSTGRES_PASSWORD must be provided}@postgres:5432/${POSTGRES_DB:-crs_db}
+      - "DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?Error: POSTGRES_PASSWORD must be provided}@postgres:5432/${POSTGRES_DB:-crs_db}"
       - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY:?Error: JWT_SECRET_KEY must be provided in .env}
+      - "JWT_SECRET_KEY=${JWT_SECRET_KEY:?Error: JWT_SECRET_KEY must be provided in .env}"
       - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
       - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES:-15}
       - REFRESH_TOKEN_EXPIRE_DAYS=${REFRESH_TOKEN_EXPIRE_DAYS:-7}
@@ -74,7 +74,7 @@ services:
     command: celery -A app.workers.celery_app worker --loglevel=info
     restart: unless-stopped
     environment:
-      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?Error: POSTGRES_PASSWORD must be provided}@postgres:5432/${POSTGRES_DB:-crs_db}
+      - "DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?Error: POSTGRES_PASSWORD must be provided}@postgres:5432/${POSTGRES_DB:-crs_db}"
       - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
       - MOCK_REFUND_OUTCOME=${MOCK_REFUND_OUTCOME:-SUCCESS}
     depends_on:

@@ -177,6 +177,8 @@ class ExpenseCreate(BaseModel):
     extracted_metadata: Optional[Dict[str, Any]] = None
     category_details: Optional[Dict[str, Any]] = None
     on_behalf_of_user_id: Optional[str] = Field(None, description="Admin/Reviewer can submit on behalf of an employee")
+    vendor_id: Optional[str] = Field(None, description="Optional vendor profile ID when submitting a vendor bill")
+    auto_approve_vendor_bill: bool = Field(False, description="Admin option to directly approve a vendor bill for payout")
 
 
 class ExpenseUpdate(BaseModel):
@@ -218,6 +220,8 @@ class ExpenseOut(BaseModel):
     submitter_email: Optional[str] = None
     submitter_has_bank_details: bool = False
     submitter_bank_details: Optional[Dict[str, Any]] = None
+    vendor_id: Optional[str] = None
+    vendor_name: Optional[str] = None
     approvals: List[ExpenseApprovalOut] = []
     reimbursement: Optional[ReimbursementOut] = None
 
@@ -363,5 +367,85 @@ class AuditLogOut(BaseModel):
     new_values: Optional[Dict[str, Any]]
     ip_address: Optional[str]
     created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ==================== Notification Schemas ====================
+
+class NotificationOut(BaseModel):
+    id: str
+    user_id: str
+    title: str
+    message: str
+    type: str
+    link: Optional[str] = None
+    is_read: bool
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class NotificationListOut(BaseModel):
+    items: List[NotificationOut]
+    unread_count: int
+
+
+class UnreadCountOut(BaseModel):
+    unread_count: int
+
+
+# ==================== Vendor Schemas ====================
+
+class VendorBankDetails(BaseModel):
+    account_holder_name: str = Field(..., min_length=2, max_length=255)
+    bank_name: str = Field(..., min_length=2, max_length=255)
+    account_number: str = Field(..., min_length=4, max_length=64)
+    ifsc_code: str = Field(..., min_length=4, max_length=32)
+    upi_id: Optional[str] = None
+
+    model_config = ConfigDict(extra="allow")
+
+
+class VendorCreate(BaseModel):
+    name: str = Field(..., min_length=2, max_length=255)
+    contact_person: Optional[str] = None
+    email: Optional[EmailStr] = None
+    phone: Optional[str] = None
+    gstin: Optional[str] = None
+    pan: Optional[str] = None
+    address: Optional[str] = None
+    default_category: Optional[str] = None
+    bank_details: VendorBankDetails
+
+
+class VendorUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=2, max_length=255)
+    contact_person: Optional[str] = None
+    email: Optional[EmailStr] = None
+    phone: Optional[str] = None
+    gstin: Optional[str] = None
+    pan: Optional[str] = None
+    address: Optional[str] = None
+    default_category: Optional[str] = None
+    bank_details: Optional[VendorBankDetails] = None
+    is_active: Optional[bool] = None
+
+
+class VendorOut(BaseModel):
+    id: str
+    name: str
+    contact_person: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    gstin: Optional[str] = None
+    pan: Optional[str] = None
+    address: Optional[str] = None
+    default_category: Optional[str] = None
+    bank_details: Dict[str, Any] = {}
+    is_active: bool
+    created_by: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

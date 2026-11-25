@@ -151,10 +151,12 @@ class Expense(Base):
     extracted_metadata = Column(JSON, default=dict, nullable=True)
     category_details = Column(JSON, default=dict, nullable=True)
     audit_exemption_reason = Column(Text, nullable=True)
+    vendor_id = Column(String(36), ForeignKey("vendors.id", ondelete="SET NULL"), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
 
     submitter = relationship("User", back_populates="submitted_expenses", foreign_keys=[submitted_by])
+    vendor = relationship("Vendor", back_populates="expenses")
     approvals = relationship("ExpenseApproval", back_populates="expense", cascade="all, delete-orphan", order_by="ExpenseApproval.created_at")
     reimbursement = relationship("Reimbursement", back_populates="expense", uselist=False, cascade="all, delete-orphan")
 
@@ -206,3 +208,39 @@ class AuditLog(Base):
     new_values = Column(JSON, nullable=True)
     ip_address = Column(String(45), nullable=True)
     created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False, index=True)
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    title = Column(String(255), nullable=False)
+    message = Column(Text, nullable=False)
+    type = Column(String(50), nullable=False, default="INFO")
+    link = Column(String(255), nullable=True)
+    is_read = Column(Boolean, default=False, nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False, index=True)
+
+    user = relationship("User", backref="notifications")
+
+
+class Vendor(Base):
+    __tablename__ = "vendors"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    name = Column(String(255), nullable=False, index=True)
+    contact_person = Column(String(255), nullable=True)
+    email = Column(String(255), nullable=True)
+    phone = Column(String(50), nullable=True)
+    gstin = Column(String(50), nullable=True)
+    pan = Column(String(50), nullable=True)
+    address = Column(Text, nullable=True)
+    default_category = Column(String(64), nullable=True)
+    bank_details = Column(JSON, nullable=False, default=dict)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_by = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+
+    expenses = relationship("Expense", back_populates="vendor")

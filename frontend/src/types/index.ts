@@ -45,6 +45,8 @@ export type PresignedUploadResponse = components["schemas"]["PresignedUploadResp
 export type ExpenseCreate = components["schemas"]["ExpenseCreate"] & {
   category_details?: Record<string, any> | null;
   on_behalf_of_user_id?: string | null;
+  vendor_id?: string | null;
+  auto_approve_vendor_bill?: boolean;
 };
 export type ExpenseUpdate = components["schemas"]["ExpenseUpdate"] & {
   category_details?: Record<string, any> | null;
@@ -80,3 +82,69 @@ export type ReceiptAnalysisResponse = components["schemas"]["ReceiptAnalysisResp
 export type ExtractedLineItem = components["schemas"]["ExtractedLineItem"];
 export type ForensicsPreviewResponse = components["schemas"]["ForensicsPreviewResponse"];
 export type ForensicFlagItem = components["schemas"]["ForensicFlagItem"];
+
+export interface NotificationItem {
+  id: string;
+  user_id: string;
+  title: string;
+  message: string;
+  type: 'REVIEW_REQUIRED' | 'REVIEW_PASSED' | 'ADMIN_APPROVAL_REQUIRED' | 'CLAIM_APPROVED' | 'CHANGES_REQUESTED' | 'CLAIM_REJECTED' | string;
+  link?: string | null;
+  is_read: boolean;
+  created_at: string;
+}
+
+export interface NotificationListResponse {
+  items: NotificationItem[];
+  unread_count: number;
+}
+
+export interface VendorBankDetails {
+  account_holder_name: string;
+  bank_name: string;
+  account_number: string;
+  ifsc_code: string;
+  upi_id?: string | null;
+}
+
+export interface Vendor {
+  id: string;
+  name: string;
+  contact_person?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  gstin?: string | null;
+  pan?: string | null;
+  address?: string | null;
+  default_category?: string | null;
+  bank_details: VendorBankDetails;
+  is_active: boolean;
+  created_by?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface VendorCreate {
+  name: string;
+  contact_person?: string;
+  email?: string;
+  phone?: string;
+  gstin?: string;
+  pan?: string;
+  address?: string;
+  default_category?: string;
+  bank_details: VendorBankDetails;
+}
+
+export interface VendorUpdate {
+  name?: string;
+  contact_person?: string;
+  email?: string;
+  phone?: string;
+  gstin?: string;
+  pan?: string;
+  address?: string;
+  default_category?: string;
+  bank_details?: VendorBankDetails;
+  is_active?: boolean;
+}

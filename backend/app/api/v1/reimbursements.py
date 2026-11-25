@@ -40,7 +40,8 @@ async def list_reimbursements(
     query = select(Reimbursement).join(
         Expense, Reimbursement.expense_id == Expense.id, isouter=True
     ).options(
-        selectinload(Reimbursement.expense).selectinload(Expense.submitter)
+        selectinload(Reimbursement.expense).selectinload(Expense.submitter),
+        selectinload(Reimbursement.expense).selectinload(Expense.vendor)
     )
 
     # Finding 10 Security Fix: Restrict enterprise-wide reimbursement access explicitly to ADMIN, FINANCE, and REVIEWER.
@@ -88,7 +89,9 @@ async def list_reimbursements(
     for r in reimbursements:
         if r.expense:
             r.expense_title = r.expense.title
-            if r.expense.submitter:
+            if r.expense.vendor:
+                r.submitter_name = f"Vendor: {r.expense.vendor.name}"
+            elif r.expense.submitter:
                 r.submitter_name = r.expense.submitter.full_name
 
     return reimbursements
@@ -124,10 +127,10 @@ async def create_reimbursement(
                 detail="Duplicate transaction detected: Idempotency key has already been processed."
             )
 
-        # Fetch expense with submitter
+        # Fetch expense with submitter and optional vendor
         exp_res = await db.execute(
             select(Expense)
-            .options(selectinload(Expense.submitter))
+            .options(selectinload(Expense.submitter), selectinload(Expense.vendor))
             .where(Expense.id == data.expense_id)
         )
         expense = exp_res.scalars().first()
@@ -140,20 +143,24 @@ async def create_reimbursement(
                 detail=f"Cannot disburse payout: Expense must be in APPROVED status (currently '{expense.status}')."
             )
 
-        # Enforce that employee has configured bank details in their profile
-        submitter = expense.submitter
-        bd = submitter.bank_details if submitter and isinstance(submitter.bank_details, dict) else {}
+        # Enforce that vendor (for vendor bills) or employee has configured bank details
+        if expense.vendor:
+            bd = expense.vendor.bank_details if isinstance(expense.vendor.bank_details, dict) else {}
+            payee_name = f"Vendor '{expense.vendor.name}'"
+        else:
+            submitter = expense.submitter
+            bd = submitter.bank_details if submitter and isinstance(submitter.bank_details, dict) else {}
+            payee_name = submitter.full_name if submitter else "The employee"
+
         has_bank_details = bool(
             (bd.get("account_number") and (bd.get("ifsc_code") or bd.get("bank_name"))) or
             bd.get("upi_id")
         )
         if not has_bank_details:
-            emp_name = submitter.full_name if submitter else "The employee"
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=(
-                    f"Cannot disburse payout: {emp_name} has not provided bank account or UPI details in their profile. "
-                    "The employee must update their profile bank details before disbursement can be initiated."
+                    f"Cannot disburse payout: {payee_name} does not have bank account or UPI details configured."
                 )
             )
 

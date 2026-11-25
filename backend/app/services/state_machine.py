@@ -46,8 +46,9 @@ class ExpenseStateMachine:
                 f"Cannot submit expense from status '{expense.status}'. Only DRAFT or CHANGES_REQUESTED can be submitted."
             )
         
-        # Determine required approval tiers based on multi-tier setting & enterprise threshold
-        if multi_tier_enabled and expense.amount >= threshold:
+        # Two-tier review: when multi-tier approval is enabled, claims go through
+        # Tier 1 (Reviewer) followed by Tier 2 (Admin final approval).
+        if multi_tier_enabled:
             expense.approval_tier_required = 2
         else:
             expense.approval_tier_required = 1
@@ -109,14 +110,14 @@ class ExpenseStateMachine:
                     expense.current_approval_tier = 1
                     return ExpenseStatus.UNDER_REVIEW, 1
 
-            # Tier 2 Approval (Finance / Secondary Reviewer sign-off for high-value claims)
+            # Tier 2 Approval (Admin final sign-off after Reviewer Tier 1 review)
             elif expense.current_approval_tier == 1:
                 if expense.approval_tier_required < 2:
                     raise StateMachineError("Tier-2 approval is not required for this expense.", 400)
                 
-                if reviewer_role not in (UserRole.ADMIN, UserRole.REVIEWER, UserRole.FINANCE):
+                if reviewer_role not in (UserRole.ADMIN, UserRole.FINANCE):
                     raise StateMachineError(
-                        "Tier-2 secondary approval requires REVIEWER, FINANCE, or ADMIN role.",
+                        "Tier-2 final approval must be performed by an ADMIN.",
                         403
                     )
                 

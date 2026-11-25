@@ -109,9 +109,17 @@ async def test_full_lifecycle_api(client):
     assert submit_res.status_code == 200
     exp_data = submit_res.json()
     assert exp_data["status"] == "SUBMITTED"
-    assert exp_data["approval_tier_required"] == 1
+    assert exp_data["approval_tier_required"] == 2
 
-    # 7. Admin reviews and approves claim
+    # 7. Tier 1 review then Tier 2 final Admin approval
+    t1_res = await client.post(
+        f"/api/v1/approvals/{expense_id}/review",
+        json={"decision": "APPROVED", "comments": "Tier 1 reviewed."},
+        headers=admin_headers
+    )
+    assert t1_res.status_code == 200
+    assert t1_res.json()["status"] == "UNDER_REVIEW"
+
     approval_res = await client.post(
         f"/api/v1/approvals/{expense_id}/review",
         json={"decision": "APPROVED", "comments": "Valid client entertainment receipt."},

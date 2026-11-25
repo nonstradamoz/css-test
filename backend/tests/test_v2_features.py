@@ -133,7 +133,7 @@ async def test_admin_date_policy_window_flag_and_escalate(client):
     in_win_data = in_win_res.json()
     flags_in = [f["code"] for f in in_win_data["forensic_flags"]]
     assert "OUT_OF_POLICY_DATE_WINDOW" not in flags_in
-    assert in_win_data["approval_tier_required"] == 1
+    assert in_win_data["approval_tier_required"] == 2
 
     # 4. Employee submits claim OUTSIDE the authorized date window (2026-11-20) -> FLAGGED & ESCALATED TO TIER 2
     out_win_res = await client.post("/api/v1/expenses?submit_now=true", headers=emp_headers, json={
@@ -464,12 +464,18 @@ async def test_behalf_of_submission_and_flexible_deletion(client):
     assert c2_res.status_code == 201
     c2_id = c2_res.json()["id"]
 
-    # Approve the claim
+    # Approve the claim (Tier 1 + Tier 2)
+    appr_t1 = await client.post(f"/api/v1/approvals/{c2_id}/review", headers=admin_headers, json={
+        "decision": "APPROVED",
+        "comments": "Tier 1 reviewed"
+    })
+    assert appr_t1.status_code == 200
     appr_res = await client.post(f"/api/v1/approvals/{c2_id}/review", headers=admin_headers, json={
         "decision": "APPROVED",
         "comments": "Approved on behalf"
     })
     assert appr_res.status_code == 200
+    assert appr_res.json()["status"] == "APPROVED"
 
     # 5. Employee attempts to delete accepted claim -> MUST BE REJECTED (400)
     del_blocked = await client.delete(f"/api/v1/expenses/{c2_id}", headers=emp_headers)

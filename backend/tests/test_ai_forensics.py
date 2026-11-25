@@ -66,7 +66,7 @@ async def test_forensics_smurfing_and_escalation(client):
     })
     assert c1.status_code == 201
     claim1 = c1.json()
-    assert claim1["approval_tier_required"] == 1
+    assert claim1["approval_tier_required"] == 2
 
     # Second claim 1 hour later: ₹23,500 (individual < 25k, but cumulative = ₹47,500 > 25k)
     c2 = await client.post("/api/v1/expenses?submit_now=true", headers=headers, json={

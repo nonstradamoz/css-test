@@ -23,6 +23,7 @@ export default function ApprovalsQueuePage() {
   const [error, setError] = useState<string | null>(null);
 
   // Search, Filter & Sort state
+  const [activeTier, setActiveTier] = useState<2 | 1>(2);
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('ALL');
   const [sortBy, setSortBy] = useState('created_at');
@@ -35,8 +36,9 @@ export default function ApprovalsQueuePage() {
   });
 
   const { data: pendingExpenses = [], isLoading, refetch } = useQuery({
-    queryKey: ['pending-approvals', search, categoryFilter, sortBy, sortOrder],
+    queryKey: ['pending-approvals', activeTier, search, categoryFilter, sortBy, sortOrder],
     queryFn: () => api.approvals.listPending({
+      tier: role === 'REVIEWER' ? 1 : activeTier,
       search: search || undefined,
       category: categoryFilter !== 'ALL' ? categoryFilter : undefined,
       sort_by: sortBy,
@@ -66,6 +68,8 @@ export default function ApprovalsQueuePage() {
       setAuditExemption('');
       await Promise.all([
         refetch(),
+        queryClient.invalidateQueries({ queryKey: ['pending-reviews'] }),
+        queryClient.invalidateQueries({ queryKey: ['notifications-list'] }),
         queryClient.invalidateQueries({ queryKey: ['expenses-list'] }),
         queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] })
       ]);
@@ -79,11 +83,45 @@ export default function ApprovalsQueuePage() {
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-neutral-900 tracking-tight">Approvals Queue</h1>
-        <p className="text-sm text-neutral-500 mt-1">
-          Review, approve, or request modifications for pending employee claims.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold text-neutral-900 tracking-tight">Approvals Queue</h1>
+            <span className="px-2.5 py-0.5 text-xs font-semibold rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+              Tier 2 · Final Admin Sign-Off
+            </span>
+          </div>
+          <p className="text-sm text-neutral-500 mt-1">
+            Grant final administrative approval for claims verified by reviewers, or inspect Tier 1 submissions.
+          </p>
+        </div>
+
+        {role !== 'REVIEWER' && (
+          <div className="inline-flex rounded-xl bg-neutral-100 p-1 border border-neutral-200">
+            <button
+              type="button"
+              onClick={() => setActiveTier(2)}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                activeTier === 2
+                  ? 'bg-white text-neutral-900 shadow-sm'
+                  : 'text-neutral-600 hover:text-neutral-900'
+              }`}
+            >
+              Awaiting Final Approval (Tier 2)
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTier(1)}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                activeTier === 1
+                  ? 'bg-white text-neutral-900 shadow-sm'
+                  : 'text-neutral-600 hover:text-neutral-900'
+              }`}
+            >
+              Awaiting Review (Tier 1)
+            </button>
+          </div>
+        )}
       </div>
 
       {error && (
@@ -224,7 +262,7 @@ export default function ApprovalsQueuePage() {
                           </span>
                         ) : (
                           <span className="px-2 py-0.5 rounded bg-amber-50 text-amber-700 font-semibold border border-amber-200">
-                            Tier 2 (Finance)
+                            Tier 2 (Admin)
                           </span>
                         )}
                       </td>
