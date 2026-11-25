@@ -190,6 +190,24 @@ export default function VendorsPage() {
   const [autoApproveBill, setAutoApproveBill] = useState(true);
   const [isSubmittingBill, setIsSubmittingBill] = useState(false);
 
+  // Dynamic Category Details State (ACCOMMODATION, TRAINING, TRAVEL)
+  const [hotelName, setHotelName] = useState('');
+  const [hotelLocation, setHotelLocation] = useState('');
+  const [checkIn, setCheckIn] = useState('');
+  const [checkOut, setCheckOut] = useState('');
+  const [hotelContact, setHotelContact] = useState('');
+
+  const [certName, setCertName] = useState('');
+  const [certInstitute, setCertInstitute] = useState('');
+  const [certEnrollDate, setCertEnrollDate] = useState('');
+  const [certType, setCertType] = useState('Professional Course');
+
+  const [travelMode, setTravelMode] = useState('Flight');
+  const [travelStartDate, setTravelStartDate] = useState('');
+  const [travelEndDate, setTravelEndDate] = useState('');
+  const [boardingPoint, setBoardingPoint] = useState('');
+  const [arrivalPoint, setArrivalPoint] = useState('');
+
   const handleVendorChange = (id: string) => {
     setSelectedVendorId(id);
     const v = vendors.find((item) => item.id === id);
@@ -246,6 +264,27 @@ export default function VendorsPage() {
         ? `${billTitle.trim()} (Inv: ${invoiceNumber.trim()})`
         : billTitle.trim();
 
+      const catDetails: Record<string, any> = {};
+      if (invoiceNumber.trim()) catDetails.invoice_number = invoiceNumber.trim();
+      if (billCategory === 'ACCOMMODATION') {
+        catDetails.hotel_name = hotelName.trim();
+        catDetails.hotel_location = hotelLocation.trim();
+        catDetails.check_in = checkIn;
+        catDetails.check_out = checkOut;
+        if (hotelContact.trim()) catDetails.contact_number = hotelContact.trim();
+      } else if (billCategory === 'TRAINING') {
+        catDetails.certification_name = certName.trim();
+        catDetails.institute = certInstitute.trim();
+        catDetails.enrollment_date = certEnrollDate;
+        catDetails.certification_type = certType;
+      } else if (billCategory === 'TRAVEL') {
+        catDetails.travel_mode = travelMode;
+        catDetails.start_date = travelStartDate;
+        catDetails.end_date = travelEndDate;
+        catDetails.boarding_point = boardingPoint.trim();
+        catDetails.arrival_point = arrivalPoint.trim();
+      }
+
       await api.expenses.create(
         {
           title: finalTitle,
@@ -257,7 +296,7 @@ export default function VendorsPage() {
           receipt_url: uploadRes.url,
           receipt_hash: undefined,
           extracted_metadata: extractedMeta || undefined,
-          category_details: invoiceNumber.trim() ? { invoice_number: invoiceNumber.trim() } : undefined,
+          category_details: Object.keys(catDetails).length > 0 ? catDetails : undefined,
           vendor_id: selectedVendorId,
           auto_approve_vendor_bill: autoApproveBill
         },
@@ -271,6 +310,18 @@ export default function VendorsPage() {
       setInvoiceNumber('');
       setBillAmount('');
       setBillDescription('');
+      setHotelName('');
+      setHotelLocation('');
+      setCheckIn('');
+      setCheckOut('');
+      setHotelContact('');
+      setCertName('');
+      setCertInstitute('');
+      setCertEnrollDate('');
+      setTravelStartDate('');
+      setTravelEndDate('');
+      setBoardingPoint('');
+      setArrivalPoint('');
 
       await Promise.all([
         refetchBills(),
@@ -543,6 +594,192 @@ export default function VendorsPage() {
                   />
                 </div>
               </div>
+
+              {/* Dynamic Mandatory Category Details */}
+              {billCategory === 'ACCOMMODATION' && (
+                <div className="bg-brand-50/40 border border-brand-200/80 rounded-xl p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-neutral-900">Hotel & Lodging Details *</span>
+                    <span className="text-[10px] font-semibold px-2 py-0.5 bg-brand-100 text-brand-800 rounded-full">Mandatory</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-neutral-600 mb-1">Hotel Name *</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. Grand Hyatt"
+                        value={hotelName}
+                        onChange={(e) => setHotelName(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-neutral-300 rounded-lg text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-neutral-600 mb-1">Hotel Location *</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. Mumbai"
+                        value={hotelLocation}
+                        onChange={(e) => setHotelLocation(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-neutral-300 rounded-lg text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-neutral-600 mb-1">Check-in Date & Time *</label>
+                      <input
+                        type="datetime-local"
+                        required
+                        value={checkIn}
+                        onChange={(e) => setCheckIn(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-neutral-300 rounded-lg text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-neutral-600 mb-1">Check-out Date & Time *</label>
+                      <input
+                        type="datetime-local"
+                        required
+                        value={checkOut}
+                        onChange={(e) => setCheckOut(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-neutral-300 rounded-lg text-sm"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-xs font-semibold text-neutral-600 mb-1">Hotel Contact Number (Optional)</label>
+                      <input
+                        type="tel"
+                        placeholder="e.g. +91 22 6676 1234"
+                        value={hotelContact}
+                        onChange={(e) => setHotelContact(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-neutral-300 rounded-lg text-sm"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {billCategory === 'TRAINING' && (
+                <div className="bg-brand-50/40 border border-brand-200/80 rounded-xl p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-neutral-900">Training & Certification Details *</span>
+                    <span className="text-[10px] font-semibold px-2 py-0.5 bg-brand-100 text-brand-800 rounded-full">Mandatory</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-neutral-600 mb-1">Certification Name *</label>
+                      <input
+                        type="text"
+                        required
+                        value={certName}
+                        onChange={(e) => setCertName(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-neutral-300 rounded-lg text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-neutral-600 mb-1">Platform / Institute *</label>
+                      <input
+                        type="text"
+                        required
+                        value={certInstitute}
+                        onChange={(e) => setCertInstitute(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-neutral-300 rounded-lg text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-neutral-600 mb-1">Enrollment Date *</label>
+                      <input
+                        type="date"
+                        required
+                        value={certEnrollDate}
+                        onChange={(e) => setCertEnrollDate(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-neutral-300 rounded-lg text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-neutral-600 mb-1">Type of Certification *</label>
+                      <select
+                        value={certType}
+                        onChange={(e) => setCertType(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-neutral-300 rounded-lg text-sm"
+                      >
+                        <option value="Professional Course">Professional Course</option>
+                        <option value="Technical Training">Technical Training</option>
+                        <option value="Industry Accreditation">Industry Accreditation</option>
+                        <option value="Certification Exam">Certification Exam</option>
+                        <option value="Other">Other</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {billCategory === 'TRAVEL' && (
+                <div className="bg-brand-50/40 border border-brand-200/80 rounded-xl p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-neutral-900">Travel & Commute Details *</span>
+                    <span className="text-[10px] font-semibold px-2 py-0.5 bg-brand-100 text-brand-800 rounded-full">Mandatory</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-neutral-600 mb-1">Mode of Travel *</label>
+                      <select
+                        value={travelMode}
+                        onChange={(e) => setTravelMode(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-neutral-300 rounded-lg text-sm"
+                      >
+                        <option value="Flight">Flight</option>
+                        <option value="Train">Train</option>
+                        <option value="Bus">Bus</option>
+                        <option value="Cab / Taxi">Cab / Taxi</option>
+                        <option value="Other">Other</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-neutral-600 mb-1">Start Date *</label>
+                      <input
+                        type="date"
+                        required
+                        value={travelStartDate}
+                        onChange={(e) => setTravelStartDate(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-neutral-300 rounded-lg text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-neutral-600 mb-1">End Date *</label>
+                      <input
+                        type="date"
+                        required
+                        value={travelEndDate}
+                        onChange={(e) => setTravelEndDate(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-neutral-300 rounded-lg text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-neutral-600 mb-1">Boarding Point *</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. DEL / Mumbai Central"
+                        value={boardingPoint}
+                        onChange={(e) => setBoardingPoint(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-neutral-300 rounded-lg text-sm"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-xs font-semibold text-neutral-600 mb-1">Arrival Point *</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. BLR / Bengaluru"
+                        value={arrivalPoint}
+                        onChange={(e) => setArrivalPoint(e.target.value)}
+                        className="w-full px-3 py-2 bg-white border border-neutral-300 rounded-lg text-sm"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <label className="flex items-center gap-2.5 pt-2 cursor-pointer">
                 <input
