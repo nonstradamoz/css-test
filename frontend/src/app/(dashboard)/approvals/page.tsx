@@ -5,6 +5,7 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { Expense, ApprovalDecision } from '@/types';
+import { GroupedExpenseSections } from '@/components/expenses/GroupedSectionWrapper';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import {
   CheckSquare, CheckCircle2, XCircle, AlertTriangle,
@@ -184,43 +185,47 @@ export default function ApprovalsQueuePage() {
         </div>
       </div>
 
-      {/* Table */}
-      <div className="bg-white rounded-xl border border-neutral-200/80 shadow-sm overflow-hidden">
-        {isLoading ? (
-          <div className="p-12 text-center text-sm text-neutral-500">Loading pending queue...</div>
-        ) : pendingExpenses.length === 0 ? (
-          <div className="p-16 text-center">
-            <CheckCircle2 size={36} className="mx-auto text-emerald-500 mb-3" />
-            <p className="text-base font-bold text-neutral-900">All caught up!</p>
-            <p className="text-xs text-neutral-500 mt-1">
-              {search || categoryFilter !== 'ALL'
-                ? 'No claims match your search filters.'
-                : 'There are no expense claims pending your approval at this time.'}
-            </p>
-          </div>
-        ) : (
-          <>
-            {/* 1. Desktop Table */}
-            <div
-              role="region"
-              aria-label="Pending approvals table"
-              tabIndex={0}
-              className="hidden md:block overflow-x-auto w-full focus:outline-none focus:ring-1 focus:ring-emerald-500"
-            >
-              <table className="w-full text-left text-sm">
-                <thead className="bg-neutral-50/75 border-b border-neutral-200 text-xs text-neutral-500 uppercase tracking-wider">
-                  <tr>
-                    <th className="px-6 py-3.5">Claim & Submitter</th>
-                    <th className="px-6 py-3.5">Category</th>
-                    <th className="px-6 py-3.5">Forensics Risk</th>
-                    <th className="px-6 py-3.5">Date</th>
-                    <th className="px-6 py-3.5">Amount</th>
-                    <th className="px-6 py-3.5">Tier Target</th>
-                    <th className="px-6 py-3.5 text-right">Quick Decision</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-neutral-200">
-                  {pendingExpenses.map((exp) => (
+      {/* Table / Grouped View */}
+      {isLoading ? (
+        <div className="bg-white rounded-xl border border-neutral-200/80 shadow-sm p-12 text-center text-sm text-neutral-500">
+          Loading pending queue...
+        </div>
+      ) : pendingExpenses.length === 0 ? (
+        <div className="bg-white rounded-xl border border-neutral-200/80 shadow-sm p-16 text-center">
+          <CheckCircle2 size={36} className="mx-auto text-emerald-500 mb-3" />
+          <p className="text-base font-bold text-neutral-900">All caught up!</p>
+          <p className="text-xs text-neutral-500 mt-1">
+            {search || categoryFilter !== 'ALL'
+              ? 'No claims match your search filters.'
+              : 'There are no expense claims pending your approval at this time.'}
+          </p>
+        </div>
+      ) : (
+        <GroupedExpenseSections
+          expenses={pendingExpenses}
+          renderItems={(items) => (
+            <>
+              {/* 1. Desktop Table */}
+              <div
+                role="region"
+                aria-label="Pending approvals table"
+                tabIndex={0}
+                className="hidden md:block overflow-x-auto w-full focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              >
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-neutral-50/75 border-b border-neutral-200 text-xs text-neutral-500 uppercase tracking-wider">
+                    <tr>
+                      <th className="px-6 py-3.5">Claim & Submitter</th>
+                      <th className="px-6 py-3.5">Category</th>
+                      <th className="px-6 py-3.5">Forensics Risk</th>
+                      <th className="px-6 py-3.5">Date</th>
+                      <th className="px-6 py-3.5">Amount</th>
+                      <th className="px-6 py-3.5">Tier Target</th>
+                      <th className="px-6 py-3.5 text-right">Quick Decision</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-neutral-200">
+                    {items.map((exp) => (
                     <tr key={exp.id} className="hover:bg-neutral-50/60 transition-colors">
                       <td className="px-6 py-4">
                         <Link href={`/expenses/${exp.id}`} className="font-semibold text-neutral-900 hover:text-emerald-600">
@@ -296,7 +301,7 @@ export default function ApprovalsQueuePage() {
 
             {/* 2. Mobile Responsive Card List */}
             <div className="block md:hidden divide-y divide-neutral-200">
-              {pendingExpenses.map((exp) => (
+              {items.map((exp) => (
                 <div key={exp.id} className="p-4 space-y-3 hover:bg-neutral-50/60 transition-colors">
                   <div className="flex items-start justify-between gap-2">
                     <div>
@@ -349,8 +354,9 @@ export default function ApprovalsQueuePage() {
               ))}
             </div>
           </>
-        )}
-      </div>
+          )}
+        />
+      )}
 
       {/* Decision Modal */}
       {selectedExpense && decision && (

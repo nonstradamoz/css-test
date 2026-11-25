@@ -3,6 +3,7 @@ import { components } from './api.generated';
 export type BankDetails = {
   account_holder_name?: string | null;
   bank_name?: string | null;
+  bank_address?: string | null;
   account_number?: string | null;
   ifsc_code?: string | null;
   upi_id?: string | null;
@@ -104,6 +105,7 @@ export interface NotificationListResponse {
 export interface VendorBankDetails {
   account_holder_name: string;
   bank_name: string;
+  bank_address?: string | null;
   account_number: string;
   ifsc_code: string;
   upi_id?: string | null;

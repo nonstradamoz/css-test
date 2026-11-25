@@ -291,18 +291,36 @@ async def test_xlsx_export_formatting_and_hyperlinks(client):
     ws = wb.active
     assert ws.title == "Expense Submissions"
 
-    # Check headers
+    # Check Sheet 1 NEFT Payout headers
     first_row = [cell.value for cell in ws[1]]
-    assert "Expense ID" in first_row
-    assert "Receipt Document Link" in first_row
-    assert "Category Specific Details" in first_row
-    assert "Extracted Merchant" in first_row
-    assert "Date Verified In Bill" in first_row
+    expected_headers = [
+        "Sno.",
+        "Name",
+        "Event",
+        "Mode of Transfer",
+        "Beneficiary Name",
+        "Beneficiary Bank Name",
+        "Bank Address",
+        "Beneficiary Account Number",
+        "IFSC Code",
+        "PAN Number",
+        "PAN Card Document",
+        "Amount",
+        "Category of Expense",
+        "Receipt Uploaded"
+    ]
+    assert len(wb.sheetnames) == 1
+    assert first_row == expected_headers
 
     # Check header fill color (Corporate Emerald)
     first_cell = ws.cell(row=1, column=1)
     assert first_cell.fill.start_color.rgb in ("00059669", "059669")
     assert first_cell.font.bold is True
+
+    # If rows exist, verify a Subtotal row is present after each Vendor/Student group
+    if ws.max_row > 1:
+        col2_vals = [str(ws.cell(row=r, column=2).value or "") for r in range(2, ws.max_row + 1)]
+        assert any(v.startswith("Subtotal —") for v in col2_vals)
 
 
 @pytest.mark.asyncio

@@ -112,11 +112,12 @@ async def test_feature2_admin_reviewer_export_csv_with_links(client):
     wb = openpyxl.load_workbook(io.BytesIO(exp_res.content))
     ws = wb.active
     assert ws.title == "Expense Submissions"
+    assert len(wb.sheetnames) == 1
     row1 = [cell.value for cell in ws[1]]
-    assert "Expense ID" in row1
-    assert "Receipt Document Link" in row1
-    assert "Extracted Merchant" in row1
-    assert "Date Verified In Bill" in row1
+    assert "Sno." in row1
+    assert "PAN Card Document" in row1
+    assert "Receipt Uploaded" in row1
+    assert "Category of Expense" in row1
 
     # 3. Employee forbidden from export (403)
     await client.post("/api/v1/auth/register", json={

@@ -31,6 +31,7 @@ function ProfileContent() {
   // Bank Details Form (for employees)
   const [accountHolder, setAccountHolder] = useState('');
   const [bankName, setBankName] = useState('');
+  const [bankAddress, setBankAddress] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
   const [ifscCode, setIfscCode] = useState('');
   const [upiId, setUpiId] = useState('');
@@ -50,6 +51,7 @@ function ProfileContent() {
       if (user.bank_details) {
         setAccountHolder(user.bank_details.account_holder_name || '');
         setBankName(user.bank_details.bank_name || '');
+        setBankAddress(user.bank_details.bank_address || '');
         setAccountNumber(user.bank_details.account_number || '');
         setIfscCode(user.bank_details.ifsc_code || '');
         setUpiId(user.bank_details.upi_id || '');
@@ -97,6 +99,7 @@ function ProfileContent() {
         payload.bank_details = {
           account_holder_name: accountHolder.trim() || undefined,
           bank_name: bankName.trim() || undefined,
+          bank_address: bankAddress.trim() || undefined,
           account_number: accountNumber.trim() || undefined,
           ifsc_code: ifscCode.trim().toUpperCase() || undefined,
           upi_id: upiId.trim() || undefined
@@ -345,6 +348,19 @@ function ProfileContent() {
               </div>
             </div>
 
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-500 mb-1.5">
+                Bank Address / Branch
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. MG Road Branch, Bengaluru - 560001"
+                value={bankAddress}
+                onChange={(e) => setBankAddress(e.target.value)}
+                className="w-full px-4 py-2.5 border border-neutral-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
+              />
+            </div>
+
             <div className="p-3 bg-neutral-50 border border-neutral-200/80 rounded-xl text-xs text-neutral-600 flex items-center gap-2">
               <ShieldCheck size={16} className="text-emerald-600 shrink-0" />
               <span>
@@ -355,9 +371,9 @@ function ProfileContent() {
         ) : (
           <div className="bg-neutral-50 border border-neutral-200 rounded-2xl p-5 text-xs text-neutral-500 flex items-center justify-between">
             <div>
-              <span className="font-semibold text-neutral-700 block text-sm">Bank Details Not Required</span>
+              <span className="font-semibold text-neutral-700 block text-sm">Bank Details & PAN Not Required</span>
               <span>
-                As an  <strong>{user?.role}</strong>, you do not receive expense reimbursements. Bank details are only enabled for Employee accounts.
+                As an <strong>{user?.role}</strong>, you do not receive expense reimbursements. Bank details and PAN verification are only required for Employee accounts.
               </span>
             </div>
             <span className="px-2.5 py-1 bg-neutral-200 text-neutral-600 font-semibold rounded-lg shrink-0">
@@ -366,7 +382,8 @@ function ProfileContent() {
           </div>
         )}
 
-        {/* Tax & Identity Verification (PAN) - Compulsory */}
+        {/* Tax & Identity Verification (PAN) - Compulsory for Employees */}
+        {isEmployee && (
         <div className="bg-white border border-neutral-200/80 rounded-2xl p-6 shadow-sm space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-sm font-bold text-neutral-900">
@@ -434,6 +451,7 @@ function ProfileContent() {
             </div>
           </div>
         </div>
+        )}
 
         <div className="flex items-center justify-end">
           <button

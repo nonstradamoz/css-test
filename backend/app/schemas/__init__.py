@@ -16,6 +16,7 @@ from app.models import (
 class BankDetails(BaseModel):
     account_holder_name: Optional[str] = None
     bank_name: Optional[str] = None
+    bank_address: Optional[str] = None
     account_number: Optional[str] = None
     ifsc_code: Optional[str] = None
     upi_id: Optional[str] = None
@@ -408,6 +409,7 @@ class UnreadCountOut(BaseModel):
 class VendorBankDetails(BaseModel):
     account_holder_name: str = Field(..., min_length=2, max_length=255)
     bank_name: str = Field(..., min_length=2, max_length=255)
+    bank_address: Optional[str] = None
     account_number: str = Field(..., min_length=4, max_length=64)
     ifsc_code: str = Field(..., min_length=4, max_length=32)
     upi_id: Optional[str] = None

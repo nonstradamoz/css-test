@@ -107,6 +107,17 @@ class ApiClient {
     }
 
     if (!response.ok) {
+      if (response.status === 429) {
+        const retryAfter = response.headers.get('Retry-After');
+        let rateMsg = retryAfter
+          ? `Too many requests. Please wait ${retryAfter} seconds and try again.`
+          : 'Too many requests. Please wait a moment and try again.';
+        try {
+          const errData = await response.json();
+          if (errData?.detail) rateMsg = errData.detail;
+        } catch (_) {}
+        throw new Error(rateMsg);
+      }
       let errorMsg = `API Request failed (${response.status})`;
       try {
         const errorData = await response.json();

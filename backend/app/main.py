@@ -5,6 +5,7 @@ from sqlalchemy import select, func
 
 from app.core.config import settings
 from app.core.database import engine, Base, AsyncSessionLocal
+from app.core.rate_limiter import RateLimitMiddleware
 from app.core.security import get_password_hash
 from app.models import User, UserRole, SystemSettings, ExpenseCategoryModel
 
@@ -257,6 +258,7 @@ class UploadSizeLimitMiddleware(BaseHTTPMiddleware):
 
 
 app.add_middleware(UploadSizeLimitMiddleware)
+app.add_middleware(RateLimitMiddleware)
 
 # Mount API Routers (Standard /api/v1)
 app.include_router(auth_router, prefix=settings.API_V1_STR)

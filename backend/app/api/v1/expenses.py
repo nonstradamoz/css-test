@@ -494,7 +494,8 @@ async def export_expenses(
     Accessible to Admin and Reviewer personnel.
     """
     query = select(Expense).options(
-        selectinload(Expense.submitter)
+        selectinload(Expense.submitter),
+        selectinload(Expense.vendor)
     )
 
     # Drafts are private to the creator: never export another user's drafts
@@ -543,30 +544,20 @@ async def export_expenses(
     ws.title = "Expense Submissions"
 
     headers = [
-        "Expense ID",
-        "Submission Timestamp",
-        "Expense Date",
-        "Submitter Name",
-        "Submitter Email",
-        "Title",
-        "Category",
+        "Sno.",
+        "Name",
+        "Event",
+        "Mode of Transfer",
+        "Beneficiary Name",
+        "Beneficiary Bank Name",
+        "Bank Address",
+        "Beneficiary Account Number",
+        "IFSC Code",
+        "PAN Number",
+        "PAN Card Document",
         "Amount",
-        "Currency",
-        "Status",
-        "Approval Tier Required",
-        "Current Approval Tier",
-        "Risk Score",
-        "Risk Level",
-        "Receipt Document Link",
-        "Extracted Merchant",
-        "Extracted Bill No",
-        "Extracted Receipt No",
-        "Extracted Transaction ID",
-        "Extracted GSTIN",
-        "Extracted Date",
-        "Date Verified In Bill",
-        "Extraction Verified",
-        "Category Specific Details"
+        "Category of Expense",
+        "Receipt Uploaded"
     ]
     ws.append(headers)
 
@@ -588,60 +579,120 @@ async def export_expenses(
         cell.border = thin_border
 
     base_url = str(request.base_url).rstrip("/")
-    for row_idx, exp in enumerate(expenses, start=2):
-        meta = exp.extracted_metadata or {}
-        sub_name = exp.submitter.full_name if exp.submitter else "Unknown"
-        sub_email = exp.submitter.email if exp.submitter else "Unknown"
-        doc_link = ""
-        if exp.receipt_url:
-            if exp.receipt_url.startswith("http"):
-                doc_link = exp.receipt_url
+
+    def _abs_url(raw_url: Optional[str]) -> str:
+        if not raw_url:
+            return ""
+        if raw_url.startswith("http"):
+            return raw_url
+        return f"{base_url}{raw_url if raw_url.startswith('/') else '/' + raw_url}"
+
+    # Group expenses by Vendor (if vendor_id) or Student/Employee (submitted_by)
+    from collections import OrderedDict
+    grouped_expenses: "OrderedDict[str, List[Expense]]" = OrderedDict()
+    for exp in expenses:
+        grp_key = f"vendor:{exp.vendor_id}" if exp.vendor_id else f"user:{exp.submitted_by}"
+        grouped_expenses.setdefault(grp_key, []).append(exp)
+
+    subtotal_fill = PatternFill(start_color="EDF4FC", end_color="EDF4FC", fill_type="solid")
+    subtotal_font = Font(name="Calibri", size=11, bold=True, color="1E3A5F")
+
+    sno = 0
+    row_idx = 1
+    for grp_items in grouped_expenses.values():
+        group_total = 0.0
+        group_name = ""
+        for exp in grp_items:
+            sno += 1
+            row_idx += 1
+            meta = exp.extracted_metadata or {}
+
+            if exp.vendor:
+                display_name = exp.vendor.name
+                bd = exp.vendor.bank_details or {}
+                pan_num = exp.vendor.pan or ""
+                pan_doc_link = _abs_url(exp.vendor.pan_document_url)
             else:
-                doc_link = f"{base_url}{exp.receipt_url if exp.receipt_url.startswith('/') else '/' + exp.receipt_url}"
+                display_name = exp.submitter.full_name if exp.submitter else "Unknown"
+                bd = (exp.submitter.bank_details or {}) if exp.submitter else {}
+                pan_num = (exp.submitter.pan_number or "") if exp.submitter else ""
+                pan_doc_link = _abs_url(exp.submitter.pan_document_url if exp.submitter else None)
 
-        row_data = [
-            exp.id,
-            exp.created_at.strftime("%Y-%m-%d %H:%M:%S") if exp.created_at else "",
-            exp.expense_date.strftime("%Y-%m-%d") if exp.expense_date else "",
-            sub_name,
-            sub_email,
-            exp.title,
-            exp.category,
-            float(exp.amount),
-            exp.currency,
-            exp.status.value,
-            exp.approval_tier_required,
-            exp.current_approval_tier,
-            exp.risk_score,
-            exp.risk_level,
-            doc_link,
-            meta.get("merchant_name") or "",
-            meta.get("bill_number") or "",
-            meta.get("receipt_number") or "",
-            meta.get("transaction_id") or "",
-            meta.get("gstin") or "",
-            meta.get("expense_date") or "",
-            "YES" if meta.get("date_found_in_bill") else "NO",
-            meta.get("verification_status") or "UNVERIFIED",
-            ", ".join([f"{k}: {v}" for k, v in (exp.category_details or {}).items() if v])
-        ]
-        ws.append(row_data)
+            group_name = display_name
+            amt_val = float(exp.amount)
+            group_total += amt_val
 
-        # Apply hyperlink to the receipt column (Column 15)
-        receipt_cell = ws.cell(row=row_idx, column=15)
-        if doc_link:
-            receipt_cell.hyperlink = doc_link
-            receipt_cell.value = "View Document"
-            receipt_cell.font = Font(color="2563EB", underline="single")
+            doc_link = _abs_url(exp.receipt_url)
+            beneficiary_name = bd.get("account_holder_name") or display_name
+            beneficiary_bank = bd.get("bank_name") or ""
+            bank_address = bd.get("bank_address") or ""
+            account_num = str(bd.get("account_number") or "")
+            ifsc_code = bd.get("ifsc_code") or ""
+            transfer_mode = "NEFT"
 
-        # Styling & alignment for row cells
+            row_data = [
+                sno,
+                display_name,
+                exp.title,
+                transfer_mode,
+                beneficiary_name,
+                beneficiary_bank,
+                bank_address,
+                account_num,
+                ifsc_code,
+                pan_num,
+                pan_doc_link,
+                amt_val,
+                exp.category,
+                doc_link
+            ]
+            ws.append(row_data)
+
+            # Preserve account number as text & format amount
+            acct_cell = ws.cell(row=row_idx, column=8)
+            acct_cell.number_format = "@"
+            amt_cell = ws.cell(row=row_idx, column=12)
+            amt_cell.number_format = "#,##0.00"
+
+            # Apply hyperlink to PAN Card Document (Col 11) and Receipt Uploaded (Col 14)
+            pan_cell = ws.cell(row=row_idx, column=11)
+            if pan_doc_link:
+                pan_cell.hyperlink = pan_doc_link
+                pan_cell.value = "View PAN"
+                pan_cell.font = Font(color="2563EB", underline="single")
+
+            receipt_cell = ws.cell(row=row_idx, column=14)
+            if doc_link:
+                receipt_cell.hyperlink = doc_link
+                receipt_cell.value = "View Receipt"
+                receipt_cell.font = Font(color="2563EB", underline="single")
+
+            for col_idx in range(1, len(headers) + 1):
+                c = ws.cell(row=row_idx, column=col_idx)
+                c.border = thin_border
+                if col_idx == 12:
+                    c.alignment = Alignment(horizontal="right")
+                elif col_idx in (1, 4, 9, 10, 11, 13, 14):
+                    c.alignment = Alignment(horizontal="center")
+
+        # Add highlighted Subtotal row after each Vendor / Student section
+        row_idx += 1
+        bill_label = "bill" if len(grp_items) == 1 else "bills"
+        ws.append([
+            "",
+            f"Subtotal — {group_name} ({len(grp_items)} {bill_label})",
+            "", "", "", "", "", "", "", "", "",
+            group_total,
+            "", ""
+        ])
+        ws.cell(row=row_idx, column=12).number_format = "#,##0.00"
         for col_idx in range(1, len(headers) + 1):
-            c = ws.cell(row=row_idx, column=col_idx)
-            c.border = thin_border
-            if col_idx in (8, 11, 12, 13):
-                c.alignment = Alignment(horizontal="right")
-            elif col_idx in (1, 2, 3, 9, 10, 14, 15, 21, 22, 23):
-                c.alignment = Alignment(horizontal="center")
+            sc = ws.cell(row=row_idx, column=col_idx)
+            sc.fill = subtotal_fill
+            sc.font = subtotal_font
+            sc.border = thin_border
+            if col_idx == 12:
+                sc.alignment = Alignment(horizontal="right")
 
     # Auto-adjust column widths
     for col in ws.columns:

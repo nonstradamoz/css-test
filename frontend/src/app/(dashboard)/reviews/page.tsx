@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { Expense, ApprovalDecision } from '@/types';
+import { GroupedExpenseSections } from '@/components/expenses/GroupedSectionWrapper';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import {
   CheckCircle2,
@@ -158,36 +159,40 @@ export default function ReviewsQueuePage() {
       </div>
 
       {/* Review List */}
-      <div className="bg-white rounded-xl border border-neutral-200/80 shadow-sm overflow-hidden">
-        {isLoading ? (
-          <div className="p-12 text-center text-sm text-neutral-500">Loading review queue...</div>
-        ) : reviewExpenses.length === 0 ? (
-          <div className="p-16 text-center">
-            <CheckCircle2 size={36} className="mx-auto text-emerald-500 mb-3" />
-            <p className="text-base font-bold text-neutral-900">No claims awaiting review</p>
-            <p className="text-xs text-neutral-500 mt-1">
-              {search || categoryFilter !== 'ALL'
-                ? 'No submitted claims match your search filters.'
-                : 'All submitted claims have been reviewed and forwarded or resolved.'}
-            </p>
-          </div>
-        ) : (
-          <>
-            {/* Desktop Table */}
-            <div className="hidden md:block overflow-x-auto w-full">
-              <table className="w-full text-left text-sm">
-                <thead className="bg-neutral-50/75 border-b border-neutral-200 text-xs text-neutral-500 uppercase tracking-wider">
-                  <tr>
-                    <th className="px-6 py-3.5">Claim & Submitter</th>
-                    <th className="px-6 py-3.5">Category</th>
-                    <th className="px-6 py-3.5">Forensics Risk</th>
-                    <th className="px-6 py-3.5">Date</th>
-                    <th className="px-6 py-3.5">Amount</th>
-                    <th className="px-6 py-3.5 text-right">Review Decision</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-neutral-200">
-                  {reviewExpenses.map((exp) => (
+      {isLoading ? (
+        <div className="bg-white rounded-xl border border-neutral-200/80 shadow-sm p-12 text-center text-sm text-neutral-500">
+          Loading review queue...
+        </div>
+      ) : reviewExpenses.length === 0 ? (
+        <div className="bg-white rounded-xl border border-neutral-200/80 shadow-sm p-16 text-center">
+          <CheckCircle2 size={36} className="mx-auto text-emerald-500 mb-3" />
+          <p className="text-base font-bold text-neutral-900">No claims awaiting review</p>
+          <p className="text-xs text-neutral-500 mt-1">
+            {search || categoryFilter !== 'ALL'
+              ? 'No submitted claims match your search filters.'
+              : 'All submitted claims have been reviewed and forwarded or resolved.'}
+          </p>
+        </div>
+      ) : (
+        <GroupedExpenseSections
+          expenses={reviewExpenses}
+          renderItems={(items) => (
+            <>
+              {/* Desktop Table */}
+              <div className="hidden md:block overflow-x-auto w-full">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-neutral-50/75 border-b border-neutral-200 text-xs text-neutral-500 uppercase tracking-wider">
+                    <tr>
+                      <th className="px-6 py-3.5">Claim & Submitter</th>
+                      <th className="px-6 py-3.5">Category</th>
+                      <th className="px-6 py-3.5">Forensics Risk</th>
+                      <th className="px-6 py-3.5">Date</th>
+                      <th className="px-6 py-3.5">Amount</th>
+                      <th className="px-6 py-3.5 text-right">Review Decision</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-neutral-200">
+                    {items.map((exp) => (
                     <tr key={exp.id} className="hover:bg-neutral-50/60 transition-colors">
                       <td className="px-6 py-4">
                         <Link href={`/expenses/${exp.id}`} className="font-semibold text-neutral-900 hover:text-brand-600">
@@ -253,7 +258,7 @@ export default function ReviewsQueuePage() {
 
             {/* Mobile Card List */}
             <div className="block md:hidden divide-y divide-neutral-200">
-              {reviewExpenses.map((exp) => (
+              {items.map((exp) => (
                 <div key={exp.id} className="p-4 space-y-3 hover:bg-neutral-50/60 transition-colors">
                   <div className="flex items-start justify-between gap-2">
                     <div>
@@ -306,8 +311,9 @@ export default function ReviewsQueuePage() {
               ))}
             </div>
           </>
-        )}
-      </div>
+          )}
+        />
+      )}
 
       {/* Review Decision Modal */}
       {selectedExpense && decision && (

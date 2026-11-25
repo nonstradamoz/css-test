@@ -5,6 +5,7 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { Vendor, VendorCreate, VendorBankDetails, Expense } from '@/types';
+import { GroupedExpenseSections } from '@/components/expenses/GroupedSectionWrapper';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import {
   Building2,
@@ -32,6 +33,7 @@ type TabKey = 'submit' | 'profiles' | 'bills';
 const EMPTY_BANK: VendorBankDetails = {
   account_holder_name: '',
   bank_name: '',
+  bank_address: '',
   account_number: '',
   ifsc_code: '',
   upi_id: ''
@@ -113,6 +115,7 @@ export default function VendorsPage() {
     setVBank({
       account_holder_name: vendor.bank_details?.account_holder_name || '',
       bank_name: vendor.bank_details?.bank_name || '',
+      bank_address: vendor.bank_details?.bank_address || '',
       account_number: vendor.bank_details?.account_number || '',
       ifsc_code: vendor.bank_details?.ifsc_code || '',
       upi_id: vendor.bank_details?.upi_id || ''
@@ -161,6 +164,7 @@ export default function VendorsPage() {
         bank_details: {
           account_holder_name: vBank.account_holder_name.trim(),
           bank_name: vBank.bank_name.trim(),
+          bank_address: vBank.bank_address?.trim() || undefined,
           account_number: vBank.account_number.trim(),
           ifsc_code: vBank.ifsc_code.trim().toUpperCase(),
           upi_id: vBank.upi_id?.trim() || undefined
@@ -1027,52 +1031,57 @@ export default function VendorsPage() {
 
       {/* ==================== TAB 3: SUBMITTED VENDOR BILLS ==================== */}
       {activeTab === 'bills' && (
-        <div className="bg-white rounded-2xl border border-neutral-200/80 shadow-sm overflow-hidden">
-          {isLoadingBills ? (
-            <div className="p-12 text-center text-sm text-neutral-500">Loading vendor bills...</div>
-          ) : vendorBills.length === 0 ? (
-            <div className="p-16 text-center space-y-2">
-              <FileText size={32} className="mx-auto text-neutral-300" />
-              <p className="text-sm font-bold text-neutral-900">No vendor bills submitted yet</p>
-              <p className="text-xs text-neutral-500">Submitted vendor invoices will appear here.</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead className="bg-neutral-50/75 border-b border-neutral-200 text-xs text-neutral-500 uppercase tracking-wider">
-                  <tr>
-                    <th className="px-6 py-3.5">Bill Title</th>
-                    <th className="px-6 py-3.5">Vendor</th>
-                    <th className="px-6 py-3.5">Date</th>
-                    <th className="px-6 py-3.5">Amount</th>
-                    <th className="px-6 py-3.5">Status</th>
-                    <th className="px-6 py-3.5 text-right">Details</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-neutral-200">
-                  {vendorBills.map((bill: Expense & { vendor_name?: string | null }) => (
-                    <tr key={bill.id} className="hover:bg-neutral-50/60 transition-colors">
-                      <td className="px-6 py-4 font-semibold text-neutral-900">{bill.title}</td>
-                      <td className="px-6 py-4 text-xs font-medium text-brand-700">{bill.vendor_name || bill.submitter_name}</td>
-                      <td className="px-6 py-4 text-xs text-neutral-500">{formatDate(bill.expense_date)}</td>
-                      <td className="px-6 py-4 font-semibold text-neutral-900">{formatCurrency(bill.amount, bill.currency)}</td>
-                      <td className="px-6 py-4">
-                        <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-neutral-100 text-neutral-700 border border-neutral-200">
-                          {bill.status}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <Link href={`/expenses/${bill.id}`} className="text-xs font-semibold text-brand-600 hover:text-brand-700">
-                          View / Payout →
-                        </Link>
-                      </td>
+        isLoadingBills ? (
+          <div className="bg-white rounded-2xl border border-neutral-200/80 shadow-sm p-12 text-center text-sm text-neutral-500">
+            Loading vendor bills...
+          </div>
+        ) : vendorBills.length === 0 ? (
+          <div className="bg-white rounded-2xl border border-neutral-200/80 shadow-sm p-16 text-center space-y-2">
+            <FileText size={32} className="mx-auto text-neutral-300" />
+            <p className="text-sm font-bold text-neutral-900">No vendor bills submitted yet</p>
+            <p className="text-xs text-neutral-500">Submitted vendor invoices will appear here.</p>
+          </div>
+        ) : (
+          <GroupedExpenseSections
+            expenses={vendorBills}
+            renderItems={(items) => (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-neutral-50/75 border-b border-neutral-200 text-xs text-neutral-500 uppercase tracking-wider">
+                    <tr>
+                      <th className="px-6 py-3.5">Bill Title</th>
+                      <th className="px-6 py-3.5">Vendor</th>
+                      <th className="px-6 py-3.5">Date</th>
+                      <th className="px-6 py-3.5">Amount</th>
+                      <th className="px-6 py-3.5">Status</th>
+                      <th className="px-6 py-3.5 text-right">Details</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+                  </thead>
+                  <tbody className="divide-y divide-neutral-200">
+                    {items.map((bill: Expense & { vendor_name?: string | null }) => (
+                      <tr key={bill.id} className="hover:bg-neutral-50/60 transition-colors">
+                        <td className="px-6 py-4 font-semibold text-neutral-900">{bill.title}</td>
+                        <td className="px-6 py-4 text-xs font-medium text-brand-700">{bill.vendor_name || bill.submitter_name}</td>
+                        <td className="px-6 py-4 text-xs text-neutral-500">{formatDate(bill.expense_date)}</td>
+                        <td className="px-6 py-4 font-semibold text-neutral-900">{formatCurrency(bill.amount, bill.currency)}</td>
+                        <td className="px-6 py-4">
+                          <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-neutral-100 text-neutral-700 border border-neutral-200">
+                            {bill.status}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <Link href={`/expenses/${bill.id}`} className="text-xs font-semibold text-brand-600 hover:text-brand-700">
+                            View / Payout →
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          />
+        )
       )}
 
       {/* ==================== CREATE / EDIT VENDOR MODAL ==================== */}
@@ -1252,6 +1261,16 @@ export default function VendorsPage() {
                       value={vBank.ifsc_code}
                       onChange={(e) => setVBank({ ...vBank, ifsc_code: e.target.value })}
                       className="w-full px-3 py-2 border border-neutral-300 rounded-xl text-sm uppercase font-mono"
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-semibold text-neutral-700 mb-1">Bank Address / Branch</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Koramangala Branch, Bengaluru"
+                      value={vBank.bank_address || ''}
+                      onChange={(e) => setVBank({ ...vBank, bank_address: e.target.value })}
+                      className="w-full px-3 py-2 border border-neutral-300 rounded-xl text-sm"
                     />
                   </div>
                   <div className="sm:col-span-2">
