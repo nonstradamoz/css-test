@@ -85,6 +85,8 @@ class User(Base):
     role = Column(Enum(UserRole), nullable=False, default=UserRole.EMPLOYEE, index=True)
     is_active = Column(Boolean, default=True, nullable=False)
     bank_details = Column(JSON, nullable=True, default=dict)
+    pan_number = Column(String(20), nullable=True)
+    pan_document_url = Column(String(1024), nullable=True)
     created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
 
@@ -235,6 +237,7 @@ class Vendor(Base):
     phone = Column(String(50), nullable=True)
     gstin = Column(String(50), nullable=True)
     pan = Column(String(50), nullable=True)
+    pan_document_url = Column(String(1024), nullable=True)
     address = Column(Text, nullable=True)
     default_category = Column(String(64), nullable=True)
     bank_details = Column(JSON, nullable=False, default=dict)

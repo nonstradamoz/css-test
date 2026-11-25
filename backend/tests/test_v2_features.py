@@ -38,7 +38,9 @@ async def test_admin_pause_and_resume_submissions(client):
     })
     emp_headers = {"Authorization": f"Bearer {emp_login.json()['access_token']}"}
     await client.patch("/api/v1/users/me", headers=emp_headers, json={
-        "bank_details": {"account_number": "555566667777", "ifsc_code": "HDFC0005555"}
+        "bank_details": {"account_number": "555566667777", "ifsc_code": "HDFC0005555"},
+        "pan_number": "ABCDE1234F",
+        "pan_document_url": "https://storage.crs-corp.com/pan/sample_pan.pdf"
     })
 
     # 2. Admin pauses submissions
@@ -101,7 +103,9 @@ async def test_admin_date_policy_window_flag_and_escalate(client):
     })
     emp_headers = {"Authorization": f"Bearer {emp_login.json()['access_token']}"}
     await client.patch("/api/v1/users/me", headers=emp_headers, json={
-        "bank_details": {"account_number": "444433332222", "ifsc_code": "HDFC0004444"}
+        "bank_details": {"account_number": "444433332222", "ifsc_code": "HDFC0004444"},
+        "pan_number": "ABCDE1234F",
+        "pan_document_url": "https://storage.crs-corp.com/pan/sample_pan.pdf"
     })
 
     # 2. Admin configures authorized date window: 2026-11-01 to 2026-11-10
@@ -174,7 +178,9 @@ async def test_multi_tier_approval_toggle(client):
     })
     emp_headers = {"Authorization": f"Bearer {emp_login.json()['access_token']}"}
     await client.patch("/api/v1/users/me", headers=emp_headers, json={
-        "bank_details": {"account_number": "888877776666", "ifsc_code": "SBIN0008888"}
+        "bank_details": {"account_number": "888877776666", "ifsc_code": "SBIN0008888"},
+        "pan_number": "ABCDE1234F",
+        "pan_document_url": "https://storage.crs-corp.com/pan/sample_pan.pdf"
     })
 
     # Disable date window enforcement, disable multi-tier approval
@@ -227,7 +233,9 @@ async def test_reimbursement_with_transfer_transaction_id(client):
             "account_number": "123123123123",
             "bank_name": "HDFC Bank",
             "ifsc_code": "HDFC0001231"
-        }
+        },
+        "pan_number": "ABCDE1234F",
+        "pan_document_url": "https://storage.crs-corp.com/pan/sample_pan.pdf"
     })
 
     # Reset multi-tier to False for fast approval
@@ -315,7 +323,9 @@ async def test_category_mandatory_details_filling(client):
     })
     emp_headers = {"Authorization": f"Bearer {emp_login.json()['access_token']}"}
     await client.patch("/api/v1/users/me", headers=emp_headers, json={
-        "bank_details": {"account_number": "112233445566", "ifsc_code": "HDFC0001122"}
+        "bank_details": {"account_number": "112233445566", "ifsc_code": "HDFC0001122"},
+        "pan_number": "ABCDE1234F",
+        "pan_document_url": "https://storage.crs-corp.com/pan/sample_pan.pdf"
     })
 
     # 1. Hotel & Lodging without required details fails
@@ -432,7 +442,9 @@ async def test_behalf_of_submission_and_flexible_deletion(client):
     target_emp_id = emp_login.json()["user"]["id"]
 
     await client.patch("/api/v1/users/me", headers=emp_headers, json={
-        "bank_details": {"account_number": "998877665544", "ifsc_code": "HDFC0009988"}
+        "bank_details": {"account_number": "998877665544", "ifsc_code": "HDFC0009988"},
+        "pan_number": "ABCDE1234F",
+        "pan_document_url": "https://storage.crs-corp.com/pan/sample_pan.pdf"
     })
 
     # 2. Admin submits claim on behalf of employee
@@ -565,7 +577,9 @@ async def test_drafts_privacy_from_admins_and_reviewers(client):
 
     # 8. Employee submits bank details & submits the draft -> moves to SUBMITTED
     await client.patch("/api/v1/users/me", headers=emp_headers, json={
-        "bank_details": {"account_number": "112233445566", "ifsc_code": "SBIN0001122"}
+        "bank_details": {"account_number": "112233445566", "ifsc_code": "SBIN0001122"},
+        "pan_number": "ABCDE1234F",
+        "pan_document_url": "https://storage.crs-corp.com/pan/sample_pan.pdf"
     })
     sub_res = await client.post(f"/api/v1/expenses/{draft_id}/submit", headers=emp_headers)
     assert sub_res.status_code == 200

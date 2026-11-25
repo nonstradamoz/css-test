@@ -11,6 +11,8 @@ export type BankDetails = {
 // Core Schema Types mapped directly from FastAPI OpenAPI
 export type User = components["schemas"]["UserOut"] & {
   bank_details?: BankDetails | null;
+  pan_number?: string | null;
+  pan_document_url?: string | null;
 };
 export type Role = components["schemas"]["UserRole"];
 export type UserRole = components["schemas"]["UserRole"];
@@ -115,6 +117,7 @@ export interface Vendor {
   phone?: string | null;
   gstin?: string | null;
   pan?: string | null;
+  pan_document_url?: string | null;
   address?: string | null;
   default_category?: string | null;
   bank_details: VendorBankDetails;
@@ -130,7 +133,8 @@ export interface VendorCreate {
   email?: string;
   phone?: string;
   gstin?: string;
-  pan?: string;
+  pan: string;
+  pan_document_url: string;
   address?: string;
   default_category?: string;
   bank_details: VendorBankDetails;
@@ -143,6 +147,7 @@ export interface VendorUpdate {
   phone?: string;
   gstin?: string;
   pan?: string;
+  pan_document_url?: string;
   address?: string;
   default_category?: string;
   bank_details?: VendorBankDetails;

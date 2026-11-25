@@ -304,8 +304,13 @@ async def create_expense(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Submission locked: Banking details are required for vendor '{target_vendor.name}' before submitting a bill."
             )
+        if submit_now and (not target_vendor.pan or not target_vendor.pan_document_url):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Submission locked: PAN number and PAN document are mandatory for vendor '{target_vendor.name}' before submitting a bill."
+            )
 
-    # Mandatory bank details check upon submission for target employee (skipped for vendor bills)
+    # Mandatory bank details & PAN check upon submission for target employee (skipped for vendor bills)
     if submit_now and not target_vendor and submitter_user.role == UserRole.EMPLOYEE:
         bd = submitter_user.bank_details or {}
         has_bd = bool((bd.get("account_number") and (bd.get("ifsc_code") or bd.get("bank_name"))) or bd.get("upi_id"))
@@ -313,6 +318,11 @@ async def create_expense(
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Submission locked: Bank account or UPI details are required for {submitter_user.full_name} ({submitter_user.email}) before submitting an expense claim."
+            )
+        if not submitter_user.pan_number or not submitter_user.pan_document_url:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Submission locked: PAN number and PAN document are required for {submitter_user.full_name} ({submitter_user.email}) before submitting an expense claim."
             )
 
     # Auto-extract from receipt if not provided
@@ -790,14 +800,19 @@ async def submit_expense(
             detail="Receipt upload is mandatory to submit an expense claim."
         )
 
-    # Mandatory bank details check on submission for employees
-    if current_user.role == UserRole.EMPLOYEE:
+    # Mandatory bank details & PAN check on submission for employees
+    if current_user.role == UserRole.EMPLOYEE and not expense.vendor_id:
         bd = current_user.bank_details or {}
         has_bd = bool((bd.get("account_number") and (bd.get("ifsc_code") or bd.get("bank_name"))) or bd.get("upi_id"))
         if not has_bd:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Submission locked: Bank account or UPI details are required to submit an expense claim. Please configure your bank details in Profile Settings before submitting."
+            )
+        if not current_user.pan_number or not current_user.pan_document_url:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Submission locked: PAN number and PAN document are required to submit an expense claim. Please upload your PAN details in Profile Settings before submitting."
             )
 
     # Mandatory category specifics validation upon submission

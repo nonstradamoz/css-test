@@ -96,7 +96,9 @@ async def test_full_lifecycle_api(client):
                 "account_number": "50100234567890",
                 "ifsc_code": "HDFC0001234",
                 "upi_id": "johndoe@okhdfcbank"
-            }
+            },
+            "pan_number": "ABCDE1234F",
+            "pan_document_url": "https://storage.crs-corp.com/pan/sample_pan.pdf"
         }
     )
     assert patch_bank.status_code == 200

@@ -43,6 +43,8 @@ async def test_vendor_profiles_and_bill_submission(client):
     # 1. Non-admin cannot create a vendor
     emp_vendor_res = await client.post("/api/v1/vendors", headers=emp_headers, json={
         "name": "Unauthorized Vendor",
+        "pan": "ABCDE1234F",
+        "pan_document_url": "https://storage.crs-corp.com/pan/unauth.pdf",
         "bank_details": {
             "account_holder_name": "Unauthorized",
             "bank_name": "HDFC",
@@ -52,13 +54,27 @@ async def test_vendor_profiles_and_bill_submission(client):
     })
     assert emp_vendor_res.status_code == 403
 
-    # 2. Admin creates two vendor profiles with distinct banking details
+    # 1b. Admin cannot create a vendor without PAN and PAN document (422)
+    missing_pan_res = await client.post("/api/v1/vendors", headers=admin_headers, json={
+        "name": "Missing PAN Vendor",
+        "bank_details": {
+            "account_holder_name": "Missing PAN",
+            "bank_name": "HDFC",
+            "account_number": "12345678",
+            "ifsc_code": "HDFC0001234"
+        }
+    })
+    assert missing_pan_res.status_code == 422
+
+    # 2. Admin creates two vendor profiles with distinct banking details & PAN
     v1_res = await client.post("/api/v1/vendors", headers=admin_headers, json={
         "name": "Acme Cloud Infra Pvt Ltd",
         "contact_person": "Rohan Sharma",
         "email": "billing@acmecloud.in",
         "phone": "+91-9876543210",
         "gstin": "29ABCDE1234F1Z5",
+        "pan": "AAACA1234B",
+        "pan_document_url": "https://storage.crs-corp.com/pan/acme_pan.pdf",
         "default_category": "SOFTWARE",
         "bank_details": {
             "account_holder_name": "Acme Cloud Infra Pvt Ltd",
@@ -71,10 +87,14 @@ async def test_vendor_profiles_and_bill_submission(client):
     assert v1_res.status_code == 201
     v1_id = v1_res.json()["id"]
     assert v1_res.json()["bank_details"]["account_number"] == "50200011223344"
+    assert v1_res.json()["pan"] == "AAACA1234B"
+    assert v1_res.json()["pan_document_url"] == "https://storage.crs-corp.com/pan/acme_pan.pdf"
 
     v2_res = await client.post("/api/v1/vendors", headers=admin_headers, json={
         "name": "Apex Office Supplies",
         "gstin": "27XYZAB5678G1Z2",
+        "pan": "BBBCB5678C",
+        "pan_document_url": "https://storage.crs-corp.com/pan/apex_pan.jpg",
         "default_category": "SUPPLIES",
         "bank_details": {
             "account_holder_name": "Apex Office Supplies",

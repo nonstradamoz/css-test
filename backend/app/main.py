@@ -47,6 +47,11 @@ def auto_migrate_schema(sync_conn):
         ],
         "users": [
             ("bank_details", "JSON"),
+            ("pan_number", "VARCHAR(20)"),
+            ("pan_document_url", "VARCHAR(1024)"),
+        ],
+        "vendors": [
+            ("pan_document_url", "VARCHAR(1024)"),
         ],
         "expenses": [
             ("extracted_metadata", "JSON"),

@@ -49,7 +49,9 @@ async def test_two_tier_review_and_multi_actor_notifications(client):
         client, admin_headers, "emp.notif@crs.com", "Employee One", "EMPLOYEE"
     )
     await client.patch("/api/v1/users/me", headers=emp_headers, json={
-        "bank_details": {"account_number": "1122334455", "ifsc_code": "HDFC0001122"}
+        "bank_details": {"account_number": "1122334455", "ifsc_code": "HDFC0001122"},
+        "pan_number": "ABCDE1234F",
+        "pan_document_url": "https://storage.crs-corp.com/pan/sample_pan.pdf"
     })
 
     # 1. Employee submits expense claim
@@ -145,7 +147,9 @@ async def test_reviewer_changes_requested_notifies_user(client):
         client, admin_headers, "emp.chg@crs.com", "Employee Chg", "EMPLOYEE"
     )
     await client.patch("/api/v1/users/me", headers=emp_headers, json={
-        "bank_details": {"account_number": "99887766", "ifsc_code": "SBIN0001122"}
+        "bank_details": {"account_number": "99887766", "ifsc_code": "SBIN0001122"},
+        "pan_number": "ABCDE1234F",
+        "pan_document_url": "https://storage.crs-corp.com/pan/sample_pan.pdf"
     })
 
     sub_res = await client.post("/api/v1/expenses?submit_now=true", headers=emp_headers, json={

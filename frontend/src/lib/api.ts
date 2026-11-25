@@ -507,7 +507,13 @@ class ApiClient {
       });
     },
 
-    updateMyProfile: async (data: { full_name?: string; password?: string; bank_details?: BankDetails }): Promise<User> => {
+    updateMyProfile: async (data: {
+      full_name?: string;
+      password?: string;
+      bank_details?: BankDetails;
+      pan_number?: string;
+      pan_document_url?: string;
+    }): Promise<User> => {
       return this.request<User>('/users/me', {
         method: 'PATCH',
         body: JSON.stringify(data)

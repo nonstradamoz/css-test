@@ -33,6 +33,8 @@ class UserCreate(UserBase):
     password: str = Field(..., min_length=8)
     role: UserRole = UserRole.EMPLOYEE
     bank_details: Optional[BankDetails] = None
+    pan_number: Optional[str] = Field(None, min_length=10, max_length=20)
+    pan_document_url: Optional[str] = None
 
 
 class UserUpdate(BaseModel):
@@ -40,12 +42,16 @@ class UserUpdate(BaseModel):
     role: Optional[UserRole] = None
     is_active: Optional[bool] = None
     bank_details: Optional[BankDetails] = None
+    pan_number: Optional[str] = Field(None, min_length=10, max_length=20)
+    pan_document_url: Optional[str] = None
 
 
 class UserProfileUpdate(BaseModel):
     full_name: Optional[str] = None
     password: Optional[str] = Field(None, min_length=8)
     bank_details: Optional[BankDetails] = None
+    pan_number: Optional[str] = Field(None, min_length=10, max_length=20)
+    pan_document_url: Optional[str] = None
 
 
 class UserOut(UserBase):
@@ -53,6 +59,8 @@ class UserOut(UserBase):
     role: UserRole
     is_active: bool
     bank_details: Optional[Dict[str, Any]] = None
+    pan_number: Optional[str] = None
+    pan_document_url: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
@@ -413,7 +421,8 @@ class VendorCreate(BaseModel):
     email: Optional[EmailStr] = None
     phone: Optional[str] = None
     gstin: Optional[str] = None
-    pan: Optional[str] = None
+    pan: str = Field(..., min_length=10, max_length=20, description="Mandatory 10-character PAN number")
+    pan_document_url: str = Field(..., min_length=5, description="Mandatory uploaded PAN card document or image URL")
     address: Optional[str] = None
     default_category: Optional[str] = None
     bank_details: VendorBankDetails
@@ -425,7 +434,8 @@ class VendorUpdate(BaseModel):
     email: Optional[EmailStr] = None
     phone: Optional[str] = None
     gstin: Optional[str] = None
-    pan: Optional[str] = None
+    pan: Optional[str] = Field(None, min_length=10, max_length=20)
+    pan_document_url: Optional[str] = None
     address: Optional[str] = None
     default_category: Optional[str] = None
     bank_details: Optional[VendorBankDetails] = None
@@ -440,6 +450,7 @@ class VendorOut(BaseModel):
     phone: Optional[str] = None
     gstin: Optional[str] = None
     pan: Optional[str] = None
+    pan_document_url: Optional[str] = None
     address: Optional[str] = None
     default_category: Optional[str] = None
     bank_details: Dict[str, Any] = {}

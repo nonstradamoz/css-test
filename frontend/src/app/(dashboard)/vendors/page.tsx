@@ -77,6 +77,8 @@ export default function VendorsPage() {
   const [vPhone, setVPhone] = useState('');
   const [vGstin, setVGstin] = useState('');
   const [vPan, setVPan] = useState('');
+  const [vPanDocUrl, setVPanDocUrl] = useState('');
+  const [isUploadingVendorPan, setIsUploadingVendorPan] = useState(false);
   const [vAddress, setVAddress] = useState('');
   const [vCategory, setVCategory] = useState('SUPPLIES');
   const [vBank, setVBank] = useState<VendorBankDetails>({ ...EMPTY_BANK });
@@ -90,6 +92,7 @@ export default function VendorsPage() {
     setVPhone('');
     setVGstin('');
     setVPan('');
+    setVPanDocUrl('');
     setVAddress('');
     setVCategory(categories[0]?.code || 'SUPPLIES');
     setVBank({ ...EMPTY_BANK });
@@ -104,6 +107,7 @@ export default function VendorsPage() {
     setVPhone(vendor.phone || '');
     setVGstin(vendor.gstin || '');
     setVPan(vendor.pan || '');
+    setVPanDocUrl(vendor.pan_document_url || '');
     setVAddress(vendor.address || '');
     setVCategory(vendor.default_category || 'SUPPLIES');
     setVBank({
@@ -116,9 +120,32 @@ export default function VendorsPage() {
     setShowVendorModal(true);
   };
 
+  const handleVendorPanUpload = async (file: File) => {
+    setIsUploadingVendorPan(true);
+    setBanner(null);
+    try {
+      const res = await api.receipts.uploadFile(file);
+      setVPanDocUrl(res.url);
+    } catch (err: any) {
+      setBanner({ type: 'error', text: err.message || 'Failed to upload vendor PAN document.' });
+    } finally {
+      setIsUploadingVendorPan(false);
+    }
+  };
+
   const handleSaveVendor = async (e: React.FormEvent) => {
     e.preventDefault();
     setBanner(null);
+
+    if (!vPan.trim() || vPan.trim().length < 10) {
+      setBanner({ type: 'error', text: 'A valid 10-character PAN number is compulsory for vendor profiles.' });
+      return;
+    }
+    if (!vPanDocUrl.trim()) {
+      setBanner({ type: 'error', text: 'Please upload the vendor PAN card document or image.' });
+      return;
+    }
+
     setIsSavingVendor(true);
     try {
       const payload: VendorCreate = {
@@ -127,7 +154,8 @@ export default function VendorsPage() {
         email: vEmail.trim() || undefined,
         phone: vPhone.trim() || undefined,
         gstin: vGstin.trim() || undefined,
-        pan: vPan.trim() || undefined,
+        pan: vPan.trim().toUpperCase(),
+        pan_document_url: vPanDocUrl.trim(),
         address: vAddress.trim() || undefined,
         default_category: vCategory || undefined,
         bank_details: {
@@ -820,6 +848,21 @@ export default function VendorsPage() {
                     {selectedVendor.gstin && (
                       <p className="text-xs text-brand-700 font-medium mt-0.5">GSTIN: {selectedVendor.gstin}</p>
                     )}
+                    {selectedVendor.pan && (
+                      <div className="flex items-center justify-between mt-1">
+                        <p className="text-xs text-neutral-700 font-mono">PAN: {selectedVendor.pan}</p>
+                        {selectedVendor.pan_document_url && (
+                          <a
+                            href={selectedVendor.pan_document_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-[11px] font-semibold text-brand-600 hover:underline"
+                          >
+                            View PAN Doc ↗
+                          </a>
+                        )}
+                      </div>
+                    )}
                     {selectedVendor.contact_person && (
                       <p className="text-xs text-neutral-600 mt-1">Contact: {selectedVendor.contact_person}</p>
                     )}
@@ -907,6 +950,21 @@ export default function VendorsPage() {
                       <div>
                         <h3 className="text-base font-bold text-neutral-900">{v.name}</h3>
                         {v.gstin && <p className="text-xs font-mono text-brand-700">GSTIN: {v.gstin}</p>}
+                        {v.pan && (
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <p className="text-xs font-mono text-neutral-600">PAN: {v.pan}</p>
+                            {v.pan_document_url && (
+                              <a
+                                href={v.pan_document_url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-[11px] font-semibold text-brand-600 hover:underline"
+                              >
+                                View PAN ↗
+                              </a>
+                            )}
+                          </div>
+                        )}
                       </div>
                       <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold border ${
                         v.is_active ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-neutral-100 text-neutral-500 border-neutral-200'
@@ -1084,14 +1142,53 @@ export default function VendorsPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-neutral-700 mb-1">PAN</label>
+                    <label className="block text-xs font-semibold text-neutral-700 mb-1">PAN Number *</label>
                     <input
                       type="text"
+                      required
+                      minLength={10}
+                      maxLength={20}
                       placeholder="ABCDE1234F"
                       value={vPan}
-                      onChange={(e) => setVPan(e.target.value)}
+                      onChange={(e) => setVPan(e.target.value.toUpperCase())}
                       className="w-full px-3 py-2 border border-neutral-300 rounded-xl text-sm uppercase font-mono"
                     />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-semibold text-neutral-700 mb-1">
+                      PAN Card Document / Image (Compulsory) *
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <label className="flex-1 flex items-center justify-center gap-2 px-3 py-2 border border-dashed border-neutral-300 hover:border-brand-400 rounded-xl text-xs font-semibold text-neutral-700 bg-neutral-50 cursor-pointer">
+                        <UploadCloud size={15} className="text-brand-600" />
+                        <span>
+                          {isUploadingVendorPan
+                            ? 'Uploading PAN...'
+                            : vPanDocUrl
+                            ? 'PAN Document Attached (Click to replace)'
+                            : 'Upload PAN Card (PDF / PNG / JPG)'}
+                        </span>
+                        <input
+                          type="file"
+                          accept="image/*,application/pdf"
+                          className="hidden"
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            if (f) handleVendorPanUpload(f);
+                          }}
+                        />
+                      </label>
+                      {vPanDocUrl && (
+                        <a
+                          href={vPanDocUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="px-3 py-2 bg-brand-50 text-brand-700 border border-brand-200 rounded-xl text-xs font-semibold hover:bg-brand-100 shrink-0"
+                        >
+                          View PAN ↗
+                        </a>
+                      )}
+                    </div>
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-neutral-700 mb-1">Default Category</label>

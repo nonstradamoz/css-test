@@ -64,7 +64,7 @@ async def test_feature1_bank_details_submission_guard(client):
     assert res_sub_blocked.status_code == 400
     assert "Bank account or UPI details are required" in res_sub_blocked.json()["detail"]
 
-    # Configure bank details on profile
+    # Configure bank details on profile (without PAN yet -> still blocked on PAN!)
     res_profile = await client.patch("/api/v1/users/me", headers=headers, json={
         "bank_details": {
             "account_holder_name": "Bank Guard Emp",
@@ -74,6 +74,17 @@ async def test_feature1_bank_details_submission_guard(client):
         }
     })
     assert res_profile.status_code == 200
+
+    res_pan_blocked = await client.post(f"/api/v1/expenses/{claim_id}/submit", headers=headers)
+    assert res_pan_blocked.status_code == 400
+    assert "PAN" in res_pan_blocked.json()["detail"]
+
+    # Add PAN details & document
+    res_pan_ok = await client.patch("/api/v1/users/me", headers=headers, json={
+        "pan_number": "ABCDE1234F",
+        "pan_document_url": "https://storage.crs-corp.com/pan/sample_pan.pdf"
+    })
+    assert res_pan_ok.status_code == 200
 
     # Submit saved draft now -> SUCCEEDS 200
     res_sub_success = await client.post(f"/api/v1/expenses/{claim_id}/submit", headers=headers)
@@ -159,7 +170,9 @@ async def test_feature4_cross_user_duplicate_prohibition(client):
     l_a = await client.post("/api/v1/auth/login", json={"email": "user.alice@crs-corp.com", "password": "Password123!"})
     h_a = {"Authorization": f"Bearer {l_a.json()['access_token']}"}
     await client.patch("/api/v1/users/me", headers=h_a, json={
-        "bank_details": {"account_number": "999911112222", "ifsc_code": "HDFC0009999"}
+        "bank_details": {"account_number": "999911112222", "ifsc_code": "HDFC0009999"},
+        "pan_number": "ABCDE1234F",
+        "pan_document_url": "https://storage.crs-corp.com/pan/sample_pan.pdf"
     })
 
     # User B registers & sets bank details
@@ -172,7 +185,9 @@ async def test_feature4_cross_user_duplicate_prohibition(client):
     l_b = await client.post("/api/v1/auth/login", json={"email": "user.bob@crs-corp.com", "password": "Password123!"})
     h_b = {"Authorization": f"Bearer {l_b.json()['access_token']}"}
     await client.patch("/api/v1/users/me", headers=h_b, json={
-        "bank_details": {"account_number": "888811112222", "ifsc_code": "HDFC0008888"}
+        "bank_details": {"account_number": "888811112222", "ifsc_code": "HDFC0008888"},
+        "pan_number": "ABCDE1234F",
+        "pan_document_url": "https://storage.crs-corp.com/pan/sample_pan.pdf"
     })
 
     same_date = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()

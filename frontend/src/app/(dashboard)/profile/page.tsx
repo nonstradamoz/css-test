@@ -8,19 +8,25 @@ import { api } from '@/lib/api';
 import { BankDetails } from '@/types';
 import {
   User, Building2, CreditCard, ShieldCheck, CheckCircle2,
-  AlertCircle, Save, Lock, Eye, EyeOff, Hash, QrCode, ArrowRight
+  AlertCircle, Save, Lock, Eye, EyeOff, Hash, QrCode, ArrowRight, FileText, UploadCloud, ExternalLink
 } from 'lucide-react';
 
 function ProfileContent() {
   const { user, refreshUser } = useAuth();
   const searchParams = useSearchParams();
   const promptBank = searchParams.get('prompt_bank') === 'true';
+  const promptPan = searchParams.get('prompt_pan') === 'true';
   const redirectExpenseId = searchParams.get('redirect_expense_id');
 
   // Personal Info Form
   const [fullName, setFullName] = useState(user?.full_name || '');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+
+  // Tax & Identity (PAN)
+  const [panNumber, setPanNumber] = useState('');
+  const [panDocumentUrl, setPanDocumentUrl] = useState('');
+  const [isUploadingPan, setIsUploadingPan] = useState(false);
 
   // Bank Details Form (for employees)
   const [accountHolder, setAccountHolder] = useState('');
@@ -39,6 +45,8 @@ function ProfileContent() {
   useEffect(() => {
     if (user) {
       setFullName(user.full_name || '');
+      setPanNumber(user.pan_number || '');
+      setPanDocumentUrl(user.pan_document_url || '');
       if (user.bank_details) {
         setAccountHolder(user.bank_details.account_holder_name || '');
         setBankName(user.bank_details.bank_name || '');
@@ -48,6 +56,19 @@ function ProfileContent() {
       }
     }
   }, [user]);
+
+  const handlePanFileUpload = async (file: File) => {
+    setIsUploadingPan(true);
+    setErrorMsg(null);
+    try {
+      const res = await api.receipts.uploadFile(file);
+      setPanDocumentUrl(res.url);
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Failed to upload PAN document.');
+    } finally {
+      setIsUploadingPan(false);
+    }
+  };
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -60,8 +81,12 @@ function ProfileContent() {
         full_name?: string;
         password?: string;
         bank_details?: BankDetails;
+        pan_number?: string;
+        pan_document_url?: string;
       } = {
-        full_name: fullName.trim()
+        full_name: fullName.trim(),
+        pan_number: panNumber.trim().toUpperCase() || undefined,
+        pan_document_url: panDocumentUrl.trim() || undefined
       };
 
       if (password) {
@@ -99,14 +124,16 @@ function ProfileContent() {
         </p>
       </div>
 
-      {/* Missing Bank Details Warning Banner */}
-      {promptBank && (
+      {/* Missing Bank / PAN Details Warning Banner */}
+      {(promptBank || promptPan) && (
         <div className="p-4 bg-amber-500/15 border border-amber-500/30 rounded-xl flex items-start gap-3 text-amber-900 shadow-sm animate-in fade-in duration-300">
           <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
           <div className="space-y-1">
-            <h3 className="text-sm font-semibold text-amber-900">Bank Details Required to Submit Expense Claims</h3>
+            <h3 className="text-sm font-semibold text-amber-900">
+              {promptPan ? 'PAN Details & Document Required to Submit Expense Claims' : 'Bank Details Required to Submit Expense Claims'}
+            </h3>
             <p className="text-xs text-amber-800 leading-relaxed">
-              Your expense claim has been safely saved as a <strong>Draft</strong>. Corporate policy requires valid reimbursement bank details (Account Number or UPI ID) on your profile before a claim can be submitted. Please fill out your bank details below and save your profile.
+              Your expense claim has been safely saved as a <strong>Draft</strong>. Corporate policy requires valid reimbursement bank details and a verified PAN Number with an uploaded PAN card document/image before a claim can be submitted.
             </p>
           </div>
         </div>
@@ -338,6 +365,75 @@ function ProfileContent() {
             </span>
           </div>
         )}
+
+        {/* Tax & Identity Verification (PAN) - Compulsory */}
+        <div className="bg-white border border-neutral-200/80 rounded-2xl p-6 shadow-sm space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm font-bold text-neutral-900">
+              <FileText size={18} className="text-brand-600" />
+              <span>PAN Verification (Compulsory) *</span>
+            </div>
+            {panNumber && panDocumentUrl ? (
+              <span className="text-[11px] font-semibold px-2.5 py-0.5 bg-emerald-50 text-emerald-700 rounded-full border border-emerald-200">
+                PAN Verified
+              </span>
+            ) : (
+              <span className="text-[11px] font-semibold px-2.5 py-0.5 bg-amber-50 text-amber-700 rounded-full border border-amber-200">
+                Required
+              </span>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-500 mb-1.5">
+                PAN Number *
+              </label>
+              <input
+                type="text"
+                required
+                minLength={10}
+                maxLength={20}
+                placeholder="e.g. ABCDE1234F"
+                value={panNumber}
+                onChange={(e) => setPanNumber(e.target.value.toUpperCase())}
+                className="w-full px-4 py-2.5 border border-neutral-300 rounded-xl text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-500 mb-1.5">
+                PAN Card Document / Image *
+              </label>
+              <div className="flex items-center gap-2">
+                <label className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 border border-dashed border-neutral-300 hover:border-brand-400 rounded-xl text-xs font-semibold text-neutral-700 bg-neutral-50/70 cursor-pointer transition-colors">
+                  <UploadCloud size={16} className="text-brand-600" />
+                  <span>{isUploadingPan ? 'Uploading...' : panDocumentUrl ? 'Replace PAN Document' : 'Upload PAN (PDF / PNG / JPG)'}</span>
+                  <input
+                    type="file"
+                    accept="image/*,application/pdf"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) handlePanFileUpload(f);
+                    }}
+                  />
+                </label>
+                {panDocumentUrl && (
+                  <a
+                    href={panDocumentUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 px-3 py-2.5 bg-brand-50 text-brand-700 border border-brand-200 rounded-xl text-xs font-semibold hover:bg-brand-100 shrink-0"
+                  >
+                    <ExternalLink size={13} />
+                    View
+                  </a>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
 
         <div className="flex items-center justify-end">
           <button

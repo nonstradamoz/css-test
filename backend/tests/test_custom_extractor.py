@@ -203,7 +203,11 @@ async def test_role_based_extraction_privacy(client):
     await client.patch(
         "/api/v1/users/me",
         headers=emp_headers,
-        json={"bank_details": {"account_number": "777788889999", "ifsc_code": "HDFC0007777"}}
+        json={
+            "bank_details": {"account_number": "777788889999", "ifsc_code": "HDFC0007777"},
+            "pan_number": "ABCDE1234F",
+            "pan_document_url": "https://storage.crs-corp.com/pan/sample_pan.pdf"
+        }
     )
 
     # 3. Employee can call analyze endpoint directly (200 OK)
@@ -334,7 +338,11 @@ async def test_forensics_blocks_duplicate_transaction_id_and_recycled_bills(clie
     await client.patch(
         "/api/v1/users/me",
         headers=emp_headers,
-        json={"bank_details": {"account_number": "777788889999", "ifsc_code": "HDFC0007777"}}
+        json={
+            "bank_details": {"account_number": "777788889999", "ifsc_code": "HDFC0007777"},
+            "pan_number": "ABCDE1234F",
+            "pan_document_url": "https://storage.crs-corp.com/pan/sample_pan.pdf"
+        }
     )
 
     # 2. Admin submits an active claim with transaction_id and bill_number

@@ -48,6 +48,14 @@ async def update_my_profile(
         user.bank_details = data.bank_details.model_dump()
         new_values["bank_details"] = user.bank_details
 
+    if data.pan_number is not None and data.pan_number.strip():
+        user.pan_number = data.pan_number.strip().upper()
+        new_values["pan_number"] = user.pan_number
+
+    if data.pan_document_url is not None and data.pan_document_url.strip():
+        user.pan_document_url = data.pan_document_url.strip()
+        new_values["pan_document_url"] = user.pan_document_url
+
     await db.flush()
 
     await log_audit_event(
@@ -92,6 +100,8 @@ async def create_user(
         full_name=data.full_name,
         role=data.role,
         bank_details=data.bank_details.model_dump() if data.bank_details else {},
+        pan_number=data.pan_number.strip().upper() if data.pan_number else None,
+        pan_document_url=data.pan_document_url.strip() if data.pan_document_url else None,
         is_active=True
     )
     db.add(new_user)

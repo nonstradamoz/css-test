@@ -136,6 +136,10 @@ export default function ExpenseDetailPage() {
         router.push(`/profile?prompt_bank=true&redirect_expense_id=${expenseId}`);
         return;
       }
+      if (err.message?.toLowerCase().includes('pan')) {
+        router.push(`/profile?prompt_pan=true&redirect_expense_id=${expenseId}`);
+        return;
+      }
       setErrorMsg(err.message || 'Failed to submit claim');
     } finally {
       setIsProcessing(false);
