@@ -62,7 +62,6 @@ export default function VendorsPage() {
     queryKey: ['system-settings'],
     queryFn: () => api.settings.get()
   });
-  const isAiEnabled = sysSettings?.ai_receipt_extractor_enabled ?? true;
 
   const { data: vendorBills = [], isLoading: isLoadingBills, refetch: refetchBills } = useQuery({
     queryKey: ['vendor-bills-list'],
@@ -210,8 +209,6 @@ export default function VendorsPage() {
   );
 
   const [billFile, setBillFile] = useState<File | null>(null);
-  const [isScanning, setIsScanning] = useState(false);
-  const [extractedMeta, setExtractedMeta] = useState<Record<string, any> | null>(null);
 
   const [billTitle, setBillTitle] = useState('');
   const [invoiceNumber, setInvoiceNumber] = useState('');
@@ -248,26 +245,9 @@ export default function VendorsPage() {
     }
   };
 
-  const handleBillFileSelect = async (file: File) => {
+  const handleBillFileSelect = (file: File) => {
     setBillFile(file);
     setBanner(null);
-    if (!isAiEnabled) return;
-
-    setIsScanning(true);
-    try {
-      const analysis = await api.receipts.analyze(file);
-      setExtractedMeta(analysis as any);
-      if (analysis.amount && !billAmount) setBillAmount(String(analysis.amount));
-      if (analysis.invoice_number && !invoiceNumber) setInvoiceNumber(analysis.invoice_number);
-      if (analysis.expense_date && analysis.date_verified) setBillDate(analysis.expense_date.split('T')[0]);
-      if (analysis.merchant_name && !billTitle) {
-        setBillTitle(`Vendor Invoice - ${analysis.merchant_name}${analysis.invoice_number ? ` (#${analysis.invoice_number})` : ''}`);
-      }
-    } catch {
-      // Allow manual entry if scan fails
-    } finally {
-      setIsScanning(false);
-    }
   };
 
   const handleSubmitVendorBill = async (e: React.FormEvent) => {
@@ -327,7 +307,6 @@ export default function VendorsPage() {
           expense_date: new Date(`${billDate}T12:00:00Z`).toISOString(),
           receipt_url: uploadRes.url,
           receipt_hash: undefined,
-          extracted_metadata: extractedMeta || undefined,
           category_details: Object.keys(catDetails).length > 0 ? catDetails : undefined,
           vendor_id: selectedVendorId,
           auto_approve_vendor_bill: autoApproveBill
@@ -337,7 +316,6 @@ export default function VendorsPage() {
 
       // Reset form
       setBillFile(null);
-      setExtractedMeta(null);
       setBillTitle('');
       setInvoiceNumber('');
       setBillAmount('');
@@ -508,14 +486,9 @@ export default function VendorsPage() {
             <div className="bg-white rounded-2xl border border-neutral-200/80 p-6 shadow-sm space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-sm font-bold text-neutral-900">
-                  <Scan size={18} className="text-brand-600" />
+                  <UploadCloud size={18} className="text-brand-600" />
                   <span>2. Vendor Invoice / Bill Document *</span>
                 </div>
-                {isAiEnabled && (
-                  <span className="text-[11px] font-semibold px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-full border border-emerald-200 inline-flex items-center gap-1">
-                    <Sparkles size={11} /> AI Auto-Fill Active
-                  </span>
-                )}
               </div>
 
               <label className="block border-2 border-dashed border-neutral-300 hover:border-brand-400 rounded-xl p-6 text-center cursor-pointer transition-colors bg-neutral-50/50">
@@ -528,11 +501,7 @@ export default function VendorsPage() {
                     if (f) handleBillFileSelect(f);
                   }}
                 />
-                {isScanning ? (
-                  <div className="py-2 text-xs font-semibold text-brand-600">
-                    Analyzing vendor invoice...
-                  </div>
-                ) : billFile ? (
+                {billFile ? (
                   <div className="py-1 space-y-1">
                     <FileText size={24} className="mx-auto text-brand-600" />
                     <p className="text-xs font-bold text-neutral-800">{billFile.name}</p>
@@ -856,14 +825,19 @@ export default function VendorsPage() {
                       <div className="flex items-center justify-between mt-1">
                         <p className="text-xs text-neutral-700 font-mono">PAN: {selectedVendor.pan}</p>
                         {selectedVendor.pan_document_url && (
-                          <a
-                            href={selectedVendor.pan_document_url}
-                            target="_blank"
-                            rel="noreferrer"
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                await api.receipts.openFile(selectedVendor.pan_document_url!);
+                              } catch (err: any) {
+                                alert(err.message || 'Failed to open PAN document.');
+                              }
+                            }}
                             className="text-[11px] font-semibold text-brand-600 hover:underline"
                           >
                             View PAN Doc ↗
-                          </a>
+                          </button>
                         )}
                       </div>
                     )}
@@ -958,14 +932,19 @@ export default function VendorsPage() {
                           <div className="flex items-center gap-2 mt-0.5">
                             <p className="text-xs font-mono text-neutral-600">PAN: {v.pan}</p>
                             {v.pan_document_url && (
-                              <a
-                                href={v.pan_document_url}
-                                target="_blank"
-                                rel="noreferrer"
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  try {
+                                    await api.receipts.openFile(v.pan_document_url!);
+                                  } catch (err: any) {
+                                    alert(err.message || 'Failed to open PAN document.');
+                                  }
+                                }}
                                 className="text-[11px] font-semibold text-brand-600 hover:underline"
                               >
                                 View PAN ↗
-                              </a>
+                              </button>
                             )}
                           </div>
                         )}

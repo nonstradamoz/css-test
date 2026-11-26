@@ -8,7 +8,8 @@ import { User, Role, BankDetails } from '@/types';
 import { formatDate } from '@/lib/utils';
 import {
   Users, UserPlus, Shield, Check, X, AlertTriangle,
-  CreditCard, Building2, Hash, QrCode, Save, ShieldCheck
+  CreditCard, Building2, Hash, QrCode, Save, ShieldCheck,
+  UploadCloud, ExternalLink, FileText
 } from 'lucide-react';
 
 const ROLES: { value: Role; label: string }[] = [
@@ -27,13 +28,17 @@ export default function UsersManagementPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Bank Details Modal state
+  // Bank & PAN Details Modal state
   const [selectedUserForBank, setSelectedUserForBank] = useState<User | null>(null);
   const [bankHolder, setBankHolder] = useState('');
   const [bankName, setBankName] = useState('');
+  const [bankAddress, setBankAddress] = useState('');
   const [bankAccNumber, setBankAccNumber] = useState('');
   const [bankIfsc, setBankIfsc] = useState('');
   const [bankUpi, setBankUpi] = useState('');
+  const [panNumber, setPanNumber] = useState('');
+  const [panDocumentUrl, setPanDocumentUrl] = useState('');
+  const [isUploadingPan, setIsUploadingPan] = useState(false);
   const [isSavingBank, setIsSavingBank] = useState(false);
   const [bankModalMsg, setBankModalMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -94,9 +99,25 @@ export default function UsersManagementPage() {
     setBankModalMsg(null);
     setBankHolder(user.bank_details?.account_holder_name || user.full_name || '');
     setBankName(user.bank_details?.bank_name || '');
+    setBankAddress(user.bank_details?.bank_address || '');
     setBankAccNumber(user.bank_details?.account_number || '');
     setBankIfsc(user.bank_details?.ifsc_code || '');
     setBankUpi(user.bank_details?.upi_id || '');
+    setPanNumber(user.pan_number || '');
+    setPanDocumentUrl(user.pan_document_url || '');
+  };
+
+  const handlePanFileUpload = async (file: File) => {
+    setIsUploadingPan(true);
+    setBankModalMsg(null);
+    try {
+      const res = await api.receipts.uploadFile(file);
+      setPanDocumentUrl(res.url);
+    } catch (err: any) {
+      setBankModalMsg({ type: 'error', text: err.message || 'Failed to upload PAN document.' });
+    } finally {
+      setIsUploadingPan(false);
+    }
   };
 
   // Save Bank Details (Admin entry on behalf of Employee)
@@ -111,17 +132,20 @@ export default function UsersManagementPage() {
       const bankPayload: BankDetails = {
         account_holder_name: bankHolder.trim() || undefined,
         bank_name: bankName.trim() || undefined,
+        bank_address: bankAddress.trim() || undefined,
         account_number: bankAccNumber.trim() || undefined,
         ifsc_code: bankIfsc.trim().toUpperCase() || undefined,
         upi_id: bankUpi.trim() || undefined
       };
 
       await api.users.update(selectedUserForBank.id, {
-        bank_details: bankPayload
+        bank_details: bankPayload,
+        pan_number: panNumber.trim().toUpperCase() || undefined,
+        pan_document_url: panDocumentUrl.trim() || undefined
       });
 
       await refetch();
-      setBankModalMsg({ type: 'success', text: `Bank details for ${selectedUserForBank.full_name} updated successfully!` });
+      setBankModalMsg({ type: 'success', text: `Bank & PAN details for ${selectedUserForBank.full_name} updated successfully!` });
       setTimeout(() => {
         setSelectedUserForBank(null);
       }, 1200);
@@ -269,15 +293,15 @@ export default function UsersManagementPage() {
 
       {/* Admin Bank Details Editor Modal */}
       {selectedUserForBank && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4 my-8 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-neutral-100">
               <div className="flex items-center gap-2.5">
                 <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg">
                   <CreditCard size={18} />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-neutral-900">Manage Employee Bank Details</h3>
+                  <h3 className="text-base font-bold text-neutral-900">Manage Employee Bank & PAN Details</h3>
                   <p className="text-xs text-neutral-500">Employee: {selectedUserForBank.full_name} ({selectedUserForBank.email})</p>
                 </div>
               </div>
@@ -302,7 +326,7 @@ export default function UsersManagementPage() {
             <form onSubmit={handleSaveBankDetails} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold uppercase text-neutral-500 mb-1">
-                  Account Holder Name
+                  Account Holder / Beneficiary Name
                 </label>
                 <input
                   type="text"
@@ -314,7 +338,7 @@ export default function UsersManagementPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold uppercase text-neutral-500 mb-1">
                     Bank Name
@@ -345,34 +369,107 @@ export default function UsersManagementPage() {
 
               <div>
                 <label className="block text-xs font-semibold uppercase text-neutral-500 mb-1">
-                  Bank Account Number
+                  Bank Branch / Address
                 </label>
                 <input
                   type="text"
-                  required
-                  placeholder="e.g. 5010049281928"
-                  value={bankAccNumber}
-                  onChange={(e) => setBankAccNumber(e.target.value)}
-                  className="w-full px-3 py-2 border border-neutral-300 rounded-xl text-sm font-mono focus:outline-none focus:border-emerald-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold uppercase text-neutral-500 mb-1">
-                  UPI ID (Optional)
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. employee@okaxis"
-                  value={bankUpi}
-                  onChange={(e) => setBankUpi(e.target.value)}
+                  placeholder="e.g. MG Road Branch, Bengaluru - 560001"
+                  value={bankAddress}
+                  onChange={(e) => setBankAddress(e.target.value)}
                   className="w-full px-3 py-2 border border-neutral-300 rounded-xl text-sm focus:outline-none focus:border-emerald-500"
                 />
               </div>
 
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold uppercase text-neutral-500 mb-1">
+                    Bank Account Number
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. 5010049281928"
+                    value={bankAccNumber}
+                    onChange={(e) => setBankAccNumber(e.target.value)}
+                    className="w-full px-3 py-2 border border-neutral-300 rounded-xl text-sm font-mono focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold uppercase text-neutral-500 mb-1">
+                    UPI ID (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. employee@okaxis"
+                    value={bankUpi}
+                    onChange={(e) => setBankUpi(e.target.value)}
+                    className="w-full px-3 py-2 border border-neutral-300 rounded-xl text-sm focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-neutral-100 space-y-3">
+                <div className="flex items-center gap-1.5 text-xs font-semibold uppercase text-neutral-600">
+                  <FileText size={13} className="text-emerald-600" />
+                  <span>Tax & Identity (PAN)</span>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold uppercase text-neutral-500 mb-1">
+                    PAN Number
+                  </label>
+                  <input
+                    type="text"
+                    maxLength={20}
+                    placeholder="e.g. ABCDE1234F"
+                    value={panNumber}
+                    onChange={(e) => setPanNumber(e.target.value.toUpperCase())}
+                    className="w-full px-3 py-2 border border-neutral-300 rounded-xl text-sm font-mono uppercase focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold uppercase text-neutral-500 mb-1">
+                    PAN Card Document
+                  </label>
+                  <div className="flex items-center gap-3">
+                    <label className="inline-flex items-center gap-2 px-3 py-2 bg-neutral-50 hover:bg-neutral-100 border border-neutral-300 rounded-xl text-xs font-medium text-neutral-700 cursor-pointer transition-colors">
+                      <UploadCloud size={14} className="text-emerald-600" />
+                      <span>{isUploadingPan ? 'Uploading...' : panDocumentUrl ? 'Replace PAN Document' : 'Upload PAN Document'}</span>
+                      <input
+                        type="file"
+                        accept=".pdf,image/*"
+                        className="hidden"
+                        disabled={isUploadingPan}
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) handlePanFileUpload(f);
+                        }}
+                      />
+                    </label>
+                    {panDocumentUrl && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            await api.receipts.openFile(panDocumentUrl);
+                          } catch (err: any) {
+                            setBankModalMsg({ type: 'error', text: err.message || 'Failed to open PAN document.' });
+                          }
+                        }}
+                        className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600 hover:text-emerald-700 hover:underline"
+                      >
+                        <span>View PAN</span>
+                        <ExternalLink size={12} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
               <div className="p-2.5 bg-neutral-50 border border-neutral-200 rounded-xl text-xs text-neutral-500 flex items-center gap-2">
                 <ShieldCheck size={14} className="text-emerald-600 shrink-0" />
-                <span>Entering bank details on behalf of the employee in case of technical or accessibility issues.</span>
+                <span>Entering bank and PAN details on behalf of the employee for NEFT payouts and compliance.</span>
               </div>
 
               <div className="flex items-center justify-end gap-3 pt-3">
@@ -385,7 +482,7 @@ export default function UsersManagementPage() {
                 </button>
                 <button
                   type="submit"
-                  disabled={isSavingBank}
+                  disabled={isSavingBank || isUploadingPan}
                   className="inline-flex items-center gap-1.5 px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-sm font-medium shadow-sm disabled:opacity-50"
                 >
                   <Save size={14} />

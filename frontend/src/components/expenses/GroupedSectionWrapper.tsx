@@ -1,10 +1,10 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Expense } from '@/types';
 import { groupExpensesByPayee, ExpenseGroup } from '@/lib/groupExpenses';
 import { formatCurrency } from '@/lib/utils';
-import { Building2, User, ChevronDown, ChevronRight, Layers, List } from 'lucide-react';
+import { Building2, User, Layers, List, ChevronRight } from 'lucide-react';
 
 interface GroupedExpenseSectionProps {
   expenses: Expense[];
@@ -16,13 +16,17 @@ export const GroupedExpenseSections: React.FC<GroupedExpenseSectionProps> = ({
   renderItems
 }) => {
   const [viewMode, setViewMode] = useState<'grouped' | 'flat'>('grouped');
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
-
   const groups = groupExpensesByPayee(expenses);
+  const [selectedKey, setSelectedKey] = useState<string>(groups[0]?.key || '');
 
-  const toggleGroup = (key: string) => {
-    setCollapsed((prev) => ({ ...prev, [key]: !prev[key] }));
-  };
+  // Keep selectedKey valid when filters/data change
+  useEffect(() => {
+    if (groups.length > 0 && !groups.some((g) => g.key === selectedKey)) {
+      setSelectedKey(groups[0].key);
+    }
+  }, [groups, selectedKey]);
+
+  const activeGroup = groups.find((g) => g.key === selectedKey) || groups[0] || null;
 
   return (
     <div className="space-y-4">
@@ -30,7 +34,7 @@ export const GroupedExpenseSections: React.FC<GroupedExpenseSectionProps> = ({
       <div className="flex items-center justify-between px-1">
         <p className="text-xs text-neutral-500 font-medium">
           {viewMode === 'grouped'
-            ? `${groups.length} ${groups.length === 1 ? 'section' : 'sections'} · ${expenses.length} total ${expenses.length === 1 ? 'bill' : 'bills'}`
+            ? `${groups.length} ${groups.length === 1 ? 'payee' : 'payees'} · ${expenses.length} total ${expenses.length === 1 ? 'bill' : 'bills'}`
             : `${expenses.length} total ${expenses.length === 1 ? 'bill' : 'bills'}`}
         </p>
         <div className="inline-flex rounded-lg bg-neutral-100 p-0.5 border border-neutral-200">
@@ -44,7 +48,7 @@ export const GroupedExpenseSections: React.FC<GroupedExpenseSectionProps> = ({
             }`}
           >
             <Layers size={13} />
-            Grouped
+            By Payee
           </button>
           <button
             type="button"
@@ -66,69 +70,129 @@ export const GroupedExpenseSections: React.FC<GroupedExpenseSectionProps> = ({
           {renderItems(expenses)}
         </div>
       ) : (
-        <div className="space-y-4">
-          {groups.map((grp) => {
-            const isCollapsed = !!collapsed[grp.key];
-            return (
-              <div
-                key={grp.key}
-                className="bg-white rounded-xl border border-neutral-200/80 shadow-sm overflow-hidden"
-              >
-                <button
-                  type="button"
-                  onClick={() => toggleGroup(grp.key)}
-                  className="w-full px-5 py-3.5 bg-neutral-50/80 hover:bg-neutral-100/70 border-b border-neutral-200/80 flex flex-wrap items-center justify-between gap-3 text-left transition-colors"
-                >
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+          {/* Left Side: Names List (Vendors & Students) */}
+          <div className="lg:col-span-4 xl:col-span-3 bg-white rounded-xl border border-neutral-200/80 shadow-sm overflow-hidden">
+            <div className="px-4 py-3 border-b border-neutral-200/80 bg-neutral-50/80">
+              <p className="text-xs font-bold uppercase tracking-wider text-neutral-500">
+                Vendors & Students ({groups.length})
+              </p>
+            </div>
+            <div className="divide-y divide-neutral-100 max-h-[600px] overflow-y-auto">
+              {groups.map((grp) => {
+                const isSelected = activeGroup?.key === grp.key;
+                return (
+                  <button
+                    key={grp.key}
+                    type="button"
+                    onClick={() => setSelectedKey(grp.key)}
+                    className={`w-full px-4 py-3.5 text-left transition-colors flex items-center justify-between gap-2.5 ${
+                      isSelected
+                        ? 'bg-brand-50/70 border-l-4 border-l-brand-600'
+                        : 'hover:bg-neutral-50 border-l-4 border-l-transparent'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div
+                        className={`p-2 rounded-lg shrink-0 ${
+                          grp.kind === 'VENDOR'
+                            ? 'bg-brand-50 text-brand-700 border border-brand-200/70'
+                            : 'bg-emerald-50 text-emerald-700 border border-emerald-200/70'
+                        }`}
+                      >
+                        {grp.kind === 'VENDOR' ? <Building2 size={15} /> : <User size={15} />}
+                      </div>
+                      <div className="min-w-0">
+                        <p className={`text-sm truncate ${isSelected ? 'font-bold text-neutral-900' : 'font-semibold text-neutral-800'}`}>
+                          {grp.name}
+                        </p>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <span
+                            className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border ${
+                              grp.kind === 'VENDOR'
+                                ? 'bg-brand-50 text-brand-700 border-brand-200'
+                                : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            }`}
+                          >
+                            {grp.kind === 'VENDOR' ? 'Vendor' : 'Student'}
+                          </span>
+                          <span className="text-[11px] text-neutral-500 font-medium">
+                            · {grp.items.length} {grp.items.length === 1 ? 'bill' : 'bills'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span className="text-xs font-bold text-neutral-900">
+                        {formatCurrency(grp.totalAmount, grp.currency)}
+                      </span>
+                      <ChevronRight
+                        size={15}
+                        className={isSelected ? 'text-brand-600' : 'text-neutral-300'}
+                      />
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Right Side: Expanded Bills & Details for Selected Vendor / Student */}
+          <div className="lg:col-span-8 xl:col-span-9 bg-white rounded-xl border border-neutral-200/80 shadow-sm overflow-hidden">
+            {activeGroup && (
+              <>
+                <div className="px-6 py-4 bg-neutral-50/80 border-b border-neutral-200/80 flex flex-wrap items-center justify-between gap-3">
                   <div className="flex items-center gap-3 min-w-0">
-                    {isCollapsed ? (
-                      <ChevronRight size={17} className="text-neutral-400 shrink-0" />
-                    ) : (
-                      <ChevronDown size={17} className="text-neutral-400 shrink-0" />
-                    )}
                     <div
-                      className={`p-2 rounded-lg shrink-0 ${
-                        grp.kind === 'VENDOR'
+                      className={`p-2.5 rounded-xl shrink-0 ${
+                        activeGroup.kind === 'VENDOR'
                           ? 'bg-brand-50 text-brand-700 border border-brand-200/70'
                           : 'bg-emerald-50 text-emerald-700 border border-emerald-200/70'
                       }`}
                     >
-                      {grp.kind === 'VENDOR' ? <Building2 size={16} /> : <User size={16} />}
+                      {activeGroup.kind === 'VENDOR' ? <Building2 size={18} /> : <User size={18} />}
                     </div>
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-sm font-bold text-neutral-900 truncate">
-                          {grp.name}
-                        </span>
+                        <h3 className="text-base font-bold text-neutral-900 truncate">
+                          {activeGroup.name}
+                        </h3>
                         <span
                           className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${
-                            grp.kind === 'VENDOR'
+                            activeGroup.kind === 'VENDOR'
                               ? 'bg-brand-50 text-brand-700 border-brand-200'
                               : 'bg-emerald-50 text-emerald-700 border-emerald-200'
                           }`}
                         >
-                          {grp.kind === 'VENDOR' ? 'Vendor' : 'Student'}
+                          {activeGroup.kind === 'VENDOR' ? 'Vendor' : 'Student'}
                         </span>
                       </div>
-                      {grp.subtitle && (
-                        <p className="text-xs text-neutral-500 truncate">{grp.subtitle}</p>
+                      {activeGroup.subtitle && (
+                        <p className="text-xs text-neutral-500 mt-0.5">{activeGroup.subtitle}</p>
                       )}
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-3 shrink-0 ml-auto">
-                    <span className="px-2.5 py-1 rounded-full bg-neutral-100 text-neutral-700 text-xs font-semibold border border-neutral-200">
-                      {grp.items.length} {grp.items.length === 1 ? 'bill' : 'bills'}
+                  <div className="flex items-center gap-3 shrink-0">
+                    <span className="px-3 py-1 rounded-full bg-white text-neutral-700 text-xs font-semibold border border-neutral-200 shadow-sm">
+                      {activeGroup.items.length} {activeGroup.items.length === 1 ? 'bill' : 'bills'}
                     </span>
-                    <span className="text-sm font-bold text-neutral-900">
-                      {formatCurrency(grp.totalAmount, grp.currency)}
-                    </span>
+                    <div className="text-right">
+                      <p className="text-[10px] uppercase tracking-wider text-neutral-400 font-semibold">
+                        Total Amount
+                      </p>
+                      <p className="text-base font-bold text-neutral-900">
+                        {formatCurrency(activeGroup.totalAmount, activeGroup.currency)}
+                      </p>
+                    </div>
                   </div>
-                </button>
+                </div>
 
-                {!isCollapsed && <div>{renderItems(grp.items, grp)}</div>}
-              </div>
-            );
-          })}
+                <div>{renderItems(activeGroup.items, activeGroup)}</div>
+              </>
+            )}
+          </div>
         </div>
       )}
     </div>

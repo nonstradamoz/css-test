@@ -46,6 +46,7 @@ class ExpenseCategory(str, enum.Enum):
     SOFTWARE = "SOFTWARE"
     TRAINING = "TRAINING"
     ACCOMMODATION = "ACCOMMODATION"
+    EVENT_PURCHASES = "EVENT_PURCHASES"
     OTHER = "OTHER"
 
 

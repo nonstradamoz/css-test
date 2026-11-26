@@ -115,59 +115,10 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* 1. System Financial Parameters */}
+      {/* 1. System Controls & Policy Settings */}
       <form onSubmit={handleSaveSettings} className="bg-white border border-neutral-200/80 rounded-2xl p-6 shadow-sm space-y-5">
-        <h2 className="text-base font-bold text-neutral-900 flex items-center gap-2">
-          <Settings size={18} className="text-emerald-600" /> Financial Parameters
-        </h2>
-
-        <div>
-          <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-500 mb-1.5">
-            Company Name
-          </label>
-          <input
-            type="text"
-            required
-            value={companyName}
-            onChange={(e) => setCompanyName(e.target.value)}
-            className="w-full px-4 py-2.5 border border-neutral-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-          />
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-500 mb-1.5">
-              Default Currency
-            </label>
-            <input
-              type="text"
-              required
-              value={currency}
-              onChange={(e) => setCurrency(e.target.value)}
-              className="w-full px-4 py-2.5 border border-neutral-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-500 mb-1.5">
-              Tier-2 Approval Threshold (₹ INR)
-            </label>
-            <input
-              type="number"
-              step="0.01"
-              required
-              value={threshold}
-              onChange={(e) => setThreshold(e.target.value)}
-              className="w-full px-4 py-2.5 border border-neutral-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-            />
-            <p className="text-xs text-neutral-400 mt-1">
-              Claims at or above this amount automatically trigger mandatory secondary Finance review.
-            </p>
-          </div>
-        </div>
-
         {/* Expense Submissions Master Toggle */}
-        <div className="pt-4 border-t border-neutral-100">
+        <div>
           <div className="flex items-start justify-between gap-4">
             <div>
               <span className="text-sm font-bold text-neutral-900 block">Expense Submissions Master Switch</span>
@@ -215,32 +166,6 @@ export default function SettingsPage() {
             multiTierApprovalEnabled ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-neutral-100 text-neutral-600 border border-neutral-200'
           }`}>
             {multiTierApprovalEnabled ? 'Multi-Tier Active (Tier 1 & Tier 2 for high risk)' : 'Multi-Tier Disabled (Single-tier approval for all claims)'}
-          </span>
-        </div>
-
-        {/* AI Receipt Extractor Toggle */}
-        <div className="pt-4 border-t border-neutral-100">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <span className="text-sm font-bold text-neutral-900 block">AI Receipt Extractor</span>
-              <p className="text-xs text-neutral-500 mt-0.5">
-                Enable or disable automated multimodal receipt OCR, Gemini extraction, line-item itemization, and dual tax calculation across all expense creation workflows.
-              </p>
-            </div>
-            <label className="relative inline-flex items-center cursor-pointer shrink-0">
-              <input
-                type="checkbox"
-                checked={aiReceiptExtractorEnabled}
-                onChange={(e) => setAiReceiptExtractorEnabled(e.target.checked)}
-                className="sr-only peer"
-              />
-              <div className="w-11 h-6 bg-neutral-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
-            </label>
-          </div>
-          <span className={`inline-block mt-2 px-2.5 py-0.5 rounded text-xs font-semibold ${
-            aiReceiptExtractorEnabled ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-neutral-100 text-neutral-600 border border-neutral-200'
-          }`}>
-            {aiReceiptExtractorEnabled ? 'Active (Gemini Vision & In-House OCR Enabled)' : 'Disabled (Receipts attached manually without auto-extraction)'}
           </span>
         </div>
 

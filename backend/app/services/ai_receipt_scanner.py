@@ -126,7 +126,7 @@ class AIReceiptScanner:
           "is_itc_eligible": boolean (true if company/buyer GSTIN or corporate entity name is printed as customer/recipient),
 
           "expense_date": "string or null (YYYY-MM-DD format if visible)",
-          "suggested_category": "string (one of: TRAVEL, MEALS, SUPPLIES, SOFTWARE, TRAINING, ACCOMMODATION, HARDWARE, OTHER)",
+          "suggested_category": "string (one of: TRAVEL, MEALS, SUPPLIES, SOFTWARE, TRAINING, ACCOMMODATION, EVENT_PURCHASES, HARDWARE, OTHER)",
           "line_items": [
             {
               "description": "string",

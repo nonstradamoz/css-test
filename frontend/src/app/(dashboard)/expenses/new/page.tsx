@@ -54,11 +54,8 @@ export default function NewExpensePage() {
   const [boardingPoint, setBoardingPoint] = useState('');
   const [arrivalPoint, setArrivalPoint] = useState('');
 
-  // File & AI Scanner State
+  // File State
   const [file, setFile] = useState<File | null>(null);
-  const [isScanning, setIsScanning] = useState(false);
-  const [scanResult, setScanResult] = useState<ReceiptAnalysisResponse | null>(null);
-  const [scanError, setScanError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -122,113 +119,12 @@ export default function NewExpensePage() {
     }
   }, [categories, category]);
 
-  const isAiExtractorEnabled = systemSettings?.ai_receipt_extractor_enabled !== false;
-
-  // Handle file drop & AI Scanning
-  const runReceiptScan = async (selectedFile: File) => {
-    if (!isAiExtractorEnabled) {
-      return;
-    }
-    setIsScanning(true);
-    setScanError(null);
-    try {
-      const result = await api.receipts.analyze(selectedFile);
-      setScanResult(result);
-    } catch (err: any) {
-      console.warn('AI Receipt scan error:', err);
-      setScanError(err.message || 'Automatic receipt extraction encountered an issue.');
-    } finally {
-      setIsScanning(false);
-    }
-  };
-
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (!selectedFile) return;
 
     setFile(selectedFile);
     setError(null);
-    setScanResult(null);
-    await runReceiptScan(selectedFile);
-  };
-
-  // Apply AI extracted values to form (category-aware title formatting)
-  const applyExtractedData = () => {
-    if (!scanResult) return;
-
-    let matchedCategoryName = '';
-    if (scanResult.suggested_category) {
-      const match = categories.find(c => c.code === scanResult.suggested_category);
-      if (match) {
-        setCategory(match.code);
-        matchedCategoryName = match.name;
-      }
-    }
-
-    if (scanResult.merchant_name) {
-      const catSuffix = matchedCategoryName ? ` (${matchedCategoryName})` : '';
-      setTitle(`${scanResult.merchant_name}${catSuffix}`);
-    }
-
-    if (scanResult.amount) setAmount(scanResult.amount.toString());
-    if (scanResult.currency) setCurrency(scanResult.currency);
-    if (scanResult.expense_date) {
-      setExpenseDate(scanResult.expense_date);
-    }
-
-    // Auto-populate category-specific fields from category_logistics or fields
-    const targetCat = scanResult.suggested_category || category;
-    const logistics = scanResult.category_logistics || {};
-
-    if (targetCat === 'ACCOMMODATION') {
-      const hName = logistics.hotel_name || scanResult.merchant_name;
-      if (hName) setHotelName(hName);
-      const hLoc = logistics.hotel_location || scanResult.vendor_location;
-      if (hLoc) setHotelLocation(hLoc);
-      if (logistics.check_in) {
-        setCheckIn(logistics.check_in.includes('T') ? logistics.check_in : `${logistics.check_in}T14:00`);
-      }
-      if (logistics.check_out) {
-        setCheckOut(logistics.check_out.includes('T') ? logistics.check_out : `${logistics.check_out}T11:00`);
-      }
-      const hContact = logistics.contact_number || (scanResult as any).mobile_number;
-      if (hContact) setHotelContact(hContact);
-    } else if (targetCat === 'TRAVEL') {
-      if (logistics.travel_mode) setTravelMode(logistics.travel_mode);
-      if (logistics.boarding_point) setBoardingPoint(logistics.boarding_point);
-      if (logistics.arrival_point) setArrivalPoint(logistics.arrival_point);
-      if (logistics.travel_start_date) setTravelStartDate(logistics.travel_start_date);
-      if (logistics.travel_end_date) setTravelEndDate(logistics.travel_end_date);
-      else if (scanResult.expense_date) setTravelStartDate(scanResult.expense_date);
-    } else if (targetCat === 'TRAINING') {
-      if (logistics.certification_name) setCertName(logistics.certification_name);
-      if (logistics.institute) setCertInstitute(logistics.institute);
-      if (logistics.enrollment_date) setCertEnrollDate(logistics.enrollment_date);
-      if (logistics.certification_type) setCertType(logistics.certification_type);
-    }
-
-    const descParts: string[] = [];
-    if (scanResult.line_items && scanResult.line_items.length > 0) {
-      const itemSummary = scanResult.line_items.map(i => `${i.description} (₹${i.amount})`).join(', ');
-      descParts.push(`Extracted Items: ${itemSummary}`);
-    }
-    if (scanResult.transaction_id) {
-      descParts.push(`Txn / Ref ID: ${scanResult.transaction_id}`);
-    }
-    if ((scanResult as any).payment_mode) {
-      descParts.push(`Payment Mode: ${(scanResult as any).payment_mode}`);
-    }
-    if ((scanResult as any).mobile_number) {
-      descParts.push(`Contact / Mobile: ${(scanResult as any).mobile_number}`);
-    }
-    if (scanResult.bill_number || scanResult.receipt_number || scanResult.invoice_number) {
-      const billId = scanResult.bill_number || scanResult.receipt_number || scanResult.invoice_number;
-      descParts.push(`Bill / Invoice #: ${billId}`);
-    }
-
-    if (descParts.length > 0) {
-      setDescription(descParts.join(' | '));
-    }
   };
 
   // Run live Forensics check when amount/date changes (debounced)
@@ -245,8 +141,7 @@ export default function NewExpensePage() {
         const preview = await api.expenses.forensicsPreview({
           amount: parsedAmount,
           expense_date: new Date(expenseDate).toISOString(),
-          category,
-          line_items: scanResult?.line_items as any
+          category
         });
         setForensics(preview);
       } catch (e) {
@@ -257,7 +152,7 @@ export default function NewExpensePage() {
     }, 400);
 
     return () => clearTimeout(timer);
-  }, [amount, expenseDate, category, scanResult]);
+  }, [amount, expenseDate, category]);
 
   const handleSaveOrSubmit = async (submitNow: boolean) => {
     if (!title || !amount || !expenseDate) {
@@ -358,38 +253,7 @@ export default function NewExpensePage() {
         expense_date: new Date(expenseDate).toISOString() as any,
         receipt_url: receiptUrl,
         category_details: Object.keys(categoryDetails).length > 0 ? categoryDetails : undefined,
-        on_behalf_of_user_id: isProxyFiling ? onBehalfOfUserId : undefined,
-        extracted_metadata: scanResult ? {
-          merchant_name: scanResult.merchant_name,
-          vendor_location: scanResult.vendor_location,
-          mobile_number: (scanResult as any).mobile_number,
-          gstin: scanResult.gstin,
-          invoice_number: scanResult.invoice_number,
-          receipt_number: scanResult.receipt_number,
-          bill_number: scanResult.bill_number,
-          transaction_id: scanResult.transaction_id,
-          payment_mode: (scanResult as any).payment_mode,
-          amount: scanResult.amount,
-          subtotal_amount: scanResult.subtotal_amount,
-          tax_amount: scanResult.tax_amount,
-          cgst_amount: scanResult.cgst_amount,
-          sgst_amount: scanResult.sgst_amount,
-          igst_amount: scanResult.igst_amount,
-          currency: scanResult.currency,
-          is_itc_eligible: scanResult.is_itc_eligible,
-          expense_date: scanResult.expense_date,
-          suggested_category: scanResult.suggested_category,
-          line_items: scanResult.line_items,
-          category_logistics: scanResult.category_logistics,
-          math_check_passed: scanResult.math_check_passed,
-          math_discrepancy_amount: scanResult.math_discrepancy_amount,
-          is_future_date: scanResult.is_future_date,
-          is_stale_receipt: scanResult.is_stale_receipt,
-          confidence_score: scanResult.confidence_score,
-          is_handwritten: scanResult.is_handwritten,
-          handwritten_notes: scanResult.handwritten_notes,
-          verification_status: scanResult.verification_status
-        } : undefined
+        on_behalf_of_user_id: isProxyFiling ? onBehalfOfUserId : undefined
       }, effectiveSubmitNow);
 
       if (willSaveAsDraftDueToMissingProfile) {
@@ -669,6 +533,7 @@ export default function NewExpensePage() {
                 { code: 'SOFTWARE', name: 'Software & Cloud Services' },
                 { code: 'TRAINING', name: 'Training & Certifications' },
                 { code: 'ACCOMMODATION', name: 'Hotel & Lodging' },
+                { code: 'EVENT_PURCHASES', name: 'Event Purchases' },
                 { code: 'OTHER', name: 'Miscellaneous & Other' },
               ]).map((cat) => (
                 <option key={cat.code} value={cat.code} className="text-neutral-900 bg-white">
@@ -966,17 +831,12 @@ export default function NewExpensePage() {
           </div>
         )}
 
-        {/* 1. Multimodal AI Receipt Scanner Card */}
+        {/* 1. Receipt Uploader Card */}
         <div className="bg-white border border-neutral-200/80 rounded-2xl p-6 shadow-sm space-y-4 relative overflow-hidden">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-sm font-bold text-neutral-900">
-              <Scan size={18} className="text-emerald-600" />
+              <UploadCloud size={18} className="text-emerald-600" />
               <span>Receipt Uploader *</span>
-              {isAiExtractorEnabled && (
-                <span className="text-[11px] font-semibold px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-full border border-emerald-200">
-                  AI Auto-Fill Active
-                </span>
-              )}
             </div>
             {file && (
               <span className="text-xs text-neutral-500 font-medium">
@@ -986,8 +846,7 @@ export default function NewExpensePage() {
           </div>
 
           {/* Dropzone */}
-          <label className={`border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center cursor-pointer transition-all ${isScanning ? 'border-emerald-500 bg-emerald-50/20' : !file ? 'border-amber-300 hover:border-emerald-500 bg-amber-50/10' : 'border-neutral-300 hover:border-emerald-500 bg-neutral-50/50'
-            }`}>
+          <label className={`border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center cursor-pointer transition-all ${!file ? 'border-amber-300 hover:border-emerald-500 bg-amber-50/10' : 'border-neutral-300 hover:border-emerald-500 bg-neutral-50/50'}`}>
             <input
               type="file"
               accept="image/*,application/pdf"
@@ -995,31 +854,19 @@ export default function NewExpensePage() {
               className="hidden"
             />
 
-            {isScanning ? (
-              <div className="text-center py-4 space-y-3">
-                <div className="inline-flex p-3 bg-emerald-100 text-emerald-600 rounded-full animate-bounce">
-                  <Scan size={24} />
-                </div>
-                <div>
-                  <p className="text-sm font-bold text-emerald-900">Inspecting Document...</p>
-                  <p className="text-xs text-emerald-600 mt-0.5">Recognizing printed text, handwritten notes, and line items</p>
-                </div>
+            <div className="text-center py-2 space-y-2">
+              <div className="inline-flex p-2.5 bg-neutral-100 text-neutral-600 rounded-full">
+                <UploadCloud size={20} />
               </div>
-            ) : (
-              <div className="text-center py-2 space-y-2">
-                <div className="inline-flex p-2.5 bg-neutral-100 text-neutral-600 rounded-full">
-                  <UploadCloud size={20} />
-                </div>
-                <div>
-                  <p className="text-xs font-semibold text-neutral-700">
-                    Drop invoice / receipt image or PDF *
-                  </p>
-                  <p className="text-[11px] text-neutral-400 mt-0.5">
-                    Supports printed receipts, hotel bills, and handwritten slips (PNG, JPG, PDF)
-                  </p>
-                </div>
+              <div>
+                <p className="text-xs font-semibold text-neutral-700">
+                  Drop invoice / receipt image or PDF *
+                </p>
+                <p className="text-[11px] text-neutral-400 mt-0.5">
+                  Supports PNG, JPG, and PDF receipt documents
+                </p>
               </div>
-            )}
+            </div>
           </label>
 
           {!file && (
@@ -1036,160 +883,6 @@ export default function NewExpensePage() {
                 <span>Receipt document attached: <strong>{file.name}</strong></span>
               </div>
               <span className="text-neutral-500 font-mono">{(file.size / 1024).toFixed(0)} KB</span>
-            </div>
-          )}
-
-          {/* Scan Error / Advisory with Retry */}
-          {scanError && !scanResult && (
-            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between text-xs text-amber-800">
-              <div className="flex items-center gap-2">
-                <AlertCircle size={15} className="text-amber-600 shrink-0" />
-                <span>Extraction advisory: {scanError}. You may retry or fill form manually.</span>
-              </div>
-              {file && (
-                <button
-                  type="button"
-                  onClick={() => runReceiptScan(file)}
-                  className="px-2.5 py-1 bg-white hover:bg-amber-100 border border-amber-300 rounded text-amber-800 font-semibold transition-colors shrink-0 ml-2"
-                >
-                  Retry Scan
-                </button>
-              )}
-            </div>
-          )}
-
-          {/* Extracted Result Banner (Available to All Users) */}
-          {scanResult && (
-            <div className="p-4 bg-emerald-50/50 border border-emerald-200/80 rounded-xl space-y-3">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
-                  <span className="text-xs font-bold text-emerald-950">Receipt Extraction Complete:</span>
-                  <span className="text-xs font-bold text-neutral-900 px-2 py-0.5 bg-white border border-emerald-200 rounded">
-                    {scanResult.merchant_name}
-                  </span>
-                  <span className="text-xs font-bold text-emerald-800">
-                    ₹{scanResult.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                  </span>
-                  {isProxyFiling && (
-                    <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded">
-                      Filing for {effectiveTargetUser?.full_name || 'Selected Employee'}
-                    </span>
-                  )}
-                </div>
-
-                <button
-                  type="button"
-                  onClick={applyExtractedData}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold shadow-sm transition-colors self-start sm:self-auto"
-                >
-                  <Sparkles size={13} />
-                  Auto-Fill Claim Form
-                </button>
-              </div>
-
-              {/* Extracted Metadata Badges: Tax, ITC, Sanity, Location, Identifiers */}
-              <div className="flex flex-wrap items-center gap-2 text-xs pt-1">
-                {scanResult.vendor_location && (
-                  <div className="inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-emerald-200 rounded-lg text-emerald-900">
-                    <span className="text-[10px] uppercase font-bold text-emerald-700">Location:</span>
-                    <span className="font-medium">{scanResult.vendor_location}</span>
-                  </div>
-                )}
-                {scanResult.gstin && (
-                  <div className="inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-emerald-200 rounded-lg text-emerald-900">
-                    <span className="text-[10px] uppercase font-bold text-emerald-700">GSTIN:</span>
-                    <span className="font-mono font-semibold">{scanResult.gstin}</span>
-                  </div>
-                )}
-                {scanResult.tax_amount !== undefined && scanResult.tax_amount !== null && (
-                  <div className="inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-emerald-200 rounded-lg text-emerald-900">
-                    <span className="text-[10px] uppercase font-bold text-emerald-700">Tax/GST:</span>
-                    <span className="font-semibold">₹{scanResult.tax_amount.toLocaleString()}</span>
-                  </div>
-                )}
-                {scanResult.is_itc_eligible && (
-                  <div className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-md font-bold text-[10px]">
-                    ✓ ITC Eligible (Company GSTIN on Bill)
-                  </div>
-                )}
-                {scanResult.math_check_passed !== undefined && (
-                  <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-bold text-[10px] ${
-                    scanResult.math_check_passed
-                      ? 'bg-emerald-100 text-emerald-800'
-                      : 'bg-amber-100 text-amber-800'
-                  }`}>
-                    {scanResult.math_check_passed ? '✓ Math Reconciled' : `⚠️ Variance ±₹${scanResult.math_discrepancy_amount}`}
-                  </div>
-                )}
-                {scanResult.is_stale_receipt && (
-                  <div className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-100 text-amber-800 rounded-md font-bold text-[10px]">
-                    ⚠️ Stale Receipt (&gt;90 days)
-                  </div>
-                )}
-                {scanResult.is_future_date && (
-                  <div className="inline-flex items-center gap-1 px-2 py-0.5 bg-red-100 text-red-800 rounded-md font-bold text-[10px]">
-                    ⚠️ Future Date Detected
-                  </div>
-                )}
-                {scanResult.transaction_id && (
-                  <div className="inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-emerald-200 rounded-lg text-emerald-900">
-                    <span className="text-[10px] uppercase font-bold text-emerald-700">Txn / UTR:</span>
-                    <span className="font-mono font-semibold">{scanResult.transaction_id}</span>
-                  </div>
-                )}
-                {(scanResult as any).payment_mode && (
-                  <div className="inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-emerald-200 rounded-lg text-emerald-900">
-                    <span className="text-[10px] uppercase font-bold text-emerald-700">Payment Mode:</span>
-                    <span className="font-semibold">{(scanResult as any).payment_mode}</span>
-                  </div>
-                )}
-                {(scanResult as any).mobile_number && (
-                  <div className="inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-emerald-200 rounded-lg text-emerald-900">
-                    <span className="text-[10px] uppercase font-bold text-emerald-700">Contact / Ph:</span>
-                    <span className="font-semibold">{(scanResult as any).mobile_number}</span>
-                  </div>
-                )}
-                {(scanResult.bill_number || scanResult.receipt_number || scanResult.invoice_number) && (
-                  <div className="inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-emerald-200 rounded-lg text-emerald-900">
-                    <span className="text-[10px] uppercase font-bold text-emerald-700">Doc #:</span>
-                    <span className="font-semibold">{scanResult.bill_number || scanResult.receipt_number || scanResult.invoice_number}</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Handwritten Alert */}
-              {scanResult.is_handwritten && (
-                <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-2 text-xs text-amber-800">
-                  <PenTool size={14} className="shrink-0 text-amber-600" />
-                  <span>
-                    <strong>Handwritten Document Recognized:</strong> Detected handwritten notes/totals ({scanResult.handwritten_notes || 'Verified'}). Please verify amounts.
-                  </span>
-                </div>
-              )}
-
-              {/* Extracted Line Items */}
-              {scanResult.line_items.length > 0 && (
-                <div className="space-y-1.5 pt-1">
-                  <p className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider">
-                    Extracted Line Items ({scanResult.line_items.length}):
-                  </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                    {scanResult.line_items.map((item, idx) => (
-                      <div
-                        key={idx}
-                        className={`p-2 rounded-lg border flex items-center justify-between ${item.flagged
-                          ? 'bg-red-50/80 border-red-200 text-red-900'
-                          : 'bg-white border-neutral-200 text-neutral-700'
-                          }`}
-                      >
-                        <span className="truncate mr-2">{item.description}</span>
-                        <span className="font-semibold shrink-0">₹{item.amount.toLocaleString()}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
           )}
         </div>

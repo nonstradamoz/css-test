@@ -205,6 +205,17 @@ async def get_presigned_upload_url(
     return res
 
 
+def _sanitize_receipt_key(key: str) -> str:
+    """Allow `<filename>` or `receipts/<filename>` while blocking any path traversal."""
+    normalized = key.lstrip("/")
+    if normalized.startswith("receipts/"):
+        normalized = normalized[len("receipts/"):]
+    clean_key = os.path.basename(normalized)
+    if ".." in key or "\\" in key or "/" in normalized or not clean_key or clean_key != normalized:
+        raise HTTPException(status_code=400, detail="Invalid receipt key.")
+    return clean_key
+
+
 @router.put("/local-upload")
 async def local_upload(
     request: Request,
@@ -216,9 +227,7 @@ async def local_upload(
     Guards against path traversal and validates content.
     Finding 7: Throttled by upload_semaphore.
     """
-    clean_key = os.path.basename(key)
-    if ".." in key or clean_key != key:
-        raise HTTPException(status_code=400, detail="Invalid receipt key.")
+    clean_key = _sanitize_receipt_key(key)
 
     async with upload_semaphore:
         content = await read_request_body_with_size_limit(request, MAX_RECEIPT_SIZE)
@@ -237,9 +246,7 @@ async def download_file(
     Finding 4 & 11 Fix: Serve locally stored receipt file with strict authentication,
     exact storage-key ownership verification, and path traversal defense.
     """
-    clean_key = os.path.basename(key)
-    if ".." in key or clean_key != key:
-        raise HTTPException(status_code=400, detail="Invalid receipt key.")
+    clean_key = _sanitize_receipt_key(key)
 
     file_path = storage_service.get_local_file_path(clean_key)
     if not os.path.exists(file_path):
@@ -247,49 +254,61 @@ async def download_file(
 
     # Privileged roles (Admin, Finance, Reviewer) vs Regular Employee
     if current_user.role not in [UserRole.ADMIN, UserRole.FINANCE, UserRole.REVIEWER]:
-        # Finding 4 & 10: Query matching exact key and verify unique ownership
-        all_matches_res = await db.execute(
-            select(Expense).where(
-                (Expense.receipt_storage_key == clean_key) |
-                (Expense.receipt_url == clean_key) |
-                (Expense.receipt_url == f"/api/v1/receipts/download?key={clean_key}") |
-                (Expense.receipt_url == f"receipts/{clean_key}")
-            )
-        )
-        matching_expenses = all_matches_res.scalars().all()
+        # Allow employee to view their own uploaded PAN document
+        is_own_pan = False
+        if current_user.pan_document_url:
+            pan_key = storage_service.extract_key_from_url(current_user.pan_document_url)
+            if (
+                current_user.pan_document_url == clean_key
+                or current_user.pan_document_url == f"/api/v1/receipts/download?key={clean_key}"
+                or (pan_key and os.path.basename(pan_key) == clean_key)
+            ):
+                is_own_pan = True
 
-        if not matching_expenses:
-            # Fallback exact key matching using storage key extractor
-            u_expenses = (await db.execute(
-                select(Expense).where(Expense.submitted_by == current_user.id)
-            )).scalars().all()
-            for exp in u_expenses:
-                if exp.receipt_url:
-                    extracted = storage_service.extract_key_from_url(exp.receipt_url)
-                    if extracted and os.path.basename(extracted) == clean_key:
-                        matching_expenses = [exp]
-                        break
-
-        # Finding 4 & 11: Fail closed if no verified expense ownership exists
-        if not matching_expenses:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Access denied: No expense record found verifying ownership of this receipt."
+        if not is_own_pan:
+            # Finding 4 & 10: Query matching exact key and verify unique ownership
+            all_matches_res = await db.execute(
+                select(Expense).where(
+                    (Expense.receipt_storage_key == clean_key) |
+                    (Expense.receipt_url == clean_key) |
+                    (Expense.receipt_url == f"/api/v1/receipts/download?key={clean_key}") |
+                    (Expense.receipt_url == f"receipts/{clean_key}")
+                )
             )
+            matching_expenses = all_matches_res.scalars().all()
 
-        # Finding 10: Reject ambiguous matching records across different users
-        distinct_owners = {e.submitted_by for e in matching_expenses}
-        if len(distinct_owners) > 1:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Access denied: Ambiguous receipt ownership detected across multiple accounts."
-            )
+            if not matching_expenses:
+                # Fallback exact key matching using storage key extractor
+                u_expenses = (await db.execute(
+                    select(Expense).where(Expense.submitted_by == current_user.id)
+                )).scalars().all()
+                for exp in u_expenses:
+                    if exp.receipt_url:
+                        extracted = storage_service.extract_key_from_url(exp.receipt_url)
+                        if extracted and os.path.basename(extracted) == clean_key:
+                            matching_expenses = [exp]
+                            break
 
-        if current_user.id not in distinct_owners:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Access denied: You do not own this receipt document."
-            )
+            # Finding 4 & 11: Fail closed if no verified expense ownership exists
+            if not matching_expenses:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Access denied: No expense record found verifying ownership of this receipt."
+                )
+
+            # Finding 10: Reject ambiguous matching records across different users
+            distinct_owners = {e.submitted_by for e in matching_expenses}
+            if len(distinct_owners) > 1:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Access denied: Ambiguous receipt ownership detected across multiple accounts."
+                )
+
+            if current_user.id not in distinct_owners:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Access denied: You do not own this receipt document."
+                )
     else:
         # Findings 4 & 5: Enforce centre / tenant data isolation for Reviewers/Finance if centre is assigned.
         # Fails closed if matching expense is missing or centre association cannot be established,

@@ -45,6 +45,11 @@ HARDCODED_CATEGORIES = [
         "description": "Cloud hosting, developer tool licenses, and authorized SaaS subscriptions",
     },
     {
+        "code": "EVENT_PURCHASES",
+        "name": "Event Purchases",
+        "description": "Event banners, decorations, stage setup, props, kits, and event-specific purchases",
+    },
+    {
         "code": "OTHER",
         "name": "Miscellaneous & Other",
         "description": "Approved business expenses not falling into standard categories",

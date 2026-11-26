@@ -437,15 +437,20 @@ function ProfileContent() {
                   />
                 </label>
                 {panDocumentUrl && (
-                  <a
-                    href={panDocumentUrl}
-                    target="_blank"
-                    rel="noreferrer"
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        await api.receipts.openFile(panDocumentUrl);
+                      } catch (err: any) {
+                        setErrorMsg(err.message || 'Failed to open PAN document.');
+                      }
+                    }}
                     className="inline-flex items-center gap-1 px-3 py-2.5 bg-brand-50 text-brand-700 border border-brand-200 rounded-xl text-xs font-semibold hover:bg-brand-100 shrink-0"
                   >
                     <ExternalLink size={13} />
                     View
-                  </a>
+                  </button>
                 )}
               </div>
             </div>

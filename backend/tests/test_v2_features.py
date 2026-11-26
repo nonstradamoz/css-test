@@ -317,10 +317,10 @@ async def test_xlsx_export_formatting_and_hyperlinks(client):
     assert first_cell.fill.start_color.rgb in ("00059669", "059669")
     assert first_cell.font.bold is True
 
-    # If rows exist, verify a Subtotal row is present after each Vendor/Student group
+    # Verify consolidated single-row-per-user/vendor export (Sno. 1, 2, 3...)
     if ws.max_row > 1:
-        col2_vals = [str(ws.cell(row=r, column=2).value or "") for r in range(2, ws.max_row + 1)]
-        assert any(v.startswith("Subtotal —") for v in col2_vals)
+        snos = [ws.cell(row=r, column=1).value for r in range(2, ws.max_row + 1)]
+        assert snos == list(range(1, len(snos) + 1))
 
 
 @pytest.mark.asyncio

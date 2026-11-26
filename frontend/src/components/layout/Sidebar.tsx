@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/components/providers/AuthProvider';
 import {
-  LayoutDashboard, Receipt, PlusCircle, CheckSquare,
+  LayoutDashboard, Receipt, PlusCircle, CheckSquare, CheckCircle2,
   CreditCard, Users, ScrollText, Settings,
   ShieldCheck, LogOut, User, X, ClipboardCheck, Building2
 } from 'lucide-react';
@@ -24,6 +24,7 @@ const NAV_ITEMS: Record<string, { label: string; href: string; icon: any }[]> = 
     { label: 'Dashboard',       href: '/dashboard',      icon: LayoutDashboard },
     { label: 'All Expenses',    href: '/expenses',       icon: Receipt },
     { label: 'Review Queue',    href: '/reviews',        icon: ClipboardCheck },
+    { label: 'Approved List',   href: '/approved',       icon: CheckCircle2 },
     { label: 'Reimbursements',  href: '/reimbursements', icon: CreditCard },
     { label: 'My Profile',      href: '/profile',        icon: User }
   ],
@@ -31,6 +32,7 @@ const NAV_ITEMS: Record<string, { label: string; href: string; icon: any }[]> = 
     { label: 'Dashboard',       href: '/dashboard',      icon: LayoutDashboard },
     { label: 'Expenses',        href: '/expenses',       icon: Receipt },
     { label: 'Approvals (T2)',  href: '/approvals',      icon: CheckSquare },
+    { label: 'Approved List',   href: '/approved',       icon: CheckCircle2 },
     { label: 'Reimbursements',  href: '/reimbursements', icon: CreditCard },
     { label: 'Audit Logs',      href: '/audit-logs',     icon: ScrollText },
     { label: 'My Profile',      href: '/profile',        icon: User }
@@ -41,6 +43,7 @@ const NAV_ITEMS: Record<string, { label: string; href: string; icon: any }[]> = 
     { label: 'Vendor Bills',    href: '/vendors',        icon: Building2 },
     { label: 'Review Queue',    href: '/reviews',        icon: ClipboardCheck },
     { label: 'Approvals Queue', href: '/approvals',      icon: CheckSquare },
+    { label: 'Approved List',   href: '/approved',       icon: CheckCircle2 },
     { label: 'Reimbursements',  href: '/reimbursements', icon: CreditCard },
     { label: 'User Management', href: '/users',          icon: Users },
     { label: 'Audit Logs',      href: '/audit-logs',     icon: ScrollText },

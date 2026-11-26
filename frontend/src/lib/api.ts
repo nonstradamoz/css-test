@@ -504,14 +504,29 @@ class ApiClient {
       return this.request<User[]>('/users');
     },
 
-    create: async (data: { email: string; password: string; full_name: string; role: Role; bank_details?: BankDetails }): Promise<User> => {
+    create: async (data: {
+      email: string;
+      password: string;
+      full_name: string;
+      role: Role;
+      bank_details?: BankDetails;
+      pan_number?: string;
+      pan_document_url?: string;
+    }): Promise<User> => {
       return this.request<User>('/users', {
         method: 'POST',
         body: JSON.stringify(data)
       });
     },
 
-    update: async (userId: string, data: { role?: Role; is_active?: boolean; full_name?: string; bank_details?: BankDetails }): Promise<User> => {
+    update: async (userId: string, data: {
+      role?: Role;
+      is_active?: boolean;
+      full_name?: string;
+      bank_details?: BankDetails;
+      pan_number?: string;
+      pan_document_url?: string;
+    }): Promise<User> => {
       return this.request<User>(`/users/${userId}`, {
         method: 'PATCH',
         body: JSON.stringify(data)
@@ -662,6 +677,32 @@ class ApiClient {
         url: publicUrl,
         key: presigned.key
       };
+    },
+
+    openFile: async (rawUrl: string): Promise<void> => {
+      if (!rawUrl) return;
+      const backendOrigin = API_BASE.replace('/api/v1', '');
+      let targetUrl = rawUrl;
+      if (targetUrl.includes('localhost:8000') && !backendOrigin.includes('localhost:8000')) {
+        targetUrl = targetUrl.replace('http://localhost:8000', backendOrigin);
+      } else if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
+        targetUrl = `${backendOrigin}${targetUrl.startsWith('/') ? '' : '/'}${targetUrl}`;
+      }
+
+      const token = this.getAccessToken();
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch(targetUrl, { headers });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || `Failed to open document (HTTP ${res.status})`);
+      }
+
+      const blob = await res.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      window.open(blobUrl, '_blank', 'noopener,noreferrer');
+      setTimeout(() => window.URL.revokeObjectURL(blobUrl), 60000);
     }
   };
 }

@@ -15,6 +15,7 @@ const CATEGORIES: { label: string; value: ExpenseCategory }[] = [
   { label: 'Software & Cloud Subscriptions', value: 'SOFTWARE' },
   { label: 'Training & Certifications', value: 'TRAINING' },
   { label: 'Lodging', value: 'ACCOMMODATION' },
+  { label: 'Event Purchases', value: 'EVENT_PURCHASES' },
   { label: 'General / Other', value: 'OTHER' }
 ];
 

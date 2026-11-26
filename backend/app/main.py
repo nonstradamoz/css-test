@@ -134,6 +134,7 @@ async def lifespan(app: FastAPI):
                     ("SOFTWARE", "Software & Cloud Services", "SaaS subscriptions, dev tools, cloud hosting"),
                     ("TRAINING", "Training & Certifications", "Professional courses, exam vouchers, books"),
                     ("ACCOMMODATION", "Hotel & Lodging", "Hotel stays, short-term accommodation for business trips"),
+                    ("EVENT_PURCHASES", "Event Purchases", "Event banners, decorations, stage setup, props, kits, and event-specific purchases"),
                     ("OTHER", "Miscellaneous & Other", "General expenses not covered by other categories"),
                 ]
                 for code, name, desc_text in default_categories:
