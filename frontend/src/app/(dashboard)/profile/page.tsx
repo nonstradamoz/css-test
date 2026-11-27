@@ -388,15 +388,15 @@ function ProfileContent() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-sm font-bold text-neutral-900">
               <FileText size={18} className="text-brand-600" />
-              <span>PAN Verification (Compulsory) *</span>
+              <span>PAN Details (Optional)</span>
             </div>
             {panNumber && panDocumentUrl ? (
               <span className="text-[11px] font-semibold px-2.5 py-0.5 bg-emerald-50 text-emerald-700 rounded-full border border-emerald-200">
-                PAN Verified
+                PAN Added
               </span>
             ) : (
-              <span className="text-[11px] font-semibold px-2.5 py-0.5 bg-amber-50 text-amber-700 rounded-full border border-amber-200">
-                Required
+              <span className="text-[11px] font-semibold px-2.5 py-0.5 bg-neutral-100 text-neutral-600 rounded-full border border-neutral-200">
+                Optional
               </span>
             )}
           </div>
@@ -404,11 +404,10 @@ function ProfileContent() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-500 mb-1.5">
-                PAN Number *
+                PAN Number
               </label>
               <input
                 type="text"
-                required
                 minLength={10}
                 maxLength={20}
                 placeholder="e.g. ABCDE1234F"
@@ -420,7 +419,7 @@ function ProfileContent() {
 
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-500 mb-1.5">
-                PAN Card Document / Image *
+                PAN Card Document / Image
               </label>
               <div className="flex items-center gap-2">
                 <label className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 border border-dashed border-neutral-300 hover:border-brand-400 rounded-xl text-xs font-semibold text-neutral-700 bg-neutral-50/70 cursor-pointer transition-colors">

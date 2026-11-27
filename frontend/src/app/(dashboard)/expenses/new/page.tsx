@@ -216,19 +216,13 @@ export default function NewExpensePage() {
     }
 
     const isProxyFiling = canSubmitOnBehalf && !!onBehalfOfUserId;
-    const targetHasPan = Boolean(effectiveTargetUser?.pan_number && effectiveTargetUser?.pan_document_url);
 
     if (submitNow && isProxyFiling && !targetHasBankDetails) {
       setError(`Cannot submit immediately: Employee "${effectiveTargetUser?.full_name || 'selected'}" does not have bank details entered in their profile. You may save this claim as a DRAFT for now.`);
       return;
     }
 
-    if (submitNow && isProxyFiling && !targetHasPan) {
-      setError(`Cannot submit immediately: Employee "${effectiveTargetUser?.full_name || 'selected'}" does not have PAN number and PAN document uploaded in their profile. You may save this claim as a DRAFT for now.`);
-      return;
-    }
-
-    const willSaveAsDraftDueToMissingProfile = submitNow && !isProxyFiling && user?.role === 'EMPLOYEE' && (!targetHasBankDetails || !targetHasPan);
+    const willSaveAsDraftDueToMissingProfile = submitNow && !isProxyFiling && user?.role === 'EMPLOYEE' && !targetHasBankDetails;
     const effectiveSubmitNow = submitNow && !willSaveAsDraftDueToMissingProfile;
 
     setIsSubmitting(true);
@@ -257,8 +251,7 @@ export default function NewExpensePage() {
       }, effectiveSubmitNow);
 
       if (willSaveAsDraftDueToMissingProfile) {
-        const promptKey = !targetHasBankDetails ? 'prompt_bank=true' : 'prompt_pan=true';
-        router.push(`/profile?${promptKey}&redirect_expense_id=${created.id}`);
+        router.push(`/profile?prompt_bank=true&redirect_expense_id=${created.id}`);
       } else if (isProxyFiling && !effectiveSubmitNow) {
         // Drafts are strictly private to the designated employee
         router.push('/expenses');

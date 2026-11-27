@@ -64,7 +64,7 @@ async def test_feature1_bank_details_submission_guard(client):
     assert res_sub_blocked.status_code == 400
     assert "Bank account or UPI details are required" in res_sub_blocked.json()["detail"]
 
-    # Configure bank details on profile (without PAN yet -> still blocked on PAN!)
+    # Configure bank details on profile (PAN is optional for employees)
     res_profile = await client.patch("/api/v1/users/me", headers=headers, json={
         "bank_details": {
             "account_holder_name": "Bank Guard Emp",
@@ -75,21 +75,17 @@ async def test_feature1_bank_details_submission_guard(client):
     })
     assert res_profile.status_code == 200
 
-    res_pan_blocked = await client.post(f"/api/v1/expenses/{claim_id}/submit", headers=headers)
-    assert res_pan_blocked.status_code == 400
-    assert "PAN" in res_pan_blocked.json()["detail"]
+    # Submit saved draft now without PAN -> SUCCEEDS 200
+    res_sub_success = await client.post(f"/api/v1/expenses/{claim_id}/submit", headers=headers)
+    assert res_sub_success.status_code == 200
+    assert res_sub_success.json()["status"] == "SUBMITTED"
 
-    # Add PAN details & document
+    # Optional: Employee can still add PAN details & document if they have one
     res_pan_ok = await client.patch("/api/v1/users/me", headers=headers, json={
         "pan_number": "ABCDE1234F",
         "pan_document_url": "https://storage.crs-corp.com/pan/sample_pan.pdf"
     })
     assert res_pan_ok.status_code == 200
-
-    # Submit saved draft now -> SUCCEEDS 200
-    res_sub_success = await client.post(f"/api/v1/expenses/{claim_id}/submit", headers=headers)
-    assert res_sub_success.status_code == 200
-    assert res_sub_success.json()["status"] == "SUBMITTED"
 
 
 @pytest.mark.asyncio
